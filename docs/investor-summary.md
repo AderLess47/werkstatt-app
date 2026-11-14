@@ -2,9 +2,11 @@
 
 **Native Android- und Apple-App für Werkstätten: Diagnose, Service-Rückstellung, ECU-Codierung** · Stand 14.11.2026
 
+*Bezugszahlen: Konstellation **V2 / Stufe B / S3** bei ARPA 150 €/Monat — Lauf von [`model/wirtschaftlichkeit.py`](../model/wirtschaftlichkeit.py) am 14.11.2026.*
+
 | Kapitalbedarf | Break-even | Break-even-Monat | Deckungsbeitrag | ARR Jahr 6 |
 |---|---|---|---|---|
-**5,53 Mio €** | **1.050 Kunden** (5,5 % SAM) | **46** (ab Start) | **88 %** | **2,15 Mio €** |
+**6,07 Mio €** | **1.050 Kunden** (5,5 % SAM) | **48** (ab Start) | **88 %** | **2,66 Mio €** |
 
 ---
 
@@ -25,34 +27,37 @@ Content und Lizenzen (Stufe B, 60 Modelle) | 0,54 Mio € p.a. — Fixkosten, ni
 ARPA-Ziel | 150 €/Monat = 1.800 €/Jahr |
 Deckungsbeitrag je Kunde | 1.588 €/Jahr (88 %) |
 LTV / CAC / Amortisation je Kunde | 13.233 € / 700 € / **5,3 Monate** |
-Break-even | 1.050 Kunden, Monat 46, ARR 1,89 Mio € |
-Maximale Liquiditätslücke | **5,53 Mio €** |
+Break-even | 1.050 Kunden, Monat 48, Umsatz 1,89 Mio €/Jahr |
+ARR in Jahr 6 | 2,66 Mio € (1.382 Kunden) |
+Maximale Liquiditätslücke | **6,07 Mio €**; kumuliert nach 72 Monaten −4,61 Mio € |
 
 ## Kapitalverwendung
 
 | Tranche | Betrag | Zeitraum | Inhalt | Auslöser für die nächste Tranche |
 |---|---|---|---|---|
-T1 | 1,8 Mio € | M0–9 | Rechtsgutachten SERMI/J2534, 3 VCI-Partnerverträge, Diagnose-Core (ISO-TP/UDS) auf Android + iOS, Prüfstand | Gutachten liegt vor, ein SDK-Vertrag signiert |
-T2 | 1,7 Mio € | M9–20 | Codierung R2 mit Backup/Restore, Launch Stufe A/B, Fachhandelsvertrag | 100 zahlende Werkstätten, Churn < 2 %/Monat |
-T3 | 2,0 Mio € | M20–46 | Skalierung auf 1.050 Kunden, SERMI-/Flashen-Modul | 300 Kunden, ARPA ≥ 140 € |
-| **Summe** | **5,5 Mio €** | | | |
+T1 | 1,8 Mio € | M0–18 | Rechtsgutachten SERMI/J2534, 3 VCI-Partnerverträge, Diagnose-Core (ISO-TP/UDS) auf Android + iOS, Prüfstand | Gutachten liegt vor, ein SDK-Vertrag signiert |
+T2 | 1,7 Mio € | M19–32 | Codierung R2 mit Backup/Restore, Launch Stufe A/B, Fachhandelsvertrag | 100 zahlende Werkstätten, Churn < 2 %/Monat |
+T3 | 2,0 Mio € | M32–48 | Skalierung auf 1.050 Kunden, SERMI-/Flashen-Modul | 300 Kunden, ARPA ≥ 140 € |
+Reserve | 0,6 Mio € | ab M32 | Puffer für Anlaufverluste bis zum Break-even | — |
+| **Summe** | **6,1 Mio €** | | | |
 
 ## Meilensteine
 
 | Zeit | Meilenstein | Nachweis |
 |---|---|---|
 M2 | Rechtslage und Partner geklärt | Gutachten, 3 NDAs, 3–5 Pilotwerkstätten |
-M6 | Diagnose-Core auf beiden Plattformen | 5 Service-Funktionen auf 5 Modellen, 2 VCIs zertifiziert |
-M9 | Launch, 50 zahlende Werkstätten | erster Umsatz, ARPA ≥ 140 € |
-M15 | Codierung R2 produktiv | 300 Kunden, Restore in 100 % der Testfälle |
-M24 | 600 Kunden, ARR 0,9 Mio € | Flashen/SERMI im Pilotbetrieb |
-M46 | Break-even | 1.050 Kunden, monatlich positiv |
+M15 | Codierung R2 produktiv | Restore in 100 % der Testfälle (Plan-Meilenstein M2, Monat 8–15) |
+M18 | Entwicklung V2 abgeschlossen | Diagnose-Core auf beiden Plattformen, 5 Service-Funktionen auf 5 Modellen, 2 VCIs zertifiziert |
+M19 | Launch | erste zahlende Werkstätten — das Modell setzt den ersten Umsatz in Monat 19 |
+M27 | ~50 zahlende Werkstätten, ARPA ≥ 140 € | Modellrampe |
+M48 | Break-even | 1.050 Kunden, monatlich positives Ergebnis |
+M72 | 1.382 Kunden, 2,66 Mio € ARR | Modellstand Ende Jahr 6 |
 
 ## Bewertungslogik
 
-B2B-Software mit 88 % Bruttomarge und 12 % Abwanderung wird mit **4–8× ARR** bewertet. Bei 2,15 Mio € ARR (Jahr 6) ergibt das **8,6–17,2 Mio €** Unternehmenswert; ein Anteil von 35 % für 5,5 Mio € ist damit 3,0–6,0 Mio € wert.
+B2B-Software mit 88 % Bruttomarge und 12 % Abwanderung wird mit **4–8× ARR** bewertet. Bei 2,66 Mio € ARR (Jahr 6) ergibt das **10,6–21,3 Mio €** Unternehmenswert; ein Anteil von 35 % für 6,1 Mio € ist damit 3,7–7,4 Mio € wert.
 
-**Das ist der ehrliche Teil:** Die volle Amortisation der aufgelaufenen Verluste liegt erst in **Jahr 9–10**. Für einen Finanzinvestor ist das unter der Venture-Schwelle. Der passendere Kapitalgeber ist ein **strategischer Partner (Werkstattausrüster, Teilegroßhandel)**: dort ist der Content mit 0,54 Mio € die einzige echte Zusatzkostenposition. Bei vorhandenem Vertrieb und Backoffice sinkt die nötige Kundenzahl von **~770 auf ~470** (ohne Entwicklungsamortisation) bzw. von 1.050 auf **~750** (mit). Der Wert liegt dann in Kundenbasis und Content-Asset, nicht im ARR-Multiple.
+**Das ist der ehrliche Teil:** Die volle Amortisation der aufgelaufenen Verluste liegt erst in **Jahr 9–10**; kumuliert stehen nach 72 Monaten −4,61 Mio €. Für einen Finanzinvestor ist das unter der Venture-Schwelle. Der passendere Kapitalgeber ist ein **strategischer Partner (Werkstattausrüster, Teilegroßhandel)**: dort ist der Content mit 0,54 Mio € die einzige echte Zusatzkostenposition. Bei vorhandenem Vertrieb und Backoffice sinkt die nötige Kundenzahl von **~770 auf ~470** (ohne Entwicklungsamortisation) bzw. von 1.050 auf **~750** (mit). Der Wert liegt dann in Kundenbasis und Content-Asset, nicht im ARR-Multiple.
 
 ## Die drei Risiken, die den Plan kippen
 
@@ -64,4 +69,4 @@ B2B-Software mit 88 % Bruttomarge und 12 % Abwanderung wird mit **4–8× ARR** 
 
 ---
 
-*Alle Zahlen aus [wirtschaftlichkeitsrechnung.md](wirtschaftlichkeitsrechnung.md), Modell: [wirtschaftlichkeit.xlsx](../model/wirtschaftlichkeit.xlsx). Planungsrechnung auf Basis von Annahmen, keine geprüfte Finanzplanung; Steuern, Finanzierungskosten und Working Capital sind nicht enthalten. Keine Rechts- oder Anlageberatung.*
+*Alle Zahlen aus [wirtschaftlichkeitsrechnung.md](wirtschaftlichkeitsrechnung.md) §7; Rechenmodell: [`model/wirtschaftlichkeit.py`](../model/wirtschaftlichkeit.py), Arbeitsmappe [wirtschaftlichkeit.xlsx](../model/wirtschaftlichkeit.xlsx). Die PDF-Fassung entsteht mit `python model/investor_onepager.py`. Planungsrechnung auf Basis von Annahmen, keine geprüfte Finanzplanung; Steuern, Finanzierungskosten und Working Capital sind nicht enthalten. Keine Rechts- oder Anlageberatung.*
