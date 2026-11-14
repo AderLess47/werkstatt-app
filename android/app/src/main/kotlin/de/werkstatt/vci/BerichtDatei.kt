@@ -58,7 +58,7 @@ object BerichtDatei {
     }
 
     /** Nur `A–Z`, `a–z`, `0–9`, `-`, `_` und `.` — alles andere wird zu `_`. */
-    private fun entschaerft(geraet: String): String {
+    internal fun entschaerft(geraet: String): String {
         val roh = geraet.trim().map {
             if (it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '-' || it == '_' || it == '.') {
                 it
