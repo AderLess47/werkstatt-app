@@ -28,4 +28,4 @@ docs/             Planung, Spezifikationen                                  ← 
 | Entscheidung | Begründung | Was dagegen spricht |
 |---|---|---|
 **Rust-Kern für die App** | Ein Protokollstack für Android und iOS; deterministisches ISO-TP-Timing; speichersicher bei fremden Bytes von fremden Steuergeräten | Rust-Kompetenz ist teuer und rar. Fällt die Personalentscheidung dagegen aus, greift Kotlin Multiplatform mit derselben Modulgrenze ([ADR-001](adr-001-kernsprache.md) §7) |
-**J2534-DLL bleibt C** | Sie läuft in fremden Prozessen (ODIS, ISTA), ein Panic über die C-Grenze wäre undefiniertes Verhalten; die C-Fassung ist getestet und funktioniert | Zwei Protokollimplementierungen (C und Rust) — aufgefangen durch einen Konformitätskorpus aus den C-Tests ([ADR-001](adr-001-kernsprache.md) §3.4) |
+**J2534-DLL bleibt C** | Sie läuft in fremden Prozessen (ODIS, ISTA), ein Panic über die C-Grenze wäre undefiniertes Verhalten; die C-Fassung ist getestet und funktioniert | Zwei Protokollimplementierungen (C und Rust) — aufgefangen durch einen Konformitätskorpus aus den C-Tests ([ADR-001](adr-001-kernsprache.md) §7.4) |
