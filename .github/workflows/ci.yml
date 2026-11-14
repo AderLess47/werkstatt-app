@@ -46,13 +46,43 @@ jobs:
       # Erzeugt, nicht gepflegt: die Bindings entstehen bei jedem Lauf neu aus
       # der Rust-Schnittstelle. Damit kann keine Kopie veralten (ADR-001 §5).
       - name: Bindings erzeugen
-        run: bash scripts/gen-bindings.sh kotlin swift
+        run: ./scripts/gen-bindings.sh kotlin swift
 
       - name: Hochladen
         uses: actions/upload-artifact@v4
         with:
           name: uniffi-bindings
           path: core-ffi/bindings
+
+  jvm-tests:
+    name: JVM-Tests ohne Gerät (119)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Geladen wird der **Host-Build** derselben Rust-Quelle: die .so aus
+      # jniLibs ist gegen Bionic gelinkt (libdl, Symbole der Version LIBC) und
+      # auf glibc nicht ladbar — das ist kein Fehler der Tests, sondern der
+      # Unterschied zwischen Android-ABI und dieser Maschine.
+      - name: Host-Bibliothek
+        run: cargo build --release --locked --manifest-path core-ffi/Cargo.toml
+
+      - name: Kotlin-Bindings erzeugen
+        run: ./scripts/gen-bindings.sh kotlin
+
+      # Ohne Gradle, ohne Android SDK, ohne NDK: das Skript holt Compiler und
+      # Jars selbst (Cache, sonst Maven Central) und übersetzt die Bindings mit
+      # Ziel 17. Es bricht ab, wenn die Bibliothek fehlt oder für Android gebaut
+      # ist — ein übersprungener Test darf nicht als grün durchgehen.
+      - name: Alle Tests der App
+        run: sh scripts/jvm-tests.sh
 
   android:
     name: Android — NDK-Bibliothek und Kotlin-Linktest
@@ -80,10 +110,8 @@ jobs:
         run: cargo install cargo-ndk --locked
 
       # Baut die Host-Bibliothek und erzeugt die Kotlin-Bindings.
-      # Über `bash` statt `./`: das Skript kommt über die API herein und trägt
-      # kein Ausführungsrecht.
       - name: Bindings und Host-Bibliothek
-        run: bash scripts/gen-bindings.sh kotlin
+        run: ./scripts/gen-bindings.sh kotlin
 
       - name: Bibliothek für Android-ABIs
         run: |
