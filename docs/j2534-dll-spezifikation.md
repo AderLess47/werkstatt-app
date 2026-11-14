@@ -17,7 +17,7 @@ Drei Gründe, in dieser Reihenfolge:
 
 ---
 
-## 2. Was „Port\" hier konkret heißt
+## 2. Was „Port" hier konkret heißt
 
 | Plattform | Artefakt | Status |
 |---|---|---|
@@ -57,7 +57,7 @@ Verifiziert: `nm -D` zeigt **16** Symbole, identisch mit [`win/j2534.def`](../j2
 
 **API 04.04**
 ```
-HKLM\\SOFTWARE\\PassThruSupport.04.04\\<Vendor> - <Device>
+HKLM\SOFTWARE\PassThruSupport.04.04\<Vendor> - <Device>
     Vendor            REG_SZ   Herstellername
     Name              REG_SZ   Gerätename (erscheint in der App-Auswahlliste)
     FunctionLibrary   REG_SZ   voller Pfad zur DLL, max. 260 Zeichen, ASCII
@@ -70,11 +70,11 @@ HKLM\\SOFTWARE\\PassThruSupport.04.04\\<Vendor> - <Device>
     ISO14230          REG_DWORD
     SCI_A_ENGINE / SCI_A_TRANS / SCI_B_ENGINE / SCI_B_TRANS   REG_DWORD
 ```
-**API 05.00** derselbe Aufbau unter `HKLM\\SOFTWARE\\PassThruSupport.05.00`; Anwendungen, die 05.00 sprechen, sehen nur dort registrierte DLLs — und umgekehrt. Wer beides will, registriert zweimal.
+**API 05.00** derselbe Aufbau unter `HKLM\SOFTWARE\PassThruSupport.05.00`; Anwendungen, die 05.00 sprechen, sehen nur dort registrierte DLLs — und umgekehrt. Wer beides will, registriert zweimal.
 
 **Fallstricke, die Zeit kosten:**
 - 32-Bit-Anwendungen lesen über `WOW6432Node`; für 32-Bit-Ziele separat registrieren bzw. 32-Bit-DLL bereitstellen.
-- Alle Werte ASCII, `Name`/`Vendor` dürfen nicht mit `\\0` beginnen.
+- Alle Werte ASCII, `Name`/`Vendor` dürfen nicht mit `\0` beginnen.
 - Nur Kanäle eintragen, die wirklich funktionieren. Ein zu hoch angegebener Wert führt bei fremder Software zu Fehlern, die wie Fahrzeugprobleme aussehen.
 
 ---
@@ -99,9 +99,9 @@ Regeln:
 ## 6. Threading und Timing
 
 - **Thread-safe:** ja, über einen Mutex je Kanal; Lesen und Schreiben dürfen nicht gegeneinander blockieren.
-- **ReadMsgs:** blockiert bis `Timeout` ms, liefert bis zu `*pNumMsgs` Nachrichten, danach `*pNumMsgs = 0` und `STATUS_NOERROR`. Ein `ERR_TIMEOUT` an dieser Stelle ist eine der häufigsten Ursachen für „Tool reagiert nicht\".
-- **P2/P2\\* (50/5000 ms) und ISO-TP `BS`/`STMIN`** sind Sache des Protokollstacks, nicht der DLL. Die DLL reicht die Parameter durch (`SET_CONFIG`) und hält das Zeitverhalten der Busschicht ein.
-- **`0x78 responsePending`** verlängert P2\\* — der Stack muss die Zeit nachführen, sonst brechen lange Routinen (DPF-Regeneration) scheinbar grundlos ab.
+- **ReadMsgs:** blockiert bis `Timeout` ms, liefert bis zu `*pNumMsgs` Nachrichten, danach `*pNumMsgs = 0` und `STATUS_NOERROR`. Ein `ERR_TIMEOUT` an dieser Stelle ist eine der häufigsten Ursachen für „Tool reagiert nicht".
+- **P2/P2\* (50/5000 ms) und ISO-TP `BS`/`STMIN`** sind Sache des Protokollstacks, nicht der DLL. Die DLL reicht die Parameter durch (`SET_CONFIG`) und hält das Zeitverhalten der Busschicht ein.
+- **`0x78 responsePending`** verlängert P2\* — der Stack muss die Zeit nachführen, sonst brechen lange Routinen (DPF-Regeneration) scheinbar grundlos ab.
 - **Kein `Sleep` in der DLL** außer im Wartepfad von `ReadMsgs`; alles andere ist Polling mit Deadline.
 
 ---
@@ -160,8 +160,8 @@ Registry-Installer, INF, 32-Bit-Build | offen |
 
 ## 9. Offene Punkte, die vor einem Release geklärt werden müssen
 
-1. **Normtext kaufen.** SAE J2534-1/-2 ist kostenpflichtig. Die Konstanten für `SET_CONFIG`-Parameter (P1…P4, W1…W5, `ISO15765_BS_TX`, `ISO15765_STMIN_TX`, `WFT_MAX`) und der Fehlercode für „Liste erschöpft\" in 05.00 sind hier bewusst nur teilweise gesetzt. Bis zur Verifikation liefert `GetNextDevice` am Listenende `ERR_BUFFER_EMPTY`.
-2. **Konformität nachweisen.** Es gibt keinen öffentlichen J2534-Zertifizierungstest. Nachweis über Referenzanwendungen (ODIS/ISTA/Techstream), HIL-Läufe und Golden-Logs. **Bis dahin nicht „J2534-zertifiziert\" nennen** — „J2534-kompatibel (in Validierung)\" ist die ehrliche Formulierung.
+1. **Normtext kaufen.** SAE J2534-1/-2 ist kostenpflichtig. Die Konstanten für `SET_CONFIG`-Parameter (P1…P4, W1…W5, `ISO15765_BS_TX`, `ISO15765_STMIN_TX`, `WFT_MAX`) und der Fehlercode für „Liste erschöpft" in 05.00 sind hier bewusst nur teilweise gesetzt. Bis zur Verifikation liefert `GetNextDevice` am Listenende `ERR_BUFFER_EMPTY`.
+2. **Konformität nachweisen.** Es gibt keinen öffentlichen J2534-Zertifizierungstest. Nachweis über Referenzanwendungen (ODIS/ISTA/Techstream), HIL-Läufe und Golden-Logs. **Bis dahin nicht „J2534-zertifiziert" nennen** — „J2534-kompatibel (in Validierung)" ist die ehrliche Formulierung.
 3. **Code-Signing.** EV-Zertifikat, Zeitstempel, Hash im Release-Manifest. Ohne Signatur warnt Windows und viele Werkstatt-PCs blocken die DLL.
 4. **64-Bit-Zwang.** Moderne OEM-Anwendungen sind 64-Bit; ein 32-Bit-Build ist nur für Altsoftware nötig.
 5. **Haftung.** `SetProgrammingVoltage` bleibt gesperrt, bis die Hardware Pin, Spannung und Strombegrenzung nachweislich beherrscht und ein Test am Prüfstand dokumentiert ist.
@@ -171,7 +171,7 @@ Registry-Installer, INF, 32-Bit-Build | offen |
 ## 10. Rechtlicher Rahmen
 
 - **Interoperabilität ist zulässig.** Eine API zu implementieren, die eine Norm beschreibt, ist erlaubt; den Normtext zu kopieren oder zu verbreiten nicht (Urheberrecht an der Norm).
-- **Keine Herstellerlogos, keine OEM-Optik** in DLL, Installer oder Gerätenamen. Ein Gerätename wie „VAS-kompatibel\" ist eine Markenverletzung; „CAN-Interface, J2534-kompatibel\" ist es nicht.
+- **Keine Herstellerlogos, keine OEM-Optik** in DLL, Installer oder Gerätenamen. Ein Gerätename wie „VAS-kompatibel" ist eine Markenverletzung; „CAN-Interface, J2534-kompatibel" ist es nicht.
 - **Kein Umgehen von Security Access.** Die DLL liefert Transport, keine Seed/Key-Logik. Wer das ändert, verliert die Seriosität, mit der die ganze Produktstrategie steht und fällt.
 - **Exportkontrolle** unkritisch (keine Verschlüsselung mit Schlüssellänge > 56 Bit in der DLL selbst; TLS im Gateway separat prüfen).
 
