@@ -22,6 +22,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -75,6 +76,11 @@ private fun WerkstattStatus() {
 
     var dongleBefunde by remember { mutableStateOf<List<Befund>?>(null) }
     var dongleLaeuft by remember { mutableStateOf(false) }
+
+    // Bericht des VCI-Checkers (`vci-check --json`), eingefügt und ausgewertet.
+    var berichtJson by remember { mutableStateOf("") }
+    var bericht by remember { mutableStateOf<VciBericht?>(null) }
+    var berichtFehler by remember { mutableStateOf<String?>(null) }
 
     suspend fun donglePruefen(quelle: suspend () -> List<Befund>) {
         dongleLaeuft = true
@@ -195,6 +201,77 @@ private fun WerkstattStatus() {
             }
         }
 
+        Spacer(Modifier.height(24.dp))
+        HorizontalDivider()
+        Spacer(Modifier.height(16.dp))
+
+        Text("Checker-Bericht", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "Ausgabe von vci-check --json einfügen. Die App zeigt den Bericht an und " +
+                "stellt den Handlungshinweis nach vorn — sie rechnet nichts nach.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = berichtJson,
+            onValueChange = { berichtJson = it },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("JSON-Bericht") },
+            minLines = 3,
+            maxLines = 8
+        )
+
+        Spacer(Modifier.height(8.dp))
+        Button(
+            onClick = {
+                bericht = null
+                berichtFehler = null
+                try {
+                    bericht = VciBericht.ausJson(berichtJson)
+                } catch (e: VciBericht.Fehler) {
+                    berichtFehler = e.message
+                }
+            },
+            enabled = berichtJson.isNotBlank()
+        ) {
+            Text("Bericht auswerten")
+        }
+
+        berichtFehler?.let { meldung ->
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = meldung,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+
+        bericht?.let { b ->
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = b.zusammenfassung,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = if (b.ergebnis == VciStatus.OK) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.error
+                }
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Gerät ${b.geraet} · Firmware ${b.firmware} · " +
+                    "${b.resyncs} Resync · ${b.crcFehler} CRC-Fehler",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            b.pruefungen.forEach { PruefungZeile(it) }
+        }
+
         Spacer(Modifier.height(32.dp))
         Text(
             text = "Der Kern rechnet ISO-TP, der Dongle macht CAN. Ohne Fahrzeug " +
@@ -239,6 +316,61 @@ private fun BefundZeile(befund: Befund) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Eine Zeile aus dem Checker-Bericht.
+ *
+ * Der Status steht als Wort da (OK, HINWEIS, FEHLER, ÜBERSPRUNGEN), nicht nur
+ * als Farbe — in der Halle ist der Bildschirm oft schmutzig und das Licht
+ * schlecht, und Farbe allein ist keine Information (Barrierefreiheit).
+ */
+@Composable
+private fun PruefungZeile(pruefung: VciPruefung) {
+    val farbe = when (pruefung.status) {
+        VciStatus.OK -> MaterialTheme.colorScheme.primary
+        VciStatus.WARNUNG -> MaterialTheme.colorScheme.tertiary
+        VciStatus.FEHLER -> MaterialTheme.colorScheme.error
+        VciStatus.UEBERSPRUNGEN -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = pruefung.status.anzeige,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = farbe
+            )
+            Spacer(Modifier.width(16.dp))
+            Column {
+                Text(
+                    pruefung.meldung.ifBlank { pruefung.id },
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    "${pruefung.id} · ${pruefung.messwert}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (pruefung.hinweis.isNotBlank()) {
+                    Text(
+                        pruefung.hinweis,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = farbe
+                    )
+                }
             }
         }
     }
