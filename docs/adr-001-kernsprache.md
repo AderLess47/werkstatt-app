@@ -11,8 +11,8 @@ Es gibt zwei Verbraucher, die oft in einen Topf geworfen werden, aber völlig ve
 
 | Verbraucher | Läuft in | Sprachen | Anforderung |
 |---|---|---|---|
-| **App** (Android, iOS) | eigener Prozess, eigene UI | Kotlin, Swift | Protokollstack, Funktionslogik, Audit — eine Implementierung für beide |
-| **J2534-DLL** | **fremden** Prozessen (ODIS, ISTA, Techstream) | C-ABI | 16 Exporte, keine Panics, kein UI, wird von Software geladen, die uns nicht kennt |
+**App** (Android, iOS) | eigener Prozess, eigene UI | Kotlin, Swift | Protokollstack, Funktionslogik, Audit — eine Implementierung für beide |
+**J2534-DLL** | **fremden** Prozessen (ODIS, ISTA, Techstream) | C-ABI | 16 Exporte, keine Panics, kein UI, wird von Software geladen, die uns nicht kennt |
 
 Vorhanden ist heute der zweite Teil: `j2534/` mit 4.581 Zeilen C, 159 grünen Tests, gegen ein simuliertes Gerät verifiziert. Der erste Teil — der App-Kern — existiert noch nicht.
 
@@ -28,8 +28,8 @@ Der vorhandene C-Code wird zum App-Kern; Kotlin spricht über JNI damit, Swift �
 
 | | |
 |---|---|
-| Vorteile | Kein Neuschreiben. Kleinste Binärgröße. Kein zusätzliches Toolchain. Ein Entwickler mit C-Kenntnissen kommt weit. |
-| Nachteile | **Drei** handgepflegte Grenzflächen (JNI für Android, C-Header für iOS, DLL-Exporte für Windows). JNI-Handwerk ist die klassische Fehlerquelle: lokale Referenzen, Exceptions, `AttachCurrentThread`, UTF-8/UTF-16. Kein async — lange UDS-Sequenzen brauchen Callbacks oder blockierende Threads. Fehler werden zu Rückgabecodes, die jede Seite einzeln auswertet. Und: die Parser (Framing, ISO-TP-Reassembly, UDS) verarbeiten **Bytes von fremden Steuergeräten** — genau der Code, in dem Speicherfehler teuer werden. |
+Vorteile | Kein Neuschreiben. Kleinste Binärgröße. Kein zusätzliches Toolchain. Ein Entwickler mit C-Kenntnissen kommt weit. |
+Nachteile | **Drei** handgepflegte Grenzflächen (JNI für Android, C-Header für iOS, DLL-Exporte für Windows). JNI-Handwerk ist die klassische Fehlerquelle: lokale Referenzen, Exceptions, `AttachCurrentThread`, UTF-8/UTF-16. Kein async — lange UDS-Sequenzen brauchen Callbacks oder blockierende Threads. Fehler werden zu Rückgabecodes, die jede Seite einzeln auswertet. Und: die Parser (Framing, ISO-TP-Reassembly, UDS) verarbeiten **Bytes von fremden Steuergeräten** — genau der Code, in dem Speicherfehler teuer werden. |
 
 ### Option B — Rust-Kern mit UniFFI, C-DLL bleibt C *(gewählt)*
 
@@ -37,8 +37,8 @@ Der App-Kern entsteht in Rust; UniFFI erzeugt Kotlin- und Swift-Bindings aus ein
 
 | | |
 |---|---|
-| Vorteile | **Eine** Implementierung für Android und iOS, **null** handgeschriebene Bindings — UniFFI generiert Kotlin und Swift aus derselben Beschreibung. Fehler werden zu Kotlin-Exceptions bzw. Swift-`throws`, nicht zu Codes. `async` wird über die Sprachgrenze abgebildet (`suspend fun` / `async`), was für UDS-Sequenzen mit Tester-Present und Abbruch genau passt. Speichersicherheit im Parser-Code, den fremde Bytes erreichen. Die DLL bleibt unangetastet — kein Risiko für Software, die sie schon lädt. |
-| Nachteile | Rust-Kompetenz muss vorhanden sein (118 T€/FTE-Jahr im Rechenmodell, ohnehin eingeplant). UniFFI ist **vor 1.0** (0.32.x, mit Breaking Changes zwischen Minor-Versionen) — Version pinnen, Bindings in der CI erzeugen, nie von Hand ändern. Zusätzliche Build-Stufe (cargo-ndk, xcframework). |
+Vorteile | **Eine** Implementierung für Android und iOS, **null** handgeschriebene Bindings — UniFFI generiert Kotlin und Swift aus derselben Beschreibung. Fehler werden zu Kotlin-Exceptions bzw. Swift-`throws`, nicht zu Codes. `async` wird über die Sprachgrenze abgebildet (`suspend fun` / `async`), was für UDS-Sequenzen mit Tester-Present und Abbruch genau passt. Speichersicherheit im Parser-Code, den fremde Bytes erreichen. Die DLL bleibt unangetastet — kein Risiko für Software, die sie schon lädt. |
+Nachteile | Rust-Kompetenz muss vorhanden sein (118 T€/FTE-Jahr im Rechenmodell, ohnehin eingeplant). UniFFI ist **vor 1.0** (0.32.x, mit Breaking Changes zwischen Minor-Versionen) — Version pinnen, Bindings in der CI erzeugen, nie von Hand ändern. Zusätzliche Build-Stufe (cargo-ndk, xcframework). |
 
 ### Option C — Rust exportiert auch die J2534-DLL *(verworfen)*
 
@@ -79,10 +79,10 @@ j2534/         C: Windows-DLL + Desktop-Transport  ← eingefroren, bleibt wie e
 
 | Posten | PT | Anmerkung |
 |---|---|---|
-| Rust-Kern S1–S4 | 340 | unverändert aus dem Plan — der C-Code war nie der App-Kern, es wird nichts „umgeschrieben" |
-| Konformitätskorpus aus den C-Tests | 10 | Golden-Logs erzeugen, Rust-ISO-TP dagegen laufen lassen |
-| Checker nach `core/` portieren | 8 | ~350 Zeilen + 34 Tests als Spezifikation; C-Fassung bleibt Referenz |
-| **Summe zusätzlich** | **18** | V1 damit ≈ 1.338 PT statt 1.320 |
+Rust-Kern S1–S4 | 340 | unverändert aus dem Plan — der C-Code war nie der App-Kern, es wird nichts „umgeschrieben" |
+Konformitätskorpus aus den C-Tests | 10 | Golden-Logs erzeugen, Rust-ISO-TP dagegen laufen lassen |
+Checker nach `core/` portieren | 8 | ~350 Zeilen + 34 Tests als Spezifikation; C-Fassung bleibt Referenz |
+**Summe zusätzlich** | **18** | V1 damit ≈ 1.338 PT statt 1.320 |
 
 Der wichtigste Punkt: **es gibt keinen Portierungsaufwand für den vorhandenen C-Code**, weil er eine andere Aufgabe hat. Das war der Grund, Option C zu verwerfen.
 
@@ -98,10 +98,10 @@ Der wichtigste Punkt: **es gibt keinen Portierungsaufwand für den vorhandenen C
 
 | Risiko | Wirkung | Gegenmaßnahme |
 |---|---|---|
-| UniFFI-Breaking-Change | Bindings brechen beim Upgrade | Version pinnen, Upgrade nur an Sprint-Grenzen, generierte Dateien nicht anfassen |
-| Keine Rust-Kompetenz verfügbar | S1 startet nicht | **Entscheidungspunkt Ende S1**: ist kein Rust-Entwickler an Bord, wird der Kern auf Kotlin Multiplatform umgestellt (Transport bleibt C). Diese Entscheidung wird *einmal* getroffen, nicht schleichend |
-| Zwei ISO-TP-Implementierungen driften | Unterschiedliches Verhalten App vs. OEM-Tool | Konformitätskorpus im CI, `j2534/` eingefroren |
-| Build-Komplexität (NDK, Xcode, MSVC) | Lange CI, schwer reproduzierbar | Build-Matrix aus §7 des Plans, Container mit gepinnten Toolchains |
+UniFFI-Breaking-Change | Bindings brechen beim Upgrade | Version pinnen, Upgrade nur an Sprint-Grenzen, generierte Dateien nicht anfassen |
+Keine Rust-Kompetenz verfügbar | S1 startet nicht | **Entscheidungspunkt Ende S1**: ist kein Rust-Entwickler an Bord, wird der Kern auf Kotlin Multiplatform umgestellt (Transport bleibt C). Diese Entscheidung wird *einmal* getroffen, nicht schleichend |
+Zwei ISO-TP-Implementierungen driften | Unterschiedliches Verhalten App vs. OEM-Tool | Konformitätskorpus im CI, `j2534/` eingefroren |
+Build-Komplexität (NDK, Xcode, MSVC) | Lange CI, schwer reproduzierbar | Build-Matrix aus §7 des Plans, Container mit gepinnten Toolchains |
 
 ---
 
