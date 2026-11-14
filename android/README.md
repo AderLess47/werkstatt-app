@@ -1,19 +1,29 @@
-# android — Kotlin bindet gegen den Kern
+# android — App und Kotlin-Linktest
 
-Hier liegt das Android-Projekt: der Linktest (`:bindings`) und die App (`:app`).
+Die App (Compose-Oberfläche, USB- und BLE-Transport) und daneben das JVM-Modul,
+das die UniFFI-Bindings gegen die Rust-Bibliothek prüft. Beides gehört zur
+selben Gradle-Wurzel.
 
 ```
 settings.gradle.kts
-build.gradle.kts           Kotlin 2.0.21, AGP 8.5.2
-bindings/                  JVM-Modul, bindet ../../core-ffi/bindings/kotlin ein
-app/                       Compose-App: Selbsttest von Kern und Dongle
+build.gradle.kts                 Kotlin 2.0.21
+bindings/                        JVM-Modul, bindet ../core-ffi/bindings/kotlin ein
+  src/test/kotlin/IsoTpLinkTest.kt
+app/                             Android-App (minSdk 29, targetSdk 35)
+  src/main/kotlin/de/werkstatt/vci/
+    MainActivity.kt              Prüfbildschirm
+    VciCheck.kt                  Kern-Prüfung ohne Dongle
+    DonglePruefung.kt            Prüfung über den angeschlossenen Dongle
+    transport/Wire.kt            Drahtformat, Rahmenleser
+    transport/UsbCanTransport.kt USB-Host
+    transport/BleCanTransport.kt BLE-GATT über NUS
+  src/test/kotlin/               Tests gegen die echte .so und gegen Goldwerte
 ```
 
-`bindings` ist bewusst **JVM, nicht Android**: Die Bibliothek wird für den Host
-gebaut, und ein JVM-Test kann sie ohne Emulator laden. Genau das prüft den
-Aufruf durch die Sprachgrenze — dieselbe Grenze, die auf dem Gerät gilt.
+## Das JVM-Modul (`bindings/`)
 
-## Was der Linktest beweist
+Bewusst **JVM, nicht Android**: Die Host-Bibliothek lässt sich ohne Emulator
+laden. Der Test prüft dieselbe Sprachgrenze, die auch auf dem Gerät gilt.
 
 1. Die erzeugten Kotlin-Bindings **kompilieren**.
 2. JNA findet und lädt `libvci_ffi.so`.
@@ -22,21 +32,33 @@ Aufruf durch die Sprachgrenze — dieselbe Grenze, die auf dem Gerät gilt.
 4. Die Logik läuft wirklich in Rust: Single Frame mit Padding, Multi-Frame in
    FF + CF mit fortlaufender Sequenz, Zeitüberschreitung als `VciException`.
 
+## Die App (`app/`)
+
+Der Bildschirm zeigt zwei Dinge getrennt: die **Kern-Prüfung** (Adressierung,
+ISO-TP-Zusammensetzung — läuft ohne Hardware) und die **Dongle-Prüfung**
+(Spannung, Antwort des Steuergeräts über den angeschlossenen Transport).
+
+Die App-Tests laufen auf der JVM gegen die für den Host gebaute Bibliothek
+(`jna.library.path` zeigt auf `core-ffi/target/release`) und gegen Goldwerte
+aus dem C-Code — sie ersetzen keinen Gerätetest, prüfen aber die Logik des
+Bildschirms und das Drahtformat.
+
 ## Lokal ausführen
 
 ```bash
 ./scripts/gen-bindings.sh kotlin        # erzeugt Bindings + Host-Bibliothek
-gradle -p android :bindings:test         # JDK 17+, Gradle 8.9
-gradle -p android :app:testDebugUnitTest # Selbsttest-Logik auf der JVM
-gradle -p android :app:assembleDebug     # APK
+gradle -p android :bindings:test :app:testDebugUnitTest :app:assembleDebug
 ```
 
 `VCI_LIB_DIR` überschreibt den Pfad zur Bibliothek (Standard:
-`core-ffi/target/release`).
+`core-ffi/target/release`). Das NDK wird nur für die `.so` gebraucht, die auf
+dem Gerät läuft; die CI baut sie mit `cargo ndk` (arm64-v8a, x86_64) und legt
+sie unter `jniLibs` ab.
 
-## Was hier nicht passiert
+## Was hier nicht verifiziert ist
 
-- **Kein Emulator, kein Gerät.** Die Tests laufen auf der JVM des Runners.
-- **Die Android-`.so` entsteht in der CI** (`cargo ndk`, arm64-v8a und x86_64)
-  und wird als Artefakt hochgeladen. Die App findet sie erst danach in
-  `jniLibs`; ohne sie meldet der Bildschirm ehrlich „Kern nicht ladbar".
+- **Kein Gerät, kein Emulator.** USB-Host und BLE sind gegen Attrappen und
+  Goldwerte geprüft, nicht gegen echte Hardware. Der erste Lauf am Fahrzeug
+  steht aus.
+- **Keine Dongle-Matrix.** Welche BLE-Dongles das Drahtformat sprechen, ist in
+  [docs/vci-dongle-matrix.md](../docs/vci-dongle-matrix.md) festgehalten.

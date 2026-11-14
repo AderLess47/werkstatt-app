@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  c:
+    name: C-Kern und Konformitätskorpus
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tests (159 Prüfungen)
+        run: make -C j2534 test
+
+      - name: Korpus ist aktuell
+        run: |
+          # Ohne `ls-files` wäre der Diff bei einer nicht eingecheckten Datei
+          # stillschweigend grün: git diff meldet Unversioniertes nicht.
+          git ls-files --error-unmatch core/tests/corpus/isotp.txt
+          make -C j2534 corpus
+          git diff --exit-code -- core/tests/corpus/isotp.txt
+
+  rust:
+    name: Rust-Kern
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Kern (ISO-TP gegen den Korpus)
+        run: cargo test --locked --manifest-path core/Cargo.toml
+
+      - name: FFI-Schicht
+        run: cargo test --locked --manifest-path core-ffi/Cargo.toml
+
+  bindings:
+    name: Kotlin- und Swift-Bindings
+    needs: rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Erzeugt, nicht gepflegt: die Bindings entstehen bei jedem Lauf neu aus
+      # der Rust-Schnittstelle. Damit kann keine Kopie veralten (ADR-001 §5).
+      - name: Bindings erzeugen
+        run: ./scripts/gen-bindings.sh kotlin swift
+
+      - name: Hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: uniffi-bindings
+          path: core-ffi/bindings
+
+  android:
+    name: Android — NDK-Bibliothek und Kotlin-Linktest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: NDK installieren
+        # `yes |` beantwortet die Lizenzfrage; ohne das kann der Schritt auf
+        # einem frischen Runner hängen statt zu scheitern.
+        run: yes | sdkmanager "ndk;26.1.10909125" > /dev/null
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - name: cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      # Baut die Host-Bibliothek und erzeugt die Kotlin-Bindings.
+      - name: Bindings und Host-Bibliothek
+        run: ./scripts/gen-bindings.sh kotlin
+
+      - name: Bibliothek für Android-ABIs
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/26.1.10909125"
+          # cargo-ndk liest Cargo.toml im Arbeitsverzeichnis; --manifest-path
+          # funktioniert hier nicht. --platform 29 entspricht minSdk der App.
+          cd core-ffi
+          # --locked: die eingecheckte Cargo.lock gilt, sonst zieht die CI
+          # stillschweigend neuere Abhängigkeiten als der Entwicklungsrechner.
+          cargo ndk --platform 29 -t arm64-v8a -t x86_64 -o ../dist/androidJniLibs \
+            build --release --locked
+
+      - name: Architektur prüfen
+        run: |
+          readelf -h dist/androidJniLibs/arm64-v8a/libvci_ffi.so | grep -q AArch64
+          readelf -h dist/androidJniLibs/x86_64/libvci_ffi.so | grep -q X86-64
+          echo "arm64-v8a und x86_64 gebaut"
+
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.9"
+
+      # Der eigentliche Beweis: Kotlin kompiliert die Bindings und ruft in die
+      # Rust-Bibliothek. Ohne diesen Test wäre „die Bindings entstehen" nur
+      # eine Behauptung.
+      - name: Kotlin bindet gegen den Kern
+        run: gradle -p android :bindings:test --console=plain
+
+      # Die App bekommt die gebauten .so-Dateien nach jniLibs; erst damit findet
+      # sie den Kern zur Laufzeit. Der Build beweist Paketierung, Manifest und
+      # Compose-Übersetzung — nicht, dass die App auf einem Gerät startet.
+      - name: App-APK bauen
+        run: |
+          mkdir -p android/app/src/main/jniLibs
+          cp -r dist/androidJniLibs/* android/app/src/main/jniLibs/
+          gradle -p android :app:testDebugUnitTest :app:assembleDebug --console=plain
+          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep 'lib/arm64-v8a/libvci_ffi.so'
+
+      - name: JNI-Bibliotheken hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-jnilibs
+          path: dist/androidJniLibs
+
+  # Nicht aktiv: iOS. Braucht einen macOS-Runner (Xcode), ist hier nicht baubar.
+  # Sobald app-ios/ existiert: cargo build --target aarch64-apple-ios(-sim),
+  # xcodebuild -create-xcframework, dann xcodebuild -scheme WerkstattApp.
