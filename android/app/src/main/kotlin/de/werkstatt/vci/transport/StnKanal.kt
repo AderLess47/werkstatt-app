@@ -1,0 +1,228 @@
+package de.werkstatt.vci.transport
+
+/**
+ * Fehler des STN-Wegs.
+ *
+ * Eigene Typen statt `VciException`: dieser Kanal liegt oberhalb der CAN-Rahmen,
+ * der Rust-Kern ist hier nicht beteiligt — es gibt also auch keine
+ * Kernexception zu melden.
+ */
+open class StnFehler(message: String) : Exception(message) {
+
+    class KeineAntwort(message: String = "Steuergerät antwortet nicht") : StnFehler(message)
+
+    class BefehlUnbekannt(befehl: String) : StnFehler("Dongle kennt den Befehl nicht: $befehl")
+
+    class Zeitueberschreitung(message: String) : StnFehler(message)
+
+    class Uebertragung(message: String) : StnFehler(message)
+}
+
+/**
+ * Voreinstellungen für 11-Bit-CAN mit 500 kbit/s (ISO 15765-4, Motor-SG).
+ *
+ * `ATSP6` ist der Protokollbefehl, den STN-Geräte wie OBDLink verstehen; sie
+ * akzeptieren ihn als ELM-kompatiblen Befehl. Andere Fahrzeuge brauchen andere
+ * Werte — deshalb steht das hier als Datenklasse und nicht als Konstante.
+ */
+data class StnKonfiguration(
+    val anfrageHeader: Int = 0x7E0,
+    val antwortHeader: Int = 0x7E8,
+    val protokoll: String = "ATSP6",
+    val startTimeoutMs: Long = 2_000,
+    val antwortTimeoutMs: Long = 3_000,
+)
+
+/**
+ * Klasse-1-Transport: Textbefehle an ein STN-Gerät, Antwort als Diagnosenachricht.
+ *
+ * Der Ablauf ist der eines jeden ELM-kompatiblen Adapters:
+ *
+ * ```
+ * ATZ  → Kennung         (Reset)
+ * ATE0 → OK              (Echo aus: sonst steht der Befehl in der Antwort)
+ * ATL0 → OK              (kein Zeilenvorschub)
+ * ATS0 → OK              (keine Leerzeichen in Hex-Zeilen)
+ * ATH1 → OK              (Header mit ausgeben — sonst ist die Antwort nicht zuzuordnen)
+ * ATSP6 → OK             (Protokoll)
+ * ATSH7E0 → OK           (Ziel-Header, nur bei Wechsel)
+ * <Hex>  → 7E8 <PCI> <Daten…>
+ * ```
+ *
+ * Das ISO-TP im Dongle ist der Grund, warum hier *keine* Segmentierung
+ * stattfindet: ein Single Frame kommt als `7E8 02 7E 00`, eine lange Antwort
+ * als Folge aus `10 …`, `21 …`, `22 …`. [StnAntwort] setzt sie zusammen.
+ *
+ * **Grenzen** (siehe Matrix §1.1): Lesen und R1-Service; kein R3, kein Flashen,
+ * kein Security Access. Textbefehle sind langsam, große Transfers dauern
+ * Sekunden.
+ *
+ * Diese Klasse kennt kein Android — sie spricht nur [SerielleStrecke] und ist
+ * damit auf der JVM gegen aufgezeichnete Antworten prüfbar.
+ */
+class StnKanal(
+    private val strecke: SerielleStrecke,
+    private val konfiguration: StnKonfiguration = StnKonfiguration(),
+) : DiagnoseKanal {
+
+    private var offen = false
+    private var header = -1
+
+    /** Initialisiert den Dongle. Wirft [StnFehler], wenn er nicht mitspielt. */
+    fun oeffnen() {
+        val kennung = befehl("ATZ", konfiguration.startTimeoutMs)
+        if (kennung.isEmpty()) throw StnFehler.Zeitueberschreitung("keine Antwort auf ATZ")
+        for (b in listOf("ATE0", "ATL0", "ATS0", "ATH1")) erwarteOk(b)
+        if (konfiguration.protokoll.isNotBlank()) erwarteOk(konfiguration.protokoll)
+        // Nach ATZ steht der Header auf dem Dongle-Standard; wir wissen nichts
+        // über ihn und setzen ihn beim ersten Zugriff neu.
+        header = -1
+        offen = true
+    }
+
+    override fun anfrage(nachricht: ByteArray): ByteArray {
+        if (!offen) throw StnFehler.Uebertragung("Kanal ist nicht geöffnet")
+        if (nachricht.isEmpty()) throw StnFehler.Uebertragung("leere Anfrage")
+        setzeHeader(konfiguration.anfrageHeader)
+        val zeilen = befehl(nachricht.alsHex(), konfiguration.antwortTimeoutMs)
+        pruefeFehler(zeilen, nachricht.alsHex())
+        return StnAntwort.ausRahmen(zeilen, konfiguration.antwortHeader)
+    }
+
+    override fun schliesse() {
+        offen = false
+        header = -1
+    }
+
+    private fun setzeHeader(id: Int) {
+        if (header == id) return
+        erwarteOk("ATSH" + "%03X".format(id))
+        header = id
+    }
+
+    private fun erwarteOk(befehl: String) {
+        val zeilen = befehl(befehl, konfiguration.startTimeoutMs)
+        pruefeFehler(zeilen, befehl)
+        if (zeilen.none { it.equals("OK", true) }) {
+            throw StnFehler.Uebertragung("$befehl nicht bestätigt: ${zeilen.joinToString(" | ")}")
+        }
+    }
+
+    private fun pruefeFehler(zeilen: List<String>, kontext: String) {
+        for (z in zeilen) {
+            if (z == "?") throw StnFehler.BefehlUnbekannt(kontext)
+            if (z.startsWith("NO DATA", true)) throw StnFehler.KeineAntwort()
+            if (z.startsWith("UNABLE TO CONNECT", true) ||
+                z.startsWith("CAN ERROR", true) ||
+                z.startsWith("BUFFER FULL", true) ||
+                z.startsWith("STOPPED", true)
+            ) {
+                throw StnFehler.Uebertragung(z)
+            }
+        }
+    }
+
+    /**
+     * Schickt einen Befehl und sammelt Zeilen, bis der Dongle fertig ist:
+     * Prompt `>`, `OK`, `?`, `NO DATA` oder Fristablauf.
+     */
+    private fun befehl(text: String, timeoutMs: Long): List<String> {
+        if (!strecke.schreibe(text)) throw StnFehler.Uebertragung("Schreiben fehlgeschlagen: $text")
+        val zeilen = mutableListOf<String>()
+        val frist = System.nanoTime() + timeoutMs * 1_000_000L
+        while (true) {
+            val rest = (frist - System.nanoTime()) / 1_000_000L
+            if (rest <= 0L) break
+            val gelesen = strecke.zeile(rest) ?: break
+            val z = gelesen.trim()
+            if (z == ">") break
+            if (z.isEmpty()) continue
+            zeilen += z
+            if (z == "?") break
+            if (z.equals("OK", true)) break
+            if (z.startsWith("NO DATA", true)) break
+        }
+        if (zeilen.isEmpty()) throw StnFehler.Zeitueberschreitung("keine Antwort auf $text")
+        return zeilen
+    }
+}
+
+/**
+ * Setzt aus den Textzeilen des Dongles die Diagnosenachricht zusammen.
+ *
+ * Mit `ATH1` liefert der Adapter je Zeile einen CAN-Rahmen mit Header
+ * (`7E8 02 7E 00`). Was danach kommt, ist ISO-TP:
+ *
+ * - `0x0N` — Single Frame, N Nutzbytes
+ * - `0x1N` + Längenbyte — First Frame einer längeren Antwort
+ * - `0x2N` — Folgerahmen mit Sequenznummer N
+ *
+ * Negative Antworten (`7F <Dienst> <NRC>`) sind Single Frames und werden
+ * unverändert durchgereicht — was daraus wird, entscheidet der Aufrufer.
+ */
+object StnAntwort {
+
+    fun ausRahmen(zeilen: List<String>, antwortHeader: Int): ByteArray {
+        val rahmen = rahmenBytes(zeilen, antwortHeader)
+        if (rahmen.isEmpty()) {
+            throw StnFehler.KeineAntwort("keine Zeile mit Header " + "%03X".format(antwortHeader))
+        }
+        val erster = rahmen.first()
+        return when (erster[0] shr 4) {
+            0x0 -> einfachRahmen(erster)
+            0x1 -> mehrteilig(rahmen)
+            else -> throw StnFehler.Uebertragung(
+                "unerwartetes PCI-Byte " + "%02X".format(erster[0])
+            )
+        }
+    }
+
+    /** Zerlegt die Zeilen in Byte-Listen und wirft fremde Header weg. */
+    private fun rahmenBytes(zeilen: List<String>, antwortHeader: Int): List<List<Int>> =
+        zeilen.mapNotNull { zeile ->
+            val text = zeile.replace(" ", "").uppercase()
+            val kopf = text.take(3).toIntOrNull(16) ?: return@mapNotNull null
+            if (kopf != antwortHeader) return@mapNotNull null
+            val bytes = text.drop(3).chunked(2).mapNotNull { it.toIntOrNull(16) }
+            if (bytes.isEmpty()) null else bytes
+        }
+
+    private fun einfachRahmen(rahmen: List<Int>): ByteArray {
+        val laenge = rahmen[0] and 0x0F
+        if (laenge == 0) throw StnFehler.Uebertragung("leere Antwort")
+        if (rahmen.size < 1 + laenge) {
+            throw StnFehler.Uebertragung("Rahmen zu kurz: ${rahmen.size} Byte für $laenge")
+        }
+        return ByteArray(laenge) { rahmen[1 + it].toByte() }
+    }
+
+    private fun mehrteilig(rahmen: List<List<Int>>): ByteArray {
+        val kopf = rahmen.first()
+        if (kopf.size < 2) throw StnFehler.Uebertragung("First Frame ohne Längenbyte")
+        val laenge = ((kopf[0] and 0x0F) shl 8) or kopf[1]
+        if (laenge <= 7) {
+            // ISO 15765-2: bis 7 Byte gehört die Antwort in einen Single Frame.
+            throw StnFehler.Uebertragung("First Frame mit Länge $laenge")
+        }
+        val nutz = ArrayList<Int>(laenge)
+        nutz.addAll(kopf.drop(2))
+        var erwartet = 1
+        for (f in rahmen.drop(1)) {
+            if (nutz.size >= laenge) break
+            if (f.isEmpty()) continue
+            val folge = f[0] and 0x0F
+            if (folge != erwartet % 16) {
+                throw StnFehler.Uebertragung("Folgerahmen $folge statt ${erwartet % 16}")
+            }
+            nutz.addAll(f.drop(1))
+            erwartet++
+        }
+        if (nutz.size < laenge) {
+            throw StnFehler.Uebertragung("Antwort unvollständig: ${nutz.size} von $laenge Byte")
+        }
+        return ByteArray(laenge) { nutz[it].toByte() }
+    }
+}
+
+/** Hex ohne Trenner — `ATS0` schaltet die Leerzeichen in der Antwort ab. */
+internal fun ByteArray.alsHex(): String = joinToString("") { "%02X".format(it) }
