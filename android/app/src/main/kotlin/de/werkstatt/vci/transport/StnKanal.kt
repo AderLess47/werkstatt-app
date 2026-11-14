@@ -41,10 +41,20 @@ open class StnFehler(message: String) : Exception(message) {
  * - [startTimeoutMs] (2 000 ms): gilt für `ATZ` und die `AT`-Einstellungen.
  *   `ATZ` ist der langsamste Befehl (Reset), alles danach antwortet sofort mit
  *   `OK`; 2 000 ms decken den Reset mit Reserve ab.
+ * - [p2SternTimeoutMs] (5 000 ms): gilt, wenn das Steuergerät mit einer
+ *   Negative Response 0x78 („response pending“) um Aufschub bittet. ISO 14229-2
+ *   nennt 5 000 ms bis zur endgültigen Antwort; danach wird **weiter gelesen**,
+ *   nicht neu gefragt — nach 0x78 kommt die Antwort ohne neue Anfrage.
+ *   Höchstens [maxAufschub] Mal, dann steht ein Fehler statt einer endlosen
+ *   Wartezeile.
  *
- * **Nicht abgedeckt:** P2* — ISO 14229-2 nennt 5 000 ms für die Antwort nach
- * einer Negative Response 0x78 („response pending“). Meldet ein Steuergerät das,
- * läuft der Kanal in diese Frist, weil 0x78 hier nicht gesondert behandelt wird.
+ * **Grenze bei 0x78:** der Dongle entscheidet mit `ATST`, wie lange er nach
+ * einer Antwort überhaupt zuhört (Werkseinstellung rund 200 ms, siehe oben).
+ * Kommt die endgültige Antwort später, hat er das Zuhören schon beendet und
+ * meldet `NO DATA` — dann steht hier eine Zeitüberschreitung, und die Ursache
+ * ist die Einstellung des Adapters, nicht das Steuergerät. Für längere
+ * Aufschübe muss `ATST` im Dongle hochgesetzt werden; die App setzt es bewusst
+ * nicht, weil sie sonst auch jeden echten Ausfall 5 s lang aussitzt.
  */
 data class StnKonfiguration(
     val anfrageHeader: Int = 0x7E0,
@@ -52,6 +62,8 @@ data class StnKonfiguration(
     val protokoll: String = "ATSP6",
     val startTimeoutMs: Long = 2_000,
     val antwortTimeoutMs: Long = 3_000,
+    val p2SternTimeoutMs: Long = 5_000,
+    val maxAufschub: Int = 3,
 )
 
 /**
@@ -73,6 +85,11 @@ data class StnKonfiguration(
  * Das ISO-TP im Dongle ist der Grund, warum hier *keine* Segmentierung
  * stattfindet: ein Single Frame kommt als `7E8 02 7E 00`, eine lange Antwort
  * als Folge aus `10 …`, `21 …`, `22 …`. [StnAntwort] setzt sie zusammen.
+ *
+ * **0x78 wird abgewartet, nicht gemeldet:** schickt das Steuergerät
+ * `7F <Dienst> 78`, fliegt die Zeile raus und es wird bis
+ * [StnKonfiguration.p2SternTimeoutMs] weiter gelesen — ohne neue Anfrage, weil
+ * ein zweites Senden eine zweite Routine starten würde.
  *
  * **Grenzen** (siehe Matrix §1.1): Lesen und R1-Service; kein R3, kein Flashen,
  * kein Security Access. Textbefehle sind langsam, große Transfers dauern
@@ -105,9 +122,35 @@ class StnKanal(
         if (!offen) throw StnFehler.Uebertragung("Kanal ist nicht geöffnet")
         if (nachricht.isEmpty()) throw StnFehler.Uebertragung("leere Anfrage")
         setzeHeader(konfiguration.anfrageHeader)
-        val zeilen = befehl(nachricht.alsHex(), konfiguration.antwortTimeoutMs)
-        pruefeFehler(zeilen, nachricht.alsHex())
-        return StnAntwort.ausRahmen(zeilen, konfiguration.antwortHeader)
+        val hex = nachricht.alsHex()
+        var zeilen = befehl(hex, konfiguration.antwortTimeoutMs)
+        var aufschuebe = 0
+        while (true) {
+            pruefeFehler(zeilen, hex)
+            // 0x78-Zeilen sind kein Ergebnis, sondern ein „warte noch“: sie
+            // fliegen raus, und was übrig bleibt, wird zusammengesetzt.
+            val inhalt = StnAntwort.ohneAufschub(zeilen, konfiguration.antwortHeader)
+            if (inhalt.isNotEmpty()) {
+                return StnAntwort.ausRahmen(inhalt, konfiguration.antwortHeader)
+            }
+            if (aufschuebe >= konfiguration.maxAufschub) {
+                throw StnFehler.Zeitueberschreitung(
+                    "Steuergerät hat ${konfiguration.maxAufschub}-mal 0x78 geschickt, " +
+                        "aber keine Antwort geliefert"
+                )
+            }
+            aufschuebe++
+            // Nach 0x78 kommt die Antwort ohne neue Anfrage — deshalb nur weiter
+            // lesen, nicht erneut senden. Ein zweites Senden würde eine zweite
+            // Routine starten.
+            zeilen = sammle(konfiguration.p2SternTimeoutMs)
+            if (zeilen.isEmpty()) {
+                throw StnFehler.Zeitueberschreitung(
+                    "nach 0x78 keine Antwort innerhalb von " +
+                        "${konfiguration.p2SternTimeoutMs} ms (Dongle-Timeout ATST?)"
+                )
+            }
+        }
     }
 
     override fun schliesse() {
@@ -149,6 +192,13 @@ class StnKanal(
      */
     private fun befehl(text: String, timeoutMs: Long): List<String> {
         if (!strecke.schreibe(text)) throw StnFehler.Uebertragung("Schreiben fehlgeschlagen: $text")
+        val zeilen = sammle(timeoutMs)
+        if (zeilen.isEmpty()) throw StnFehler.Zeitueberschreitung("keine Antwort auf $text")
+        return zeilen
+    }
+
+    /** Liest Zeilen bis zum Prompt, einem Abschlusswort oder Fristablauf — ohne zu senden. */
+    private fun sammle(timeoutMs: Long): List<String> {
         val zeilen = mutableListOf<String>()
         val frist = System.nanoTime() + timeoutMs * 1_000_000L
         while (true) {
@@ -163,7 +213,6 @@ class StnKanal(
             if (z.equals("OK", true)) break
             if (z.startsWith("NO DATA", true)) break
         }
-        if (zeilen.isEmpty()) throw StnFehler.Zeitueberschreitung("keine Antwort auf $text")
         return zeilen
     }
 }
@@ -197,6 +246,23 @@ object StnAntwort {
             )
         }
     }
+
+    /**
+     * Entfernt die 0x78-Zeilen („Antwort kommt noch“) aus einer Zeilenfolge.
+     *
+     * So bleibt von einem Aufschub nichts übrig, was wie eine Ablehnung
+     * aussieht: kommt danach die echte Antwort, steht sie allein da und wird
+     * zusammengesetzt. Bleibt nichts übrig, war es nur ein Aufschub — dann
+     * entscheidet der Aufrufer, ob er weiter wartet.
+     */
+    fun ohneAufschub(zeilen: List<String>, antwortHeader: Int): List<String> =
+        zeilen.filterNot { zeile ->
+            val rahmen = rahmenBytes(listOf(zeile), antwortHeader).firstOrNull()
+            // `7E8 03 7F 22 78`: Byte 0 ist das PCI-Byte, erst danach beginnt die
+            // Nutzlast — 0x7F steht also an Position 1, der NRC an Position 3.
+            rahmen != null && rahmen.size >= 4 && (rahmen[0] shr 4) == 0x0 &&
+                rahmen[1] == 0x7F && rahmen[3] == 0x78
+        }
 
     /** Zerlegt die Zeilen in Byte-Listen und wirft fremde Header weg. */
     private fun rahmenBytes(zeilen: List<String>, antwortHeader: Int): List<List<Int>> =
