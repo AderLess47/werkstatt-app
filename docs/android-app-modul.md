@@ -193,6 +193,14 @@ Zwei Eigenheiten von BLE stecken im Transport:
   entscheidet nichts nach und glättet auch keinen Widerspruch zwischen `verdict`
   und Einzelprüfung. Ein kaputter Bericht erscheint als Klartextmeldung, nicht
   als Absturz.
+- **Bericht teilen** — derselbe Abschnitt legt den Bericht als Textdatei in
+  `Downloads/Werkstatt VCI/` ab und öffnet den System-Dialog zum Teilen, damit
+  die Werkstatt ihn an den Support schicken kann, ohne ihn abzutippen. Die
+  Datei enthält oben die Auswertung, unten den unveränderten JSON-Bericht;
+  Ablage über `MediaStore` statt `FileProvider`, weil `minSdk` 29 ist und der
+  Pfad so ohne Provider im Manifest auskommt. Der Dateiname entschärft den
+  Gerätenamen (nur `A–Z`, `a–z`, `0–9`, `-`, `_`, `.`), damit kein Gerät mit
+  `/` im Namen den Pfad zerlegt.
 
 Der Klasse-1-Pfad (Weg B) ist gebaut, aber **noch nicht** an den Bildschirm
 gehängt: `MainActivity` kennt bisher nur `BleGattVerbindung` und den Simulator.
@@ -203,17 +211,17 @@ gefunden“.
 ## Geprüft / nicht geprüft
 
 Geprüft: `:bindings:test` (drei Linktests gegen die echte Rust-Bibliothek).
-`:app` enthält **77 `@Test`** in neun Dateien — `VciCheck` 3, `DonglePruefung` 3,
+`:app` enthält **83 `@Test`** in zehn Dateien — `VciCheck` 3, `DonglePruefung` 3,
 `Wire` 9, `BleCanTransport` 7, `BleSerielleStrecke` 9, `UsbSerielleStrecke` 8,
-`StnKanal` 15, `StnKennung` 10, `VciBericht` 13.
+`StnKanal` 15, `StnKennung` 10, `VciBericht` 13, `BerichtDatei` 6.
 
-Davon sind **55 in dieser Umgebung tatsächlich gelaufen**: die fünf neueren
+Davon sind **61 in dieser Umgebung tatsächlich gelaufen**: die sechs neueren
 Testklassen (`StnKanal`, `StnKennung`, `BleSerielleStrecke`,
-`UsbSerielleStrecke`, `VciBericht`) wurden mit `kotlinc 2.0.21` gegen JDK 17
-übersetzt und über `org.junit.runner.JUnitCore` gestartet — alle grün. Die
-übrigen 22 wurden früher über `:app:testDebugUnitTest` ausgeführt; ein
+`UsbSerielleStrecke`, `VciBericht`, `BerichtDatei`) wurden mit `kotlinc 2.0.21`
+gegen JDK 17 übersetzt und über `org.junit.runner.JUnitCore` gestartet — alle
+grün. Die übrigen 22 wurden früher über `:app:testDebugUnitTest` ausgeführt; ein
 Gradle-Lauf ist hier **nicht** möglich, weil in dieser Umgebung kein Android SDK
-installiert ist. Ob die 77 Tests zusammen unter Gradle durchlaufen, ist damit
+installiert ist. Ob die 83 Tests zusammen unter Gradle durchlaufen, ist damit
 offen.
 
 Ebenfalls geprüft (früher, mit NDK): `:app:assembleDebug` (Kompilierung,
@@ -230,11 +238,11 @@ kein glibc), 29 exportierte `uniffi_vci_ffi_*`-Symbole darunter
 Umgebung endet an unaufgelösten Symbolen (`android.*`, `com.hoho.*`,
 `Context`). Sie sind geschrieben, aber kein Compiler hat sie bisher gesehen —
 der erste `assembleDebug` auf einer Maschine mit SDK ist ihr erster echter Test.
-Dasselbe gilt für die Erweiterung um den Checker-Bericht in `MainActivity.kt`:
-geprüft ist dort nur, dass die Datei syntaktisch fehlerfrei parst (Compilerlauf
-mit `-Xallow-unresolved-references`: keine Syntaxfehler, nur unaufgelöste
-Android- und Compose-Symbole). Die Logik dahinter (`VciBericht`) ist dagegen
-übersetzt und getestet.
+Dasselbe gilt für die Erweiterung um den Checker-Bericht in `MainActivity.kt` und
+für `BerichtTeilen.kt`: geprüft ist dort nur, dass beide Dateien syntaktisch
+fehlerfrei parsen (Compilerlauf: keine Syntaxfehler, nur unaufgelöste Android-
+und Compose-Symbole). Die Logik dahinter (`VciBericht`, `BerichtDatei`) ist
+dagegen übersetzt und getestet.
 
 Nicht geprüft: **Start auf einem Gerät oder Emulator**. In dieser VM ist
 `/dev/kvm` für den Benutzer nicht zugänglich, ein Emulator wäre ohne
