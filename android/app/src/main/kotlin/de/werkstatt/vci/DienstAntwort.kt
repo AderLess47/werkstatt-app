@@ -1,6 +1,23 @@
 package de.werkstatt.vci
 
 /**
+ * P2* nach ISO 14229-2: 5 000 ms, die ein Steuergerät nach einer Negative
+ * Response 0x78 („response pending“) für die endgültige Antwort beanspruchen
+ * darf. Beide Wege warten mit dieser Frist erneut, statt die 0x78-Antwort als
+ * Ergebnis zu melden.
+ */
+internal const val P2_STERN_MS = 5_000u
+
+/**
+ * Wie oft ein Steuergerät 0x78 schicken darf, bevor die App aufgibt.
+ *
+ * Drei Aufschübe sind 15 s zusätzlich zur ersten Frist — mehr als jede hier
+ * gelesene Kennung braucht, aber endlich. Ohne Grenze könnte ein Steuergerät,
+ * das dauerhaft 0x78 sendet, die App beliebig lange warten lassen.
+ */
+internal const val MAX_AUFSCHUB = 3
+
+/**
  * Lesbare Fassung einer Diagnoseantwort vom Klasse-1-Weg.
  *
  * Auf diesem Weg sieht die App nur Bytes, die der Dongle zusammengesetzt hat —
@@ -33,6 +50,18 @@ object DienstAntwort {
     /** Negative Antwort nach ISO 14229: `7F <Dienst> <NRC>`. */
     fun istAblehnung(bytes: ByteArray): Boolean =
         bytes.isNotEmpty() && bytes[0] == 0x7F.toByte()
+
+    /**
+     * Aufschub, kein Ergebnis: `7F <Dienst> 78`.
+     *
+     * Das Steuergerät hat die Anfrage angenommen, rechnet aber noch (typisch bei
+     * Routinen und beim Auslesen träger Speicher). Nach ISO 14229-1 darf es die
+     * 0x78-Antwort wiederholen; die gültige Antwort kommt danach innerhalb von
+     * [P2_STERN_MS] — ohne neue Anfrage. Wer 0x78 als Ablehnung anzeigt, meldet
+     * einen Fehler, den es nicht gibt.
+     */
+    fun istAntwortNochOffen(bytes: ByteArray): Boolean =
+        istAblehnung(bytes) && bytes.size >= 3 && (bytes[2].toInt() and 0xFF) == 0x78
 
     /** Klartext zu einem Negative Response Code — nur die, die in der Werkstatt vorkommen. */
     fun nrcText(nrc: Int): String = when (nrc) {

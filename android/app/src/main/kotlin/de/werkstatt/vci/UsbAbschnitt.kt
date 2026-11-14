@@ -40,9 +40,12 @@ import uniffi.vci_ffi.IsoTp
  * bis zum nächsten Consecutive Frame — auf 1 000 ms. 1 500 ms sind N_Cr plus
  * 50 % Reserve für Bulk-Transfer und Scheduler.
  *
- * **Nicht abgedeckt:** P2* — ISO 14229-2 nennt 5 000 ms für die Antwort nach
- * einer Negative Response 0x78 („response pending“). Meldet ein Steuergerät das,
- * läuft dieser Aufruf in die Frist.
+ * **0x78 („response pending“):** meldet das Steuergerät `7F <Dienst> 78`, ist das
+ * kein Ergebnis, sondern ein Aufschub. Dann wird `recv` mit [P2_STERN_MS]
+ * erneut aufgerufen — nach ISO 14229-1 kommt die gültige Antwort ohne neue
+ * Anfrage, und der Kern liest sie als eigene ISO-TP-Nachricht. Höchstens
+ * [MAX_AUFSCHUB] Mal, damit ein dauerhaft aufschiebendes Steuergerät die App
+ * nicht beliebig lange warten lässt.
  */
 private const val ANTWORT_FRIST_MS = 1_500u
 
@@ -147,8 +150,24 @@ internal fun UsbAbschnitt(onSchritt: (String) -> Unit = {}) {
                     fristText(ANTWORT_FRIST_MS.toLong()) + " je Rahmen, bei 20 Byte bis " +
                     fristText(ANTWORT_FRIST_MS.toLong() * 3)
             )
-            val antwort = withContext(Dispatchers.IO) {
-                runCatching { IsoTp().recv(offen, ANTWORT_FRIST_MS) }
+            // Nach einem 0x78 wird erneut gewartet, nicht erneut gesendet: das
+            // Steuergerät rechnet weiter und schickt die Antwort von selbst.
+            var frist = ANTWORT_FRIST_MS
+            var aufschuebe = 0
+            var antwort: Result<ByteArray> =
+                Result.failure(IllegalStateException("keine Antwort angefordert"))
+            while (true) {
+                antwort = withContext(Dispatchers.IO) { runCatching { IsoTp().recv(offen, frist) } }
+                val bytes = antwort.getOrNull()
+                if (bytes == null || !DienstAntwort.istAntwortNochOffen(bytes)) break
+                if (aufschuebe >= MAX_AUFSCHUB) break
+                aufschuebe++
+                frist = P2_STERN_MS
+                schrittZeigen(
+                    "Steuergerät meldet 0x78 (Antwort kommt noch) — warte erneut bis " +
+                        fristText(P2_STERN_MS.toLong()) + ", Aufschub $aufschuebe von " +
+                        "$MAX_AUFSCHUB"
+                )
             }
             befunde = befunde + antwort.fold(
                 onSuccess = { bytes ->
