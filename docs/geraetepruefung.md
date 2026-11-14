@@ -13,6 +13,14 @@ sich mit diesem Aufbau aber nur prüfen, wenn ein Steuergerät sie wirklich
 sendet — die Prüfung ist als Punkt 9 aufgenommen, mit der Alternative, sie
 weiterhin offen zu lassen.
 
+**Ohne Gerät schon geprüft** (JVM-Tests, siehe
+[android-app-modul.md](android-app-modul.md#geprüft--nicht-geprüft)): die
+Zeilenbildung der Textwege, das Zusammensetzen und der Aufschub einer
+STN-Antwort samt 0x78-Erkennung, die Fristformatierung der Wartezeile, die
+Auswertung einer Dienstantwort sowie Bericht und Dateiname. Diese Punkte
+müssen unten nicht mehr bewiesen werden — nur, dass die App sie auf diesem
+Gerät auch anzeigt.
+
 ---
 
 ## 0. Vorher bereitlegen
