@@ -51,3 +51,25 @@ die App bis zu dreimal je 5 Sekunden länger — das ist normal und kein Hänger
 *Aushang zur Werkstatt-Anleitung §14. Ausführlich: `docs/selbsttest-anleitung.md` ·
 Prüfplan für die Geräteprüfung: `docs/geraetepruefung.md` · Die Zeiten sind
 Obergrenzen, an denen die App aufgibt — keine Messwerte vom Fahrzeug.*
+
+---
+
+## Druckfassung
+
+Die Wandfassung setzt `scripts/aushang-pdf.py`: eine Seite A4, große Schrift,
+dieselben Zeilen wie oben, Tabellen- und Textbreiten im Skript auf 595 × 842 pt
+gerechnet.
+
+```sh
+python3 -m pip install --target .pydeps reportlab
+PYTHONPATH=.pydeps python3 scripts/aushang-pdf.py   # → docs/aushang-wartezeiten.pdf
+```
+
+Das Skript bricht ab, wenn eine Zelle breiter wäre als ihre Spalte oder der
+Inhalt nicht über der Unterkante endet — ein zu voller Aushang entsteht so nicht
+still, sondern gar nicht.
+
+**Das PDF selbst liegt nicht im Repository.** Zwei Uploadversuche über die
+GitHub-API kamen abgeschnitten an (ein halbes PDF ist unbrauchbar), deshalb ist
+das Skript die Quelle: einmal laufen lassen, drucken. Wer die Datei trotzdem
+versionieren will, legt sie mit einem lokalen `git add` ab.
