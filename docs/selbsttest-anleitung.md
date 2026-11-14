@@ -3,6 +3,9 @@
 **Für:** Werkstattpersonal am Tablet · **Stand:** 14.11.2026
 **Gilt für:** den Bildschirm „Werkstatt VCI“ der App, Stand Selbsttest — inklusive
 Bericht an den Support (Abschnitt 11)
+**Dazu:** [Aushang für die Werkstattwand](aushang-wartezeiten.md) — die Wartezeiten
+einseitig zum Aufhängen · [Prüfplan für die Geräteprüfung](geraetepruefung.md) —
+die Reihenfolge, in der diese Anzeigen am Gerät geprüft werden
 
 ---
 
@@ -33,7 +36,8 @@ und sie sagt, worauf gewartet wird. Ein Lauf über USB dauert normalerweise unte
 zwei Sekunden. Über Bluetooth kommen bis zu 10 Sekunden Suche und bis zu
 15 Sekunden Verbindungsaufbau dazu — dort also ruhig bis zu einer halben Minute
 warten, bevor „nichts gefunden“ geglaubt wird. Wie lange im Einzelfall gewartet
-wird und wann die App aufgibt, steht in Abschnitt 14.
+wird und wann die App aufgibt, steht in Abschnitt 14 und auf dem
+[Aushang](aushang-wartezeiten.md).
 
 ---
 
@@ -312,3 +316,10 @@ OBDLink-Weg kommt die fertige Antwort vom Dongle, deshalb bricht die App dort
 früher ab. Die genauen Grenzen samt Herleitung stehen in der Entwickler-Doku
 ([android-app-modul.md](android-app-modul.md), Abschnitt „Wartezeiten“) — für den
 Werkstattalltag reicht die Tabelle oben.
+
+**Zum Aufhängen und Nachprüfen:** der [Aushang](aushang-wartezeiten.md) hat
+dieselben Zeiten als einseitige Fassung für die Wand (Druck-PDF über
+`scripts/aushang-pdf.py`), der [Prüfplan](geraetepruefung.md) die Reihenfolge, in
+der diese Anzeigen am Gerät geprüft werden — samt Abhak-Tabelle für die Hand.
+Er ist noch **nicht** durchgeführt: was dort steht, ist die Erwartung, nicht das
+Ergebnis.
