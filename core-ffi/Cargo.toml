@@ -1,0 +1,22 @@
+[package]
+name = "vci-ffi"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "UniFFI-Bindings des App-Kerns für Kotlin und Swift"
+license = "proprietary"
+
+[lib]
+name = "vci_ffi"
+# cdylib für Android/iOS-Bindings, staticlib für iOS-Linking, lib für Tests.
+crate-type = ["cdylib", "staticlib", "lib"]
+
+[dependencies]
+vci-core = { path = "../core" }
+# Version exakt gepinnt: UniFFI ist vor 1.0 und bricht zwischen Minor-Versionen
+# (ADR-001 §5). Upgrade nur an Sprint-Grenzen.
+uniffi = { version = "=0.32.2", features = ["cli"] }
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi_bindgen.rs"
