@@ -12,6 +12,16 @@ import java.util.Locale
  */
 object DonglePruefung {
 
+    /**
+     * Frist für die Antwort auf TesterPresent.
+     *
+     * Die Antwort ist ein Single Frame (`7E 00`), also ein Rahmen. ISO 14229-2
+     * nennt für die erste Antwort P2_server = 50 ms; 800 ms sind die Obergrenze,
+     * nach der die Prüfung aufgibt — die Reserve deckt den ersten Bulk-Transfer
+     * direkt nach dem Öffnen ab, nicht einen langsamen Bus.
+     */
+    private const val ANTWORT_FRIST_MS = 800u
+
     fun pruefe(transport: CanTransport): List<Befund> =
         listOf(spannung(transport), steuergeraet(transport))
 
@@ -52,7 +62,7 @@ object DonglePruefung {
         try {
             val iso = IsoTp()
             iso.send(transport, byteArrayOf(0x3E, 0x00))
-            val antwort = iso.recv(transport, 800u)
+            val antwort = iso.recv(transport, ANTWORT_FRIST_MS)
             if (antwort.contentEquals(byteArrayOf(0x7E, 0x00))) {
                 Befund("Steuergerät", "antwortet auf TesterPresent", ok = true)
             } else {

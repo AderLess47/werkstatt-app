@@ -28,6 +28,24 @@ import kotlinx.coroutines.withContext
 import uniffi.vci_ffi.IsoTp
 
 /**
+ * Frist für **einen** Rahmen der Antwort — nicht für die ganze Antwort.
+ *
+ * `IsotpChannel::recv` im Kern gibt diesen Wert an jedes `recv` weiter: erst an
+ * das Warten auf den ersten Rahmen (First Frame), dann an jede Folgeantwort
+ * (Consecutive Frame). Bei der Fahrgestellnummer (20 Byte = 3 Rahmen) können
+ * daraus bis zu 4,5 s werden, bevor die Frist greift.
+ *
+ * Die Zahl ist abgeleitet, nicht geschätzt: ISO 15765-2 setzt N_Cr — die Zeit
+ * bis zum nächsten Consecutive Frame — auf 1 000 ms. 1 500 ms sind N_Cr plus
+ * 50 % Reserve für Bulk-Transfer und Scheduler.
+ *
+ * **Nicht abgedeckt:** P2* — ISO 14229-2 nennt 5 000 ms für die Antwort nach
+ * einer Negative Response 0x78 („response pending“). Meldet ein Steuergerät das,
+ * läuft dieser Aufruf in die Frist.
+ */
+private const val ANTWORT_FRIST_MS = 1_500u
+
+/**
  * Roher USB-Weg (Weg A): eigenes Drahtformat, ISO-TP rechnet der Kern.
  *
  * Abgrenzung zum Knopf „USB prüfen“ weiter oben: der macht den Schnelltest
@@ -87,7 +105,7 @@ internal fun UsbAbschnitt() {
                 runCatching {
                     val iso = IsoTp()
                     iso.send(offen, byteArrayOf(0x22, 0xF1.toByte(), 0x90.toByte()))
-                    iso.recv(offen, 1_500u)
+                    iso.recv(offen, ANTWORT_FRIST_MS)
                 }
             }
             befunde = befunde + antwort.fold(
