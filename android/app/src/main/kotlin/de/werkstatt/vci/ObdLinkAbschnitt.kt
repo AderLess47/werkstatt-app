@@ -37,9 +37,12 @@ import kotlinx.coroutines.withContext
  *
  * Was der Bildschirm **nicht** behauptet: dass ein durchgelassener Clone STN ist.
  * Die Kennung ist ein Filter, kein Beweis (siehe `docs/vci-dongle-matrix.md`).
+ *
+ * [onSchritt] meldet jeden angekündigten Schritt nach oben, damit er im
+ * Selbsttest-Bericht landet.
  */
 @Composable
-internal fun ObdLinkAbschnitt() {
+internal fun ObdLinkAbschnitt(onSchritt: (String) -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val verbindung = remember { FtdiStnVerbindung(context) }
@@ -53,6 +56,12 @@ internal fun ObdLinkAbschnitt() {
     val laeuft = schritt != null
     val konfiguration = remember { StnKonfiguration() }
 
+    /** Zeigt den Schritt und meldet ihn nach oben — von dort geht er in den Bericht. */
+    fun schrittZeigen(text: String) {
+        schritt = text
+        onSchritt(text)
+    }
+
     DisposableEffect(verbindung) {
         onDispose {
             kanal?.schliesse()
@@ -61,7 +70,7 @@ internal fun ObdLinkAbschnitt() {
     }
 
     fun oeffnen() {
-        schritt = "Suche FTDI-Gerät, frage die Freigabe ab, prüfe die STI-Kennung …"
+        schrittZeigen("Suche FTDI-Gerät, frage die Freigabe ab, prüfe die STI-Kennung …")
         meldung = null
         befunde = emptyList()
         kanal?.schliesse()
@@ -72,8 +81,10 @@ internal fun ObdLinkAbschnitt() {
                 is FtdiStnVerbindung.Ergebnis.Bereit -> {
                     // Verbindung steht und ist STN — jetzt erst die Einstellungen
                     // (Reset, Echo aus, Header, Protokoll) durchgeben.
-                    schritt = "Sende ATZ und die Einstellungen — Frist " +
-                        fristText(konfiguration.startTimeoutMs) + " je Befehl"
+                    schrittZeigen(
+                        "Sende ATZ und die Einstellungen — Frist " +
+                            fristText(konfiguration.startTimeoutMs) + " je Befehl"
+                    )
                     val gestartet = withContext(Dispatchers.IO) {
                         runCatching { ergebnis.kanal.oeffnen() }
                     }
@@ -107,9 +118,11 @@ internal fun ObdLinkAbschnitt() {
     fun dienstLesen() {
         val offen = kanal ?: return
         meldung = null
-        schritt = "Sende 22 F190 und warte auf die Antwort — Frist " +
-            fristText(konfiguration.antwortTimeoutMs) +
-            " für die ganze Antwort (der Dongle sammelt sie selbst)"
+        schrittZeigen(
+            "Sende 22 F190 und warte auf die Antwort — Frist " +
+                fristText(konfiguration.antwortTimeoutMs) +
+                " für die ganze Antwort (der Dongle sammelt sie selbst)"
+        )
         scope.launch {
             val antwort = withContext(Dispatchers.IO) {
                 runCatching { offen.anfrage(byteArrayOf(0x22, 0xF1.toByte(), 0x90.toByte())) }

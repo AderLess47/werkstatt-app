@@ -64,9 +64,12 @@ internal fun fristText(ms: Long): String =
  * Auf diesem Weg segmentiert der Rust-Kern (`isotp.rs`), der Dongle sieht nur
  * CAN-Rahmen. Der Bildschirm behauptet deshalb auch nichts über die Firmware
  * des Geräts: er kennt nur VID/PID und was auf dem Bus zurückkommt.
+ *
+ * [onSchritt] meldet jeden angekündigten Schritt nach oben, damit er im
+ * Selbsttest-Bericht landet — der Support sieht dann, wobei gewartet wurde.
  */
 @Composable
-internal fun UsbAbschnitt() {
+internal fun UsbAbschnitt(onSchritt: (String) -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val verbindung = remember { UsbDongleVerbindung(context) }
@@ -82,12 +85,20 @@ internal fun UsbAbschnitt() {
     var schritt by remember { mutableStateOf<String?>(null) }
     val laeuft = schritt != null
 
+    /** Zeigt den Schritt und meldet ihn nach oben — von dort geht er in den Bericht. */
+    fun schrittZeigen(text: String) {
+        schritt = text
+        onSchritt(text)
+    }
+
     DisposableEffect(verbindung) {
         onDispose { verbindung.close() }
     }
 
     fun oeffnen() {
-        schritt = "Suche USB-Dongle und frage die Freigabe ab — der Dialog darf bis 30 s offen bleiben"
+        schrittZeigen(
+            "Suche USB-Dongle und frage die Freigabe ab — der Dialog darf bis 30 s offen bleiben"
+        )
         meldung = null
         befunde = emptyList()
         transport = null
@@ -114,7 +125,7 @@ internal fun UsbAbschnitt() {
         val offen = transport ?: return
         meldung = null
         val anfrage = byteArrayOf(0x22, 0xF1.toByte(), 0x90.toByte())
-        schritt = "Sende Anfrage 22 F190 …"
+        schrittZeigen("Sende Anfrage 22 F190 …")
         scope.launch {
             val gesendet = withContext(Dispatchers.IO) {
                 runCatching { IsoTp().send(offen, anfrage) }
@@ -131,9 +142,11 @@ internal fun UsbAbschnitt() {
             }
             // Diese Zeile steht genau so lange, wie der Kern auf Rahmen wartet —
             // sie nennt die Frist, damit ein Abbruch zuordenbar ist.
-            schritt = "Warte auf die Antwort auf 22 F190 — Frist " +
-                fristText(ANTWORT_FRIST_MS.toLong()) + " je Rahmen, bei 20 Byte bis " +
-                fristText(ANTWORT_FRIST_MS.toLong() * 3)
+            schrittZeigen(
+                "Warte auf die Antwort auf 22 F190 — Frist " +
+                    fristText(ANTWORT_FRIST_MS.toLong()) + " je Rahmen, bei 20 Byte bis " +
+                    fristText(ANTWORT_FRIST_MS.toLong() * 3)
+            )
             val antwort = withContext(Dispatchers.IO) {
                 runCatching { IsoTp().recv(offen, ANTWORT_FRIST_MS) }
             }
