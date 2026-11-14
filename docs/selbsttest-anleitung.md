@@ -29,8 +29,8 @@ unten lesen.
 Jeder Befund ist eine Karte mit **OK** oder **FEHLER** in der ersten Zeile.
 „Prüfe …“ heißt: es läuft noch. Ein Lauf über USB dauert normalerweise unter
 zwei Sekunden. Über Bluetooth kommen bis zu 10 Sekunden Suche und bis zu
-15 Sekunden Verbindungsaufbau dazu — dort also ruhig bis zu einer halben
-Minute warten, bevor „nichts gefunden“ geglaubt wird.
+15 Sekunden Verbindungsaufbau dazu — dort also ruhig bis zu einer halben Minute
+warten, bevor „nichts gefunden“ geglaubt wird.
 
 ---
 
