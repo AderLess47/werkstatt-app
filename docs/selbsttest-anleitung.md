@@ -292,6 +292,15 @@ angekündigt; das ist kein Fehler.
 | OBDLink öffnen (Abschnitt 12) | 1–2 Sekunden | nach etwa 15 Sekunden |
 | Bluetooth-Dongle suchen und verbinden (Abschnitt 5) | 2–5 Sekunden | nach etwa 25 Sekunden |
 
+**Bittet das Steuergerät um Aufschub**, steht auf dem Bildschirm eine Wartezeile
+mit „0x78“ darin: „Steuergerät meldet 0x78 (Antwort kommt noch) — warte erneut
+bis 5,0 s, Aufschub 1 von 3“. Das ist **kein Fehler und kein Hänger** — manche
+Steuergeräte rechnen bei bestimmten Kennungen einige Sekunden, bevor sie
+antworten. Die App wartet dann bis zu dreimal je 5 Sekunden weiter. Bitte in
+dieser Zeit nichts drücken und nicht abziehen; nach dem letzten Aufschub kommt
+ein Befund. Dasselbe gilt für den Kabelweg (dort heißt es im Bericht „nach 0x78
+keine Antwort …“, wenn der Dongle zu früh aufgibt).
+
 **Wird die Grenze ohne Antwort erreicht**, steht dort ein Fehler — meist „keine
 Antwort“ oder „Dongle antwortet nicht“. Das ist kein Hänger: Die App hat gewartet
 und gibt auf, statt den Bildschirm zu blockieren. Dann gilt die Spalte „Was tun“
