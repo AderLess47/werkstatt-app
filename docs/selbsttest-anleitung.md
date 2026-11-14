@@ -31,7 +31,8 @@ Jeder Befund ist eine Karte mit **OK** oder **FEHLER** in der ersten Zeile.
 „Prüfe …“ heißt: es läuft noch. Ein Lauf über USB dauert normalerweise unter
 zwei Sekunden. Über Bluetooth kommen bis zu 10 Sekunden Suche und bis zu
 15 Sekunden Verbindungsaufbau dazu — dort also ruhig bis zu einer halben Minute
-warten, bevor „nichts gefunden“ geglaubt wird.
+warten, bevor „nichts gefunden“ geglaubt wird. Wie lange im Einzelfall gewartet
+wird und wann die App aufgibt, steht in Abschnitt 14.
 
 ---
 
@@ -260,3 +261,32 @@ in den Selbsttest-Bericht. Dieser Abschnitt liest zusätzlich einen Dienst.
 beim selben Fahrzeug einmal eine Antwort und einmal „keine Antwort“, liegt es am
 Weg (Adressierung, Header oder Segmentierung), nicht am Steuergerät — dann mit
 beiden Wegen erneut prüfen und beide Berichte mitschicken.
+
+---
+
+## 14. Wie lange „Läuft …“ stehen darf
+
+Solange „Läuft …“ auf dem Bildschirm steht, arbeitet die App. Die Knöpfe sind
+dann absichtlich gesperrt — bitte **nicht** mehrfach drücken, nicht abziehen und
+das Tablet nicht sperren. Warten Sie, bis der Befund erscheint; er kommt immer,
+spätestens wenn die App aufgibt.
+
+| Vorgang | Normal | Spätestens |
+| --- | --- | --- |
+| USB-Gerät öffnen (Abschnitte 4 und 13) | unter 1 Sekunde | nach der Freigabe im Dialog sofort; kommt der Dialog nicht, nach etwa einer halben Minute |
+| Schnelltest: Bordspannung und Steuergerät (Abschnitt 7) | unter 1 Sekunde | nach etwa 1 Sekunde |
+| Dienst lesen, roher USB-Weg (Abschnitt 13) | unter 1 Sekunde | nach etwa 5 Sekunden |
+| Dienst lesen, OBDLink am Kabel (Abschnitt 12) | 1–2 Sekunden | nach etwa 3 Sekunden |
+| OBDLink öffnen (Abschnitt 12) | 1–2 Sekunden | nach etwa 15 Sekunden |
+
+**Wird die Grenze ohne Antwort erreicht**, steht dort ein Fehler — meist „keine
+Antwort“ oder „Dongle antwortet nicht“. Das ist kein Hänger: Die App hat gewartet
+und gibt auf, statt den Bildschirm zu blockieren. Dann gilt die Spalte „Was tun“
+im jeweiligen Abschnitt: Zündung, Kabel, Stecker, Gegenprobe am PC.
+
+**Warum die Wege unterschiedlich lange warten:** Der rohe USB-Weg setzt die
+Antwort aus mehreren Rahmen zusammen und braucht dafür mehr Luft. Beim
+OBDLink-Weg kommt die fertige Antwort vom Dongle, deshalb bricht die App dort
+früher ab. Die genauen Grenzen samt Herleitung stehen in der Entwickler-Doku
+([android-app-modul.md](android-app-modul.md), Abschnitt „Wartezeiten“) — für den
+Werkstattalltag reicht die Tabelle oben.
