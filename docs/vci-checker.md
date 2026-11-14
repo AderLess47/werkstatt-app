@@ -5,7 +5,7 @@
 
 ---
 
-## 1. Warum das der wirksamste Support-Hebel
+## 1. Warum das der wirksamste Support-Hebel ist
 
 Aus der Dongle-Matrix im Plan: die Vielfalt der Adapter ist der teuerste Supporttreiber. Ein Drittel der „die App funktioniert nicht"-Fälle ist in Wahrheit ein Kabel, eine leere Batterie, ein zu alter Adapter oder ein Steuergerät, das gar nicht antwortet. Der Checker macht daraus eine Ansage in fünf Sekunden, bevor der Techniker Zeit verliert.
 
