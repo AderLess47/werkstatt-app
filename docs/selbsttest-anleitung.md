@@ -1,7 +1,8 @@
 # Selbsttest in der Werkstatt — was die Anzeige bedeutet
 
 **Für:** Werkstattpersonal am Tablet · **Stand:** 14.11.2026
-**Gilt für:** den Bildschirm „Werkstatt VCI“ der App, Stand Selbsttest
+**Gilt für:** den Bildschirm „Werkstatt VCI“ der App, Stand Selbsttest — inklusive
+Bericht an den Support (Abschnitt 11)
 
 ---
 
@@ -152,3 +153,51 @@ Ehrlich benannt, damit niemand mehr hineinliest, als drin ist:
 In beiden Fällen notieren: Datum, Tablet-Modell, Android-Version, Dongle (VID/PID
 bzw. Bluetooth-Name), Fahrzeug, welcher Befund rot war und der **genaue Text** der
 Karte. Ohne diese fünf Angaben ist jede Ferndiagnose Raten.
+
+Das meiste davon steht schon im **Selbsttest-Bericht** — wie Sie ihn erzeugen und
+losschicken, steht in Abschnitt 11.
+
+---
+
+## 11. Den Bericht an den Support schicken
+
+Es gibt **zwei** Berichte. Sie kommen aus verschiedenen Programmen und werden
+getrennt verschickt — nicht vermischt:
+
+| Bericht | Woher | Wann |
+| --- | --- | --- |
+| **Selbsttest-Bericht** | diese App, ein Knopfdruck | wenn der Bildschirm etwas Rotes zeigt |
+| **Checker-Bericht** (`vci-check --json`) | Rechner in der Werkstatt | wenn zusätzlich der VCI-Checker gelaufen ist |
+
+### Selbsttest-Bericht — drei Schritte
+
+1. **Prüfen lassen:** „Kern erneut prüfen“, dann „USB prüfen“ oder
+   „Bluetooth prüfen“. Beide Ergebnisse stehen danach auf dem Bildschirm.
+2. **Teilen:** Knopf **„Selbsttest-Bericht teilen“** drücken (direkt unter den
+   Prüf-Knöpfen). Die App legt die Datei ab und öffnet den Teilen-Dialog.
+3. **Schicken:** Mail oder Messenger wählen, zwei Sätze dazuschreiben, absenden.
+
+Die Datei heißt `vci-selbsttest-<Gerät>-<Datum>-<Uhrzeit>.txt` und liegt
+zusätzlich unter **Downloads → Werkstatt VCI**. Wer den Dialog wegtippt, findet
+sie dort und kann sie von Hand anhängen.
+
+### Checker-Bericht — wenn er schon vorliegt
+
+Auf dem Rechner `vci-check --json` laufen lassen, die Ausgabe kopieren, in der App
+in das Feld **„JSON-Bericht“** einfügen, **„Bericht auswerten“** drücken und dann
+**„Bericht als Datei teilen“**. Die Datei enthält oben die Auswertung in Klartext
+und unten den unveränderten JSON-Bericht.
+
+### In die Nachricht gehört
+
+- Fahrzeug (Kennzeichen oder Auftragsnummer) und was der Kunde bemerkt hat
+- was Sie schon versucht haben: Kabel, USB-Anschluss, anderes Fahrzeug
+- der Bericht als **Dateianhang** — kein Foto vom Bildschirm: im Bericht steht
+  der genaue Text jeder Prüfung, ein Foto ist unscharf und langsamer zu lesen
+
+Wohin: an die Support-Adresse, die im Werkstattaushang steht.
+
+**Noch nicht erprobt:** Der Teilen-Weg ist gebaut, aber noch auf keinem Gerät
+gelaufen. Kommt der Dialog nicht oder lässt sich die Datei nicht anhängen, liegt
+sie trotzdem unter Downloads → Werkstatt VCI — von dort per Kabel oder
+Dateien-App weiterschicken.
