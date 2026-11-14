@@ -299,19 +299,24 @@ gefunden“ bzw. „kein Dongle gefunden“.
 ## Geprüft / nicht geprüft
 
 Geprüft: `:bindings:test` (drei Linktests gegen die echte Rust-Bibliothek).
-`:app` enthält **102 `@Test`** in zwölf Dateien — `VciCheck` 3, `DonglePruefung` 3,
-`Wire` 9, `BleCanTransport` 7, `BleSerielleStrecke` 9, `UsbSerielleStrecke` 8,
-`StnKanal` 18, `StnKennung` 10, `VciBericht` 13, `BerichtDatei` 6, `AppBericht` 9,
-`DienstAntwort` 8.
+`:app` enthält **119 `@Test`** in vierzehn Dateien — `VciCheck` 3,
+`DonglePruefung` 3, `Wire` 9, `BleCanTransport` 7, `BleSerielleStrecke` 9,
+`UsbSerielleStrecke` 8, `StnKanal` 18, `StnKennung` 10, `Zeilenpuffer` 11,
+`VciBericht` 13, `BerichtDatei` 6, `AppBericht` 9, `DienstAntwort` 8, `Frist` 5.
 
-Davon sind **80 in dieser Umgebung tatsächlich gelaufen**: die acht neueren
-Testklassen (`StnKanal`, `StnKennung`, `BleSerielleStrecke`,
-`UsbSerielleStrecke`, `VciBericht`, `BerichtDatei`, `AppBericht`,
-`DienstAntwort`) wurden mit `kotlinc 2.0.21` gegen JDK 17 übersetzt und über
-`org.junit.runner.JUnitCore` gestartet — alle grün. Die übrigen 22 wurden früher
-über `:app:testDebugUnitTest` ausgeführt; ein Gradle-Lauf ist hier **nicht**
-möglich, weil in dieser Umgebung kein Android SDK installiert ist. Ob die 102
-Tests zusammen unter Gradle durchlaufen, ist damit offen.
+Davon sind **106 in dieser Umgebung tatsächlich gelaufen**: elf Testklassen
+(`StnKanal`, `StnKennung`, `BleSerielleStrecke`, `UsbSerielleStrecke`,
+`Zeilenpuffer`, `Wire`, `VciBericht`, `BerichtDatei`, `AppBericht`,
+`DienstAntwort`, `Frist`) wurden mit `kotlinc 2.0.21` gegen JDK 17 übersetzt und
+über `org.junit.runner.JUnitCore` gestartet — alle grün.
+
+Die übrigen 13 (`VciCheck` 3, `DonglePruefung` 3, `BleCanTransport` 7) brauchen
+die native Bibliothek und laufen hier nicht: die mitgelieferte `libvci_ffi.so`
+ist gegen Bionic gelinkt (`DT_NEEDED libdl.so`) und lässt sich auf glibc nicht
+öffnen; die erzeugten Bindings sind außerdem gegen ein neueres JDK übersetzt als
+das, das in dieser Umgebung liegt. Ein Gradle-Lauf ist ebenfalls **nicht**
+möglich, weil kein Android SDK installiert ist. Ob alle 119 zusammen unter Gradle
+durchlaufen, ist damit offen.
 
 Ebenfalls geprüft (früher, mit NDK): `:app:assembleDebug` (Kompilierung,
 Ressourcen, Manifest, Paketierung), APK-Inhalt (startbare Activity
@@ -321,18 +326,19 @@ kein glibc), 29 exportierte `uniffi_vci_ffi_*`-Symbole darunter
 `fn_constructor_isotp_new`, und dass `libvci_ffi.so` für `arm64-v8a` und
 `x86_64` in der APK liegt.
 
-**Nicht kompiliert:** `transport/UsbSerialStrecke.kt` und
+**Nicht mit echtem Compose kompiliert:** `transport/UsbSerialStrecke.kt` und
 `transport/FtdiStnVerbindung.kt`. Beide brauchen das Android SDK und
-`usb-serial-for-android`; ein Probelauf mit dem Kotlin-Compiler dieser
-Umgebung endet an unaufgelösten Symbolen (`android.*`, `com.hoho.*`,
-`Context`). Sie sind geschrieben, aber kein Compiler hat sie bisher gesehen —
-der erste `assembleDebug` auf einer Maschine mit SDK ist ihr erster echter Test.
-Dasselbe gilt für die Erweiterung um den Checker-Bericht in `MainActivity.kt`,
-für `BerichtTeilen.kt`, `UsbAbschnitt.kt` und `ObdLinkAbschnitt.kt`: geprüft ist
-dort nur, dass die Dateien syntaktisch fehlerfrei parsen (Compilerlauf: keine
-Syntaxfehler, nur unaufgelöste Android- und Compose-Symbole). Die Logik dahinter
-(`VciBericht`, `BerichtDatei`, `AppBericht`, `DienstAntwort`) ist dagegen
-übersetzt und getestet. **Die beiden Wege sind damit verdrahtet, aber nicht
+`usb-serial-for-android`; ein Probelauf mit dem Kotlin-Compiler dieser Umgebung
+endet an unaufgelösten Symbolen (`android.*`, `com.hoho.*`, `Context`). Sie sind
+geschrieben, aber kein Compiler hat sie bisher gesehen — der erste
+`assembleDebug` auf einer Maschine mit SDK ist ihr erster echter Test.
+
+Für `UsbAbschnitt.kt` und `ObdLinkAbschnitt.kt` gibt es inzwischen mehr als eine
+Syntaxprobe: `UsbAbschnitt.kt` wurde gegen **Attrappen der Compose-API**
+übersetzt (Compiler-Exit 0, inklusive der 0x78-Schleife) — das prüft Typen und
+Logik, nicht das Verhalten von Compose. Die Fristformatierung ist dabei in
+`Frist.kt` gewandert und wird dort auf der JVM getestet (`FristTest`), weil sie
+ohne Bildschirm prüfbar ist. **Die beiden Wege sind verdrahtet, aber nicht
 erprobt** — kein FTDI-Gerät, kein VCI, kein Fahrzeug, kein Emulator in dieser
 Umgebung. Die Wartezeiten sind aus Normwerten hergeleitet (siehe
 [Wartezeiten](#wartezeiten)), aber **nicht am Bus nachgemessen**.
