@@ -22,13 +22,47 @@
 
 | Gerät | Chipsatz | Host | Busse | Tiefe | App-Status | Anmerkung |
 |---|---|---|---|---|---|---|
-OBDLink MX+ | STN2255 | BLE | CAN, ISO-TP, K-Line, J1850 | L, S (eingeschränkt) | zu zertifizieren | Bestes generisches Gerät; STN-Befehlssatz statt ELM-Quirk; für Service-Rückstellung brauchbar, **nicht** für Flashen |
-OBDLink CX | STN | BLE | CAN, ISO-TP | L, S (eingeschränkt) | zu zertifizieren | iOS-freundlich (BLE), kompakt |
+OBDLink MX+ | STN2255 | BLE | CAN, ISO-TP, K-Line, J1850 | L, S (eingeschränkt) | zu zertifizieren (STN) | Bestes generisches Gerät; STN-Befehlssatz statt ELM-Quirk; für Service-Rückstellung brauchbar, **nicht** für Flashen |
+OBDLink CX | STN | BLE | CAN, ISO-TP | L, S (eingeschränkt) | zu zertifizieren (STN) | iOS-freundlich (BLE), kompakt |
 OBDLink EX / SX | STN2120 | USB | CAN, ISO-TP, K-Line | L, S | nur Android | USB → auf iPad nicht nutzbar |
 vLinker-/VGATE-Klasse | div. | BLE | CAN, ISO-TP | L | optional | Qualitätsstreuung; nur nach Einzeltest |
 **ELM327-Clones** | ELM327 (div. Clones) | BLE/WLAN | CAN, ISO-TP (instabil) | L nur mit Warnung | **nicht unterstützt** | Kein zuverlässiges Multi-Frame, keine belastbare Security-Access-Sequenz, Firmware-Streuung → Ausschluss |
 
 **Begründung des ELM327-Ausschlusses:** Ein fehlerhaftes ISO-TP-Flow-Control bei einem Schreibvorgang kann ein Steuergerät in einen undefinierten Zustand bringen. Das Risiko ist bei einem 8-€-Clone nicht kalkulierbar, und der Support-Aufwand frisst jede Marge. Wenn überhaupt: reiner Lesemodus, klar gekennzeichnet, ohne Schreibfunktionen.
+
+### 1.1 Wie Klasse 1 an die App kommt (eigener Transport)
+
+Klasse-1-Geräte sprechen nicht unser Drahtformat. Sie nehmen Textbefehle
+(`AT …`, `ST …`) über eine serielle Strecke — BLE-GATT-UART, klassisches
+Bluetooth-SPP oder USB-CDC — und **machen ISO-TP selbst**: Segmentierung,
+Flow-Control und Wiederzusammensetzung passieren im Dongle, die App sieht nur
+die fertige Diagnosenachricht als Hex-Zeile.
+
+Deshalb bekommt Klasse 1 einen eigenen Transport, der **oberhalb** von
+`CanTransport` ansetzt: eine Schnittstelle „Anfrage-Bytes rein, Antwort-Bytes
+raus" statt CAN-Rahmen. Der Rust-Kern bleibt unverändert; seine ISO-TP-Schicht
+wird auf diesem Weg nicht benutzt, weil der Dongle sie ersetzt.
+
+Was das mitbringt und was es begrenzt:
+
+- **Tiefe:** Lesen/Diagnose, R1-Service und — nach Einzelnachweis — R2 wie in §6.
+  Kein R3, kein Flashen, kein Security Access (0x27): der Challenge/Response-Weg
+  über einen Textbefehlssatz ist nicht belastbar prüfbar.
+- **Tempo:** Textbefehle sind langsam; ein 4.095-Byte-Transfer dauert Sekunden
+  statt Millisekunden. Für Live-Daten mit hoher Rate ungeeignet, für
+  Momentaufnahmen und DTC-Listen ausreichend.
+- **Prüfbarkeit:** Der ISO-TP-Stresstest aus §7 entfällt hier, weil auf diesem
+  Weg unsere eigene Segmentierung nicht beteiligt ist. Stattdessen wird je Gerät
+  die Antworttreue gegen einen festen Nachrichtenkorpus geprüft (gleiche
+  Nachrichten, gleiche Bytes, je Firmware-Version).
+- **Abgrenzung zu ELM327-Clones:** Die Aufnahme gilt für Geräte mit
+  dokumentiertem STN-Befehlssatz und fester Firmware (OBDLink & Co.).
+  Billig-Clones bleiben ausgeschlossen — dort ist weder Multi-Frame noch
+  Fehlerverhalten reproduzierbar.
+
+Praktisch heißt das: Klasse 1 ist der Weg für die Werkstatt, die schon einen
+Dongle in der Schublade hat; Klasse 2 (Gateway oder mobiles SDK) bleibt der Weg
+für alles, was schreibt oder flasht.
 
 ---
 
