@@ -17,14 +17,14 @@ Drei Gründe, in dieser Reihenfolge:
 
 ---
 
-## 2. Was „Port" hier konkret heißt
+## 2. Was „Port\" hier konkret heißt
 
 | Plattform | Artefakt | Status |
 |---|---|---|
-Windows x64 | `j2534.dll` (MSVC), Registry-Eintrag | Quellen + Exportliste vorhanden, Build erfordert MSVC/MinGW
-Linux x64 | `libj2534.so` | gebaut, 46 Abnahmeprüfungen grün (`make test`)
-macOS | `libj2534.dylib` | gleiche Quellen, nicht gebaut
-Android / iOS | **kein J2534** | dort direkt die Rust-API; kein DLL-Loading, kein Bedarf
+Windows x64 | `j2534.dll` (MSVC), Registry-Eintrag | Quellen + Exportliste vorhanden, Build erfordert MSVC/MinGW |
+Linux x64 | `libj2534.so` | gebaut, 46 Abnahmeprüfungen grün (`make test`) |
+macOS | `libj2534.dylib` | gleiche Quellen, nicht gebaut |
+Android / iOS | **kein J2534** | dort direkt die Rust-API; kein DLL-Loading, kein Bedarf |
 
 Der ABI-Header verwendet durchgehend `uint32_t`/`int32_t` statt `unsigned long`. Grund: In der Norm sind die Felder `unsigned long`, das ist auf Win32/x64 32 Bit, auf Linux/macOS aber 64 Bit — die Strukturen würden sonst unterschiedlich liegen und die DLL stillschweigend falsche Werte lesen.
 
@@ -34,20 +34,20 @@ Der ABI-Header verwendet durchgehend `uint32_t`/`int32_t` statt `unsigned long`.
 
 | Funktion | Semantik | Fehlerfälle im Code |
 |---|---|---|
-`PassThruOpen` | Gerät öffnen, DeviceID liefern | `ERR_NULL_PARAMETER`, `ERR_DEVICE_IN_USE`
-`PassThruClose` | Gerät schließen, Kanäle freigeben | `ERR_INVALID_DEVICE_ID`
-`PassThruConnect` | Kanal über Protokoll öffnen | `ERR_INVALID_PROTOCOL_ID`, `ERR_INVALID_BAUDRATE`, `ERR_EXCEEDED_LIMIT`
-`PassThruDisconnect` | Kanal schließen | `ERR_INVALID_CHANNEL_ID`
-`PassThruReadMsgs` | Nachrichten lesen; bei leerem Puffer **0 Nachrichten + `STATUS_NOERROR`** | `ERR_INVALID_CHANNEL_ID`, `ERR_NULL_PARAMETER`
-`PassThruWriteMsgs` | Nachrichten senden, Anzahl zurückgeben | `ERR_INVALID_MSG` bei Länge 0
-`PassThruStartPeriodicMsg` / `Stop` | periodisch senden | `ERR_NOT_SUPPORTED` (bewusst offen)
-`PassThruStartMsgFilter` | PASS/BLOCK/FLOW_CONTROL-Filter | `ERR_INVALID_FLAGS`, `ERR_NO_FLOW_CONTROL`
-`PassThruStopMsgFilter` | Filter entfernen | `ERR_INVALID_FILTER_ID`
-`PassThruSetProgrammingVoltage` | Programmier-Spannung an Pin | **`ERR_NOT_SUPPORTED`** — Sicherheit vor Funktionsumfang
-`PassThruReadVersion` | Firmware-/DLL-/API-Version | `ERR_NULL_PARAMETER`
-`PassThruGetLastError` | Klartext zur letzten Fehlernummer | —
-`PassThruIoctl` | GET/SET_CONFIG, READ_VBATT, CLEAR_* | `ERR_INVALID_IOCTL_ID`, `ERR_INVALID_IOCTL_VALUE`
-`PassThruScanForDevices` / `GetNextDevice` | API 05.00, dynamische Erkennung | `ERR_BUFFER_EMPTY` am Listenende (siehe §9)
+`PassThruOpen` | Gerät öffnen, DeviceID liefern | `ERR_NULL_PARAMETER`, `ERR_DEVICE_IN_USE` |
+`PassThruClose` | Gerät schließen, Kanäle freigeben | `ERR_INVALID_DEVICE_ID` |
+`PassThruConnect` | Kanal über Protokoll öffnen | `ERR_INVALID_PROTOCOL_ID`, `ERR_INVALID_BAUDRATE`, `ERR_EXCEEDED_LIMIT` |
+`PassThruDisconnect` | Kanal schließen | `ERR_INVALID_CHANNEL_ID` |
+`PassThruReadMsgs` | Nachrichten lesen; bei leerem Puffer **0 Nachrichten + `STATUS_NOERROR`** | `ERR_INVALID_CHANNEL_ID`, `ERR_NULL_PARAMETER` |
+`PassThruWriteMsgs` | Nachrichten senden, Anzahl zurückgeben | `ERR_INVALID_MSG` bei Länge 0 |
+`PassThruStartPeriodicMsg` / `Stop` | periodisch senden | `ERR_NOT_SUPPORTED` (bewusst offen) |
+`PassThruStartMsgFilter` | PASS/BLOCK/FLOW_CONTROL-Filter | `ERR_INVALID_FLAGS`, `ERR_NO_FLOW_CONTROL` |
+`PassThruStopMsgFilter` | Filter entfernen | `ERR_INVALID_FILTER_ID` |
+`PassThruSetProgrammingVoltage` | Programmier-Spannung an Pin | **`ERR_NOT_SUPPORTED`** — Sicherheit vor Funktionsumfang |
+`PassThruReadVersion` | Firmware-/DLL-/API-Version | `ERR_NULL_PARAMETER` |
+`PassThruGetLastError` | Klartext zur letzten Fehlernummer | — |
+`PassThruIoctl` | GET/SET_CONFIG, READ_VBATT, CLEAR_* | `ERR_INVALID_IOCTL_ID`, `ERR_INVALID_IOCTL_VALUE` |
+`PassThruScanForDevices` / `GetNextDevice` | API 05.00, dynamische Erkennung | `ERR_BUFFER_EMPTY` am Listenende (siehe §9) |
 
 Verifiziert: `nm -D` zeigt **16** Symbole, identisch mit [`win/j2534.def`](../j2534/win/j2534.def).
 
@@ -57,7 +57,7 @@ Verifiziert: `nm -D` zeigt **16** Symbole, identisch mit [`win/j2534.def`](../j2
 
 **API 04.04**
 ```
-HKLM\SOFTWARE\PassThruSupport.04.04\<Vendor> - <Device>
+HKLM\\SOFTWARE\\PassThruSupport.04.04\\<Vendor> - <Device>
     Vendor            REG_SZ   Herstellername
     Name              REG_SZ   Gerätename (erscheint in der App-Auswahlliste)
     FunctionLibrary   REG_SZ   voller Pfad zur DLL, max. 260 Zeichen, ASCII
@@ -70,11 +70,11 @@ HKLM\SOFTWARE\PassThruSupport.04.04\<Vendor> - <Device>
     ISO14230          REG_DWORD
     SCI_A_ENGINE / SCI_A_TRANS / SCI_B_ENGINE / SCI_B_TRANS   REG_DWORD
 ```
-**API 05.00** derselbe Aufbau unter `HKLM\SOFTWARE\PassThruSupport.05.00`; Anwendungen, die 05.00 sprechen, sehen nur dort registrierte DLLs — und umgekehrt. Wer beides will, registriert zweimal.
+**API 05.00** derselbe Aufbau unter `HKLM\\SOFTWARE\\PassThruSupport.05.00`; Anwendungen, die 05.00 sprechen, sehen nur dort registrierte DLLs — und umgekehrt. Wer beides will, registriert zweimal.
 
 **Fallstricke, die Zeit kosten:**
 - 32-Bit-Anwendungen lesen über `WOW6432Node`; für 32-Bit-Ziele separat registrieren bzw. 32-Bit-DLL bereitstellen.
-- Alle Werte ASCII, `Name`/`Vendor` dürfen nicht mit `\0` beginnen.
+- Alle Werte ASCII, `Name`/`Vendor` dürfen nicht mit `\\0` beginnen.
 - Nur Kanäle eintragen, die wirklich funktionieren. Ein zu hoch angegebener Wert führt bei fremder Software zu Fehlern, die wie Fahrzeugprobleme aussehen.
 
 ---
@@ -99,9 +99,9 @@ Regeln:
 ## 6. Threading und Timing
 
 - **Thread-safe:** ja, über einen Mutex je Kanal; Lesen und Schreiben dürfen nicht gegeneinander blockieren.
-- **ReadMsgs:** blockiert bis `Timeout` ms, liefert bis zu `*pNumMsgs` Nachrichten, danach `*pNumMsgs = 0` und `STATUS_NOERROR`. Ein `ERR_TIMEOUT` an dieser Stelle ist eine der häufigsten Ursachen für „Tool reagiert nicht".
-- **P2/P2\* (50/5000 ms) und ISO-TP `BS`/`STMIN`** sind Sache des Protokollstacks, nicht der DLL. Die DLL reicht die Parameter durch (`SET_CONFIG`) und hält das Zeitverhalten der Busschicht ein.
-- **`0x78 responsePending`** verlängert P2\* — der Stack muss die Zeit nachführen, sonst brechen lange Routinen (DPF-Regeneration) scheinbar grundlos ab.
+- **ReadMsgs:** blockiert bis `Timeout` ms, liefert bis zu `*pNumMsgs` Nachrichten, danach `*pNumMsgs = 0` und `STATUS_NOERROR`. Ein `ERR_TIMEOUT` an dieser Stelle ist eine der häufigsten Ursachen für „Tool reagiert nicht\".
+- **P2/P2\\* (50/5000 ms) und ISO-TP `BS`/`STMIN`** sind Sache des Protokollstacks, nicht der DLL. Die DLL reicht die Parameter durch (`SET_CONFIG`) und hält das Zeitverhalten der Busschicht ein.
+- **`0x78 responsePending`** verlängert P2\\* — der Stack muss die Zeit nachführen, sonst brechen lange Routinen (DPF-Regeneration) scheinbar grundlos ab.
 - **Kein `Sleep` in der DLL** außer im Wartepfad von `ReadMsgs`; alles andere ist Polling mit Deadline.
 
 ---
@@ -112,10 +112,10 @@ Die DLL kennt nur vier Transportfamilien. Alles andere ist ein Adapter:
 
 | Transport | Technik | Anmerkung |
 |---|---|---|
-USB | **WinUSB/libusb** | **kein Kernel-Treiber, kein WHQL** — das ist der wichtigste Aufwandshebel: keine Treiberzertifizierung, keine Blue-Screens
-BLE | GATT-Bridge zum Dongle | für iOS/Android-Seite identisch nutzbar
-TCP/IP | DoIP-kompatibles Gateway im LAN, Firmware-Update | deckt OEM-Passthru über den Werkstatt-Rechner ab
-Hersteller-SDK | dünner Adapter auf `Transport` | wenn ein VCI-Hersteller keine offene Schnittstelle bietet
+USB | **WinUSB/libusb** | **kein Kernel-Treiber, kein WHQL** — das ist der wichtigste Aufwandshebel: keine Treiberzertifizierung, keine Blue-Screens |
+BLE | GATT-Bridge zum Dongle | für iOS/Android-Seite identisch nutzbar |
+TCP/IP | DoIP-kompatibles Gateway im LAN, Firmware-Update | deckt OEM-Passthru über den Werkstatt-Rechner ab |
+Hersteller-SDK | dünner Adapter auf `Transport` | wenn ein VCI-Hersteller keine offene Schnittstelle bietet |
 
 Firmware-Update der Hardware läuft **nicht** über die J2534-API, sondern über ein eigenes, signiertes Update-Werkzeug (sonst kann fremde Software die Hardware umflashen).
 
@@ -143,25 +143,25 @@ Der Bulk-Endpunkt liefert beliebige Teilstücke: ein Rahmen kann über mehrere `
 
 | Baustein | Status |
 |---|---|
-ABI-Schicht, Zustandsmaschine, Fehlercodes | **implementiert**, 26 Tests
-Filterverwaltung, Config-IOCTL, VBATT, Version | **implementiert**, getestet
-Negativfälle (doppeltes Öffnen, falsches Protokoll, Länge 0, unbekannter IOCTL) | **implementiert und getestet**
-Framing (CRC-16, Resynchronisation, Teilstücke) | **implementiert**, 20 Tests
-ISO-TP Segmentierung (SF/FF/CF/FlowControl, beide Richtungen) | **implementiert**, inkl. 20-Byte-Nachrichten
-Fehlerpfade: Müllbytes, CRC-Fehler, Timeout, Kabelziehen | **implementiert und getestet**
-**WinUSB-Adapter** (`src/usb_winusb.c`) | **geschrieben, nicht kompiliert** — Windows SDK auf diesem Host nicht verfügbar
-Discovery (05.00) | simuliert (ein Gerät)
-Periodisches Senden | nicht implementiert (`ERR_NOT_SUPPORTED`)
-Programmier-Spannung | nicht implementiert (bewusst)
-BLE- und TCP/DoIP-Transport | offen
-Registry-Installer, INF, 32-Bit-Build | offen
+ABI-Schicht, Zustandsmaschine, Fehlercodes | **implementiert**, 26 Tests |
+Filterverwaltung, Config-IOCTL, VBATT, Version | **implementiert**, getestet |
+Negativfälle (doppeltes Öffnen, falsches Protokoll, Länge 0, unbekannter IOCTL) | **implementiert und getestet** |
+Framing (CRC-16, Resynchronisation, Teilstücke) | **implementiert**, 20 Tests |
+ISO-TP Segmentierung (SF/FF/CF/FlowControl, beide Richtungen) | **implementiert**, inkl. 20-Byte-Nachrichten |
+Fehlerpfade: Müllbytes, CRC-Fehler, Timeout, Kabelziehen | **implementiert und getestet** |
+**WinUSB-Adapter** (`src/usb_winusb.c`) | **geschrieben, nicht kompiliert** — Windows SDK auf diesem Host nicht verfügbar |
+Discovery (05.00) | simuliert (ein Gerät) |
+Periodisches Senden | nicht implementiert (`ERR_NOT_SUPPORTED`) |
+Programmier-Spannung | nicht implementiert (bewusst) |
+BLE- und TCP/DoIP-Transport | offen |
+Registry-Installer, INF, 32-Bit-Build | offen |
 
 ---
 
 ## 9. Offene Punkte, die vor einem Release geklärt werden müssen
 
-1. **Normtext kaufen.** SAE J2534-1/-2 ist kostenpflichtig. Die Konstanten für `SET_CONFIG`-Parameter (P1…P4, W1…W5, `ISO15765_BS_TX`, `ISO15765_STMIN_TX`, `WFT_MAX`) und der Fehlercode für „Liste erschöpft" in 05.00 sind hier bewusst nur teilweise gesetzt. Bis zur Verifikation liefert `GetNextDevice` am Listenende `ERR_BUFFER_EMPTY`.
-2. **Konformität nachweisen.** Es gibt keinen öffentlichen J2534-Zertifizierungstest. Nachweis über Referenzanwendungen (ODIS/ISTA/Techstream), HIL-Läufe und Golden-Logs. **Bis dahin nicht „J2534-zertifiziert" nennen** — „J2534-kompatibel (in Validierung)" ist die ehrliche Formulierung.
+1. **Normtext kaufen.** SAE J2534-1/-2 ist kostenpflichtig. Die Konstanten für `SET_CONFIG`-Parameter (P1…P4, W1…W5, `ISO15765_BS_TX`, `ISO15765_STMIN_TX`, `WFT_MAX`) und der Fehlercode für „Liste erschöpft\" in 05.00 sind hier bewusst nur teilweise gesetzt. Bis zur Verifikation liefert `GetNextDevice` am Listenende `ERR_BUFFER_EMPTY`.
+2. **Konformität nachweisen.** Es gibt keinen öffentlichen J2534-Zertifizierungstest. Nachweis über Referenzanwendungen (ODIS/ISTA/Techstream), HIL-Läufe und Golden-Logs. **Bis dahin nicht „J2534-zertifiziert\" nennen** — „J2534-kompatibel (in Validierung)\" ist die ehrliche Formulierung.
 3. **Code-Signing.** EV-Zertifikat, Zeitstempel, Hash im Release-Manifest. Ohne Signatur warnt Windows und viele Werkstatt-PCs blocken die DLL.
 4. **64-Bit-Zwang.** Moderne OEM-Anwendungen sind 64-Bit; ein 32-Bit-Build ist nur für Altsoftware nötig.
 5. **Haftung.** `SetProgrammingVoltage` bleibt gesperrt, bis die Hardware Pin, Spannung und Strombegrenzung nachweislich beherrscht und ein Test am Prüfstand dokumentiert ist.
@@ -171,7 +171,7 @@ Registry-Installer, INF, 32-Bit-Build | offen
 ## 10. Rechtlicher Rahmen
 
 - **Interoperabilität ist zulässig.** Eine API zu implementieren, die eine Norm beschreibt, ist erlaubt; den Normtext zu kopieren oder zu verbreiten nicht (Urheberrecht an der Norm).
-- **Keine Herstellerlogos, keine OEM-Optik** in DLL, Installer oder Gerätenamen. Ein Gerätename wie „VAS-kompatibel" ist eine Markenverletzung; „CAN-Interface, J2534-kompatibel" ist es nicht.
+- **Keine Herstellerlogos, keine OEM-Optik** in DLL, Installer oder Gerätenamen. Ein Gerätename wie „VAS-kompatibel\" ist eine Markenverletzung; „CAN-Interface, J2534-kompatibel\" ist es nicht.
 - **Kein Umgehen von Security Access.** Die DLL liefert Transport, keine Seed/Key-Logik. Wer das ändert, verliert die Seriosität, mit der die ganze Produktstrategie steht und fällt.
 - **Exportkontrolle** unkritisch (keine Verschlüsselung mit Schlüssellänge > 56 Bit in der DLL selbst; TLS im Gateway separat prüfen).
 
@@ -181,13 +181,13 @@ Registry-Installer, INF, 32-Bit-Build | offen
 
 | Stufe | Inhalt | PT |
 |---|---|---|
-S1 | ABI + Loopback + Tests — **erledigt** | 25
-S1b | Framing, ISO-TP, Fehlerpfade, simulierte Gegenstelle — **erledigt** | 20
-S2 | WinUSB: INF, Windows-Build, Geräteerkennung, Test am echten Gerät (Adapter steht) | 20
-S3 | Registry-Installer (32/64 Bit) + Signierung + VCI-Checker | 20
-S4 | BLE- und TCP/DoIP-Transport | 35
-S5 | Validierung gegen 3 Referenzanwendungen + HIL + Golden-Logs | 40
-S6 | Periodisches Senden, erweiterte Config-Parameter, Feinschliff | 25
+S1 | ABI + Loopback + Tests — **erledigt** | 25 |
+S1b | Framing, ISO-TP, Fehlerpfade, simulierte Gegenstelle — **erledigt** | 20 |
+S2 | WinUSB: INF, Windows-Build, Geräteerkennung, Test am echten Gerät (Adapter steht) | 20 |
+S3 | Registry-Installer (32/64 Bit) + Signierung + VCI-Checker | 20 |
+S4 | BLE- und TCP/DoIP-Transport | 35 |
+S5 | Validierung gegen 3 Referenzanwendungen + HIL + Golden-Logs | 40 |
+S6 | Periodisches Senden, erweiterte Config-Parameter, Feinschliff | 25 |
 | **Summe** | | **≈ 185 PT** |
 
 Das entspricht grob 105 T€ Personalvollkosten — passt in den Sach- und Personalblock der V1/V2 im Rechenmodell.
