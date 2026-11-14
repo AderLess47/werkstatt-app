@@ -5,7 +5,7 @@
 
 ---
 
-## 1. Warum das der wirksamste Support-Hebel ist
+## 1. Warum das der wirksamste Support-Hebel
 
 Aus der Dongle-Matrix im Plan: die Vielfalt der Adapter ist der teuerste Supporttreiber. Ein Drittel der „die App funktioniert nicht"-Fälle ist in Wahrheit ein Kabel, eine leere Batterie, ein zu alter Adapter oder ein Steuergerät, das gar nicht antwortet. Der Checker macht daraus eine Ansage in fünf Sekunden, bevor der Techniker Zeit verliert.
 
@@ -93,4 +93,6 @@ Ziel: im Rust-Kern via UniFFI | mittel | der Checker wird nach `core/` portiert 
 
 **Nicht verifiziert:** alle Schwellwerte sind gesetzt, nicht felderprobt. Die Grenzen (11,8 V, 50/200 ms, 5 CRC-Fehler) sind Erfahrungswerte aus der Werkstattpraxis und müssen nach den ersten 50 Pilotbetrieben nachjustiert werden. Echte Hardware war nicht angeschlossen.
 
-**Nicht gebaut:** der Bildschirm in der App. Es gibt noch keine App — der JSON-Vertrag aus §3 ist die Schnittstelle, an der die Oberfläche später hängt.
+**Gebaut:** der Leser in der App. `VciBericht` (`android/app/src/main/kotlin/de/werkstatt/vci/VciBericht.kt`) liest den JSON-Vertrag aus §3 — Gerät, Firmware, Ergebnis, Resync-/CRC-Zähler und je Prüfung ID, Status, Wert, Einheit, Meldung und Hinweis. Der Bildschirm hat ein Feld, in das die Ausgabe von `vci-check --json` eingefügt wird, und zeigt den Ergebnis-Satz, die Kopfzeile und die Prüfungen mit Handlungshinweis; die App rechnet nichts nach und glättet auch keinen Widerspruch zwischen `verdict` und Einzelprüfung.
+
+**Verifiziert:** 13 JVM-Tests in `VciBerichtTest.kt`, alle grün (alle vier Statuswerte, Wert/Einheit/Hinweis je Prüfung, Escapes inklusive `\u`, abgeschnittener Bericht, fehlende Felder, unbekannte Felder, widersprüchlicher Bericht). **Nicht verifiziert:** die Compose-Oberfläche selbst — sie braucht das Android SDK und ist hier nicht übersetzt worden.
