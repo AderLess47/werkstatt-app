@@ -186,6 +186,13 @@ Zwei Eigenheiten von BLE stecken im Transport:
   Absturz“.
 - Fehler werden als `FEHLER` mit der Meldung des Kerns angezeigt, inklusive
   fehlender Bibliothek (`UnsatisfiedLinkError`).
+- **Checker-Bericht** — ein Feld nimmt die Ausgabe von `vci-check --json` auf
+  und zeigt Ergebnis-Satz, Kopfzeile (Gerät, Firmware, Resync-/CRC-Zähler) und
+  jede Prüfung mit Statuswort und Handlungshinweis. Gelesen wird der Vertrag aus
+  [vci-checker.md](vci-checker.md) §3 durch `VciBericht.ausJson` — die App
+  entscheidet nichts nach und glättet auch keinen Widerspruch zwischen `verdict`
+  und Einzelprüfung. Ein kaputter Bericht erscheint als Klartextmeldung, nicht
+  als Absturz.
 
 Der Klasse-1-Pfad (Weg B) ist gebaut, aber **noch nicht** an den Bildschirm
 gehängt: `MainActivity` kennt bisher nur `BleGattVerbindung` und den Simulator.
@@ -196,17 +203,18 @@ gefunden“.
 ## Geprüft / nicht geprüft
 
 Geprüft: `:bindings:test` (drei Linktests gegen die echte Rust-Bibliothek).
-`:app` enthält **64 `@Test`** in acht Dateien — `VciCheck` 3, `DonglePruefung` 3,
+`:app` enthält **77 `@Test`** in neun Dateien — `VciCheck` 3, `DonglePruefung` 3,
 `Wire` 9, `BleCanTransport` 7, `BleSerielleStrecke` 9, `UsbSerielleStrecke` 8,
-`StnKanal` 15, `StnKennung` 10.
+`StnKanal` 15, `StnKennung` 10, `VciBericht` 13.
 
-Davon sind **42 in dieser Umgebung tatsächlich gelaufen**: die vier neuen
+Davon sind **55 in dieser Umgebung tatsächlich gelaufen**: die fünf neueren
 Testklassen (`StnKanal`, `StnKennung`, `BleSerielleStrecke`,
-`UsbSerielleStrecke`) wurden mit `kotlinc 2.0.21` gegen JDK 17 übersetzt und über
-`org.junit.runner.JUnitCore` gestartet — alle grün. Die übrigen 22 wurden früher
-über `:app:testDebugUnitTest` ausgeführt; ein Gradle-Lauf ist hier **nicht**
-möglich, weil in dieser Umgebung kein Android SDK installiert ist. Ob die 64
-Tests zusammen unter Gradle durchlaufen, ist damit offen.
+`UsbSerielleStrecke`, `VciBericht`) wurden mit `kotlinc 2.0.21` gegen JDK 17
+übersetzt und über `org.junit.runner.JUnitCore` gestartet — alle grün. Die
+übrigen 22 wurden früher über `:app:testDebugUnitTest` ausgeführt; ein
+Gradle-Lauf ist hier **nicht** möglich, weil in dieser Umgebung kein Android SDK
+installiert ist. Ob die 77 Tests zusammen unter Gradle durchlaufen, ist damit
+offen.
 
 Ebenfalls geprüft (früher, mit NDK): `:app:assembleDebug` (Kompilierung,
 Ressourcen, Manifest, Paketierung), APK-Inhalt (startbare Activity
@@ -222,6 +230,11 @@ kein glibc), 29 exportierte `uniffi_vci_ffi_*`-Symbole darunter
 Umgebung endet an unaufgelösten Symbolen (`android.*`, `com.hoho.*`,
 `Context`). Sie sind geschrieben, aber kein Compiler hat sie bisher gesehen —
 der erste `assembleDebug` auf einer Maschine mit SDK ist ihr erster echter Test.
+Dasselbe gilt für die Erweiterung um den Checker-Bericht in `MainActivity.kt`:
+geprüft ist dort nur, dass die Datei syntaktisch fehlerfrei parst (Compilerlauf
+mit `-Xallow-unresolved-references`: keine Syntaxfehler, nur unaufgelöste
+Android- und Compose-Symbole). Die Logik dahinter (`VciBericht`) ist dagegen
+übersetzt und getestet.
 
 Nicht geprüft: **Start auf einem Gerät oder Emulator**. In dieser VM ist
 `/dev/kvm` für den Benutzer nicht zugänglich, ein Emulator wäre ohne
