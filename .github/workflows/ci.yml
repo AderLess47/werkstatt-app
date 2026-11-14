@@ -46,7 +46,7 @@ jobs:
       # Erzeugt, nicht gepflegt: die Bindings entstehen bei jedem Lauf neu aus
       # der Rust-Schnittstelle. Damit kann keine Kopie veralten (ADR-001 §5).
       - name: Bindings erzeugen
-        run: ./scripts/gen-bindings.sh kotlin swift
+        run: bash scripts/gen-bindings.sh kotlin swift
 
       - name: Hochladen
         uses: actions/upload-artifact@v4
@@ -80,8 +80,10 @@ jobs:
         run: cargo install cargo-ndk --locked
 
       # Baut die Host-Bibliothek und erzeugt die Kotlin-Bindings.
+      # Über `bash` statt `./`: das Skript kommt über die API herein und trägt
+      # kein Ausführungsrecht.
       - name: Bindings und Host-Bibliothek
-        run: ./scripts/gen-bindings.sh kotlin
+        run: bash scripts/gen-bindings.sh kotlin
 
       - name: Bibliothek für Android-ABIs
         run: |
