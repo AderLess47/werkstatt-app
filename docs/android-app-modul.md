@@ -34,7 +34,7 @@ gradle -p android :app:assembleDebug
 ```
 
 Ohne NDK enthält die APK **keine** `libvci_ffi.so`; `jniLibs` bleibt leer und der
-Bildschirm meldet „Kern nicht ladbar" — das ist die ehrliche Anzeige, nicht ein
+Bildschirm meldet „Kern nicht ladbar“ — das ist die ehrliche Anzeige, nicht ein
 Fehler der Oberfläche. Mit NDK (Getestet mit NDK 26.1.10909125):
 
 ```sh
