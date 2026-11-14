@@ -276,7 +276,7 @@ spätestens wenn die App aufgibt.
 | USB-Gerät öffnen (Abschnitte 4 und 13) | unter 1 Sekunde | nach der Freigabe im Dialog sofort; kommt der Dialog nicht, nach etwa einer halben Minute |
 | Schnelltest: Bordspannung und Steuergerät (Abschnitt 7) | unter 1 Sekunde | nach etwa 1 Sekunde |
 | Dienst lesen, roher USB-Weg (Abschnitt 13) | unter 1 Sekunde | nach etwa 5 Sekunden |
-| Dienst lesen, OBDLink am Kabel (Abschnitt 12) | 1–2 Sekunden | nach etwa 3 Sekunden |
+| Dienst lesen, OBDLink am Kabel (Abschnitt 12) | 1–2 Sekunden | beim ersten Mal nach etwa 5 Sekunden (die App stellt dabei den Ziel-Header ein), danach nach etwa 3 Sekunden |
 | OBDLink öffnen (Abschnitt 12) | 1–2 Sekunden | nach etwa 15 Sekunden |
 
 **Wird die Grenze ohne Antwort erreicht**, steht dort ein Fehler — meist „keine
