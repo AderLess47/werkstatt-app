@@ -1,12 +1,16 @@
 #!/bin/sh
-# Pre-Push: die JVM-Tests der App müssen grün sein, bevor etwas hinausgeht.
+# Pre-Push: keine Übertragung ohne grüne Tests.
+#
+# Zwei Läufe, beide aus dem Repository, nicht aus der CI:
+#
+#   scripts/kern-tests.sh   C-Kern (159 Prüfungen), Korpus, Rust-Kern, FFI
+#   scripts/jvm-tests.sh    die 119 JVM-Tests der App
 #
 # Warum lokal und nicht nur in der CI: die Actions-Läufe dieses Repos starten
-# nicht mehr — jedes Job-Ergebnis ist „The job was not started because recent
-# account payments have failed or your spending limit needs to be increased“,
-# also kein Runner, kein Schritt, kein Test. Bis das geklärt ist, ist dieser Hook
-# die einzige Prüfung, die wirklich läuft. Sie fährt dieselben 119 Tests wie der
-# CI-Job `jvm-tests`.
+# nicht — jedes Job-Ergebnis ist „The job was not started because recent account
+# payments have failed or your spending limit needs to be increased“, also kein
+# Runner, kein Schritt, kein Test. Bis das geklärt ist, ist dieser Hook die
+# einzige Prüfung, die wirklich läuft.
 #
 # Einbauen:      sh scripts/install-hooks.sh
 # Abschalten:    VCI_SKIP_HOOK=1 git push …
@@ -22,27 +26,45 @@ cd "$(git rev-parse --show-toplevel)"
 cat > /dev/null || true
 
 if [ "${VCI_SKIP_HOOK:-0}" = "1" ]; then
-    echo "pre-push: JVM-Tests übersprungen (VCI_SKIP_HOOK=1) — geprüft wurde nichts." >&2
+    echo "pre-push: Tests übersprungen (VCI_SKIP_HOOK=1) — geprüft wurde nichts." >&2
     exit 0
 fi
 
-log=$(mktemp)
-trap 'rm -f "$log"' EXIT INT TERM
+fehlgeschlagen=0
+gesamt_start=$(date +%s)
 
-echo "pre-push: JVM-Tests der App laufen (etwa 20 s) …" >&2
-start=$(date +%s)
-if sh scripts/jvm-tests.sh > "$log" 2>&1; then
-    dauer=$(( $(date +%s) - start ))
-    ergebnis=$(grep -E '^OK \(' "$log" | tail -1)
-    echo "pre-push: ${ergebnis:-grün} in ${dauer} s." >&2
-    exit 0
+# Beide Läufe werden gefahren, auch wenn der erste rot ist: wer ohnehin nicht
+# pushen kann, soll alle Befunde auf einmal sehen. Die Ausgabe kommt gesammelt,
+# weil ein Fehlschlag mitten in einer Fortschrittszeile sonst unlesbar ist.
+pruefe() { # <Titel> <Skript>
+    titel=$1
+    skript=$2
+    log=$(mktemp)
+    start=$(date +%s)
+
+    echo "pre-push: $titel läuft …" >&2
+    if sh "$skript" > "$log" 2>&1; then
+        echo "pre-push: $titel grün ($(( $(date +%s) - start )) s)." >&2
+        rm -f "$log"
+        return 0
+    fi
+
+    fehlgeschlagen=1
+    echo "pre-push: $titel rot ($(( $(date +%s) - start )) s):" >&2
+    echo "------------------------------------------------------------" >&2
+    tail -n 40 "$log" | sed 's/^/    /' >&2
+    echo "------------------------------------------------------------" >&2
+    rm -f "$log"
+    return 0
+}
+
+pruefe "Rust- und C-Kern" scripts/kern-tests.sh
+pruefe "JVM-Tests der App" scripts/jvm-tests.sh
+
+if [ "$fehlgeschlagen" -ne 0 ]; then
+    echo "pre-push: Tests rot — Push abgebrochen, nichts wurde übertragen." >&2
+    echo "Ganze Ausgabe: sh scripts/kern-tests.sh  bzw.  sh scripts/jvm-tests.sh" >&2
+    exit 1
 fi
 
-# Rot heißt: nicht pushen. Die Ausgabe kommt gesammelt, weil ein Fehlschlag
-# mitten in einer Fortschrittszeile sonst unlesbar ist.
-echo "pre-push: Tests rot — Push abgebrochen, nichts wurde übertragen." >&2
-echo "------------------------------------------------------------" >&2
-tail -n 60 "$log" >&2
-echo "------------------------------------------------------------" >&2
-echo "Ganze Ausgabe: sh scripts/jvm-tests.sh" >&2
-exit 1
+echo "pre-push: alles grün in $(( $(date +%s) - gesamt_start )) s." >&2
