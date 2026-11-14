@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import de.werkstatt.vci.transport.FtdiStnVerbindung
 import de.werkstatt.vci.transport.StnKanal
+import de.werkstatt.vci.transport.StnKonfiguration
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -46,7 +47,11 @@ internal fun ObdLinkAbschnitt() {
     var kanal by remember { mutableStateOf<StnKanal?>(null) }
     var befunde by remember { mutableStateOf<List<Befund>>(emptyList()) }
     var meldung by remember { mutableStateOf<String?>(null) }
-    var laeuft by remember { mutableStateOf(false) }
+
+    /** Was gerade läuft — die Zeile bleibt beim Abbruch lesbar. */
+    var schritt by remember { mutableStateOf<String?>(null) }
+    val laeuft = schritt != null
+    val konfiguration = remember { StnKonfiguration() }
 
     DisposableEffect(verbindung) {
         onDispose {
@@ -56,7 +61,7 @@ internal fun ObdLinkAbschnitt() {
     }
 
     fun oeffnen() {
-        laeuft = true
+        schritt = "Suche FTDI-Gerät, frage die Freigabe ab, prüfe die STI-Kennung …"
         meldung = null
         befunde = emptyList()
         kanal?.schliesse()
@@ -67,6 +72,8 @@ internal fun ObdLinkAbschnitt() {
                 is FtdiStnVerbindung.Ergebnis.Bereit -> {
                     // Verbindung steht und ist STN — jetzt erst die Einstellungen
                     // (Reset, Echo aus, Header, Protokoll) durchgeben.
+                    schritt = "Sende ATZ und die Einstellungen — Frist " +
+                        fristText(konfiguration.startTimeoutMs) + " je Befehl"
                     val gestartet = withContext(Dispatchers.IO) {
                         runCatching { ergebnis.kanal.oeffnen() }
                     }
@@ -93,14 +100,16 @@ internal fun ObdLinkAbschnitt() {
                     )
                 }
             }
-            laeuft = false
+            schritt = null
         }
     }
 
     fun dienstLesen() {
         val offen = kanal ?: return
-        laeuft = true
         meldung = null
+        schritt = "Sende 22 F190 und warte auf die Antwort — Frist " +
+            fristText(konfiguration.antwortTimeoutMs) +
+            " für die ganze Antwort (der Dongle sammelt sie selbst)"
         scope.launch {
             val antwort = withContext(Dispatchers.IO) {
                 runCatching { offen.anfrage(byteArrayOf(0x22, 0xF1.toByte(), 0x90.toByte())) }
@@ -113,9 +122,16 @@ internal fun ObdLinkAbschnitt() {
                         ok = !DienstAntwort.istAblehnung(bytes)
                     )
                 },
-                onFailure = { e -> Befund("Dienst 22 F190", e.message ?: e.toString(), ok = false) },
+                onFailure = { e ->
+                    Befund(
+                        "Dienst 22 F190",
+                        "beim Warten auf die Antwort abgebrochen: " +
+                            (e.message ?: e.toString()),
+                        ok = false
+                    )
+                },
             )
-            laeuft = false
+            schritt = null
         }
     }
 
@@ -149,9 +165,9 @@ internal fun ObdLinkAbschnitt() {
         }
     }
 
-    if (laeuft) {
+    schritt?.let { text ->
         Spacer(Modifier.height(8.dp))
-        Text("Läuft …", style = MaterialTheme.typography.bodyLarge)
+        Text(text, style = MaterialTheme.typography.bodyLarge)
     }
 
     meldung?.let { text ->

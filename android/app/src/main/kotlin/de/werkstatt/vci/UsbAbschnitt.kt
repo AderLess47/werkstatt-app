@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import de.werkstatt.vci.transport.UsbCanTransport
 import de.werkstatt.vci.transport.UsbDongleVerbindung
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -46,6 +47,13 @@ import uniffi.vci_ffi.IsoTp
 private const val ANTWORT_FRIST_MS = 1_500u
 
 /**
+ * Sekundenangabe für die Wartezeile — deutsch formatiert (`1,5 s`), damit die
+ * Anzeige zur Werkstatt-Anleitung passt und nicht `1.5` schreibt.
+ */
+internal fun fristText(ms: Long): String =
+    String.format(Locale.GERMANY, "%.1f s", ms.toDouble() / 1_000.0)
+
+/**
  * Roher USB-Weg (Weg A): eigenes Drahtformat, ISO-TP rechnet der Kern.
  *
  * Abgrenzung zum Knopf „USB prüfen“ weiter oben: der macht den Schnelltest
@@ -66,14 +74,20 @@ internal fun UsbAbschnitt() {
     var transport by remember { mutableStateOf<UsbCanTransport?>(null) }
     var befunde by remember { mutableStateOf<List<Befund>>(emptyList()) }
     var meldung by remember { mutableStateOf<String?>(null) }
-    var laeuft by remember { mutableStateOf(false) }
+
+    /**
+     * Was gerade läuft. Dieselbe Zeile erklärt nach einem Abbruch, wobei gewartet
+     * wurde — deshalb ein Text und kein bloßes `Boolean`.
+     */
+    var schritt by remember { mutableStateOf<String?>(null) }
+    val laeuft = schritt != null
 
     DisposableEffect(verbindung) {
         onDispose { verbindung.close() }
     }
 
     fun oeffnen() {
-        laeuft = true
+        schritt = "Suche USB-Dongle und frage die Freigabe ab — der Dialog darf bis 30 s offen bleiben"
         meldung = null
         befunde = emptyList()
         transport = null
@@ -92,21 +106,36 @@ internal fun UsbAbschnitt() {
                     )
                 }
             }
-            laeuft = false
+            schritt = null
         }
     }
 
     fun dienstLesen() {
         val offen = transport ?: return
-        laeuft = true
         meldung = null
+        val anfrage = byteArrayOf(0x22, 0xF1.toByte(), 0x90.toByte())
+        schritt = "Sende Anfrage 22 F190 …"
         scope.launch {
+            val gesendet = withContext(Dispatchers.IO) {
+                runCatching { IsoTp().send(offen, anfrage) }
+            }
+            val sendeFehler = gesendet.exceptionOrNull()
+            if (sendeFehler != null) {
+                befunde = befunde + Befund(
+                    "Dienst 22 F190",
+                    "Anfrage nicht gesendet: ${sendeFehler.message ?: sendeFehler.toString()}",
+                    ok = false
+                )
+                schritt = null
+                return@launch
+            }
+            // Diese Zeile steht genau so lange, wie der Kern auf Rahmen wartet —
+            // sie nennt die Frist, damit ein Abbruch zuordenbar ist.
+            schritt = "Warte auf die Antwort auf 22 F190 — Frist " +
+                fristText(ANTWORT_FRIST_MS.toLong()) + " je Rahmen, bei 20 Byte bis " +
+                fristText(ANTWORT_FRIST_MS.toLong() * 3)
             val antwort = withContext(Dispatchers.IO) {
-                runCatching {
-                    val iso = IsoTp()
-                    iso.send(offen, byteArrayOf(0x22, 0xF1.toByte(), 0x90.toByte()))
-                    iso.recv(offen, ANTWORT_FRIST_MS)
-                }
+                runCatching { IsoTp().recv(offen, ANTWORT_FRIST_MS) }
             }
             befunde = befunde + antwort.fold(
                 onSuccess = { bytes ->
@@ -116,9 +145,16 @@ internal fun UsbAbschnitt() {
                         ok = !DienstAntwort.istAblehnung(bytes)
                     )
                 },
-                onFailure = { e -> Befund("Dienst 22 F190", e.message ?: e.toString(), ok = false) },
+                onFailure = { e ->
+                    Befund(
+                        "Dienst 22 F190",
+                        "beim Warten auf die Antwort abgebrochen: " +
+                            (e.message ?: e.toString()),
+                        ok = false
+                    )
+                },
             )
-            laeuft = false
+            schritt = null
         }
     }
 
@@ -156,9 +192,9 @@ internal fun UsbAbschnitt() {
         }
     }
 
-    if (laeuft) {
+    schritt?.let { text ->
         Spacer(Modifier.height(8.dp))
-        Text("Läuft …", style = MaterialTheme.typography.bodyLarge)
+        Text(text, style = MaterialTheme.typography.bodyLarge)
     }
 
     meldung?.let { text ->
