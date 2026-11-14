@@ -88,6 +88,9 @@ private fun WerkstattStatus() {
     var dongleSchritt by remember { mutableStateOf<String?>(null) }
     val dongleLaeuft = dongleSchritt != null
 
+    /** Letzter angekündigter Schritt — geht in den Selbsttest-Bericht. */
+    var letzterSchritt by remember { mutableStateOf<String?>(null) }
+
     // Bericht des VCI-Checkers (`vci-check --json`), eingefügt und ausgewertet.
     var berichtJson by remember { mutableStateOf("") }
     var bericht by remember { mutableStateOf<VciBericht?>(null) }
@@ -103,6 +106,7 @@ private fun WerkstattStatus() {
 
     suspend fun donglePruefen(schritt: String, quelle: suspend () -> List<Befund>) {
         dongleSchritt = schritt
+        letzterSchritt = schritt
         dongleBefunde = quelle()
         dongleSchritt = null
     }
@@ -238,16 +242,16 @@ private fun WerkstattStatus() {
             }
         }
 
-        UsbAbschnitt()
+        UsbAbschnitt { letzterSchritt = it }
 
-        ObdLinkAbschnitt()
+        ObdLinkAbschnitt { letzterSchritt = it }
 
         Spacer(Modifier.height(8.dp))
         Button(
             onClick = {
                 val jetzt = LocalDateTime.now()
                 val name = AppBericht.name(geraet, jetzt)
-                val inhalt = AppBericht.inhalt(geraet, befunde, dongleBefunde, jetzt)
+                val inhalt = AppBericht.inhalt(geraet, befunde, dongleBefunde, jetzt, letzterSchritt)
                 selbsttestAblage = null
                 selbsttestLaeuft = true
                 scope.launch {
