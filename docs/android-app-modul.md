@@ -1,20 +1,26 @@
 # Android-App-Modul
 
-Stand: erster Bildschirm der Werkstatt-App. Er beantwortet genau eine Frage —
-**ist der Kern auf diesem Gerät arbeitsfähig?** — und geht dabei den ganzen Weg
-vom Rust-Kern bis zum Pixel: `libvci_ffi.so` → JNA → UniFFI-Bindings → Kotlin →
-Compose.
+Stand: zwei Bausteine in einem Modul — der **Selbsttest-Bildschirm** des Kerns und
+die **Transportschicht** zu echten Dongles.
 
-Kein Fahrzeug, kein Dongle, keine Diagnose. Der Transport auf diesem Bildschirm
-ist ein Simulator im Arbeitsspeicher (`SimulatorTransport`), der auf
-TesterPresent antwortet. Alles andere wäre ohne Hardware eine Behauptung.
+Der Bildschirm beantwortet genau eine Frage — **ist der Kern auf diesem Gerät
+arbeitsfähig?** — und geht dabei den ganzen Weg vom Rust-Kern bis zum Pixel:
+`libvci_ffi.so` → JNA → UniFFI-Bindings → Kotlin → Compose. Auf diesem
+Bildschirm ist der Transport ein Simulator im Arbeitsspeicher
+(`SimulatorTransport`), der auf TesterPresent antwortet. Alles andere wäre ohne
+Hardware eine Behauptung.
+
+Daneben stehen zwei Transportwege, die noch **nicht** mit dem Bildschirm
+verdrahtet sind: das eigene Drahtformat des C-Kerns über rohe CAN-Rahmen (Weg A)
+und der Textwege zu Klasse-1-Dongles mit STN-Firmware (Weg B, Abschnitt
+[Transport](#transport)).
 
 ## Aufbau
 
 | Modul | Was es ist | Zweck |
 | --- | --- | --- |
 | `android/bindings` | JVM-Modul | kompiliert die erzeugten Bindings gegen den Host-Build des Kerns; die Linktests laufen hier |
-| `android/app` | Android-App-Modul | Compose-Oberfläche, Selbsttest des Kerns, später VCI-Status |
+| `android/app` | Android-App-Modul | Compose-Oberfläche, Selbsttest des Kerns, Transportwege zu BLE-/USB-Dongles |
 
 Die Bindings werden nicht im Repository gehalten, sondern mit
 `./scripts/gen-bindings.sh kotlin` erzeugt (siehe `docs/adr-001-kernsprache.md`).
@@ -32,6 +38,13 @@ echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 # 3. APK
 gradle -p android :app:assembleDebug
 ```
+
+Der erste Gradle-Lauf braucht **Netzzugang**: `:app` hängt an
+`com.github.mik3y:usb-serial-for-android:3.11.0`, das nur über JitPack verteilt
+wird. Das Repository steht dafür in `android/settings.gradle.kts`; ohne JitPack
+scheitert die Abhängigkeitsauflösung, nicht der Code. Die Bibliothek (MIT) macht
+Baudrate, Leitungsparameter und die Statusbytes der FTDI-Wandler — eigener
+Treibercode dafür wäre fehleranfälliger und lizenzpflichtig.
 
 Ohne NDK enthält die APK **keine** `libvci_ffi.so`; `jniLibs` bleibt leer und der
 Bildschirm meldet „Kern nicht ladbar“ — das ist die ehrliche Anzeige, nicht ein
@@ -59,6 +72,17 @@ Gegenmaßnahmen: [selbsttest-anleitung.md](selbsttest-anleitung.md).
 
 ## Transport
 
+Es gibt zwei Wege, und sie liegen **nebeneinander**, nicht übereinander. Der
+Unterschied ist, wer ISO-TP macht: der Rust-Kern (Weg A) oder der Dongle
+(Weg B).
+
+| Weg | Wer segmentiert | Schnittstelle | Geräte |
+| --- | --- | --- | --- |
+| A — eigenes Drahtformat | Rust-Kern (`isotp.rs`) | `CanTransport` (CAN-Rahmen) | Geräte, die unser Rahmenformat sprechen |
+| B — Textbefehle | der Dongle | `DiagnoseKanal` (fertige Diagnosenachricht) | Klasse-1-Dongles mit STN-Firmware (OBDLink & Co.) |
+
+### Weg A — eigenes Drahtformat über CAN-Rahmen
+
 Der Transport ist **USB-Host** (die App ist Host, der VCI das Gerät) und
 spricht exakt das Drahtformat, das der C-Kern unter Windows schon spricht
 (`j2534/src/transport_usb.c`):
@@ -79,14 +103,68 @@ spricht exakt das Drahtformat, das der C-Kern unter Windows schon spricht
 Bewusst **nicht** im Transport: CAN-Kennungen filtern. Das macht der Rust-Kern
 (`isotp.rs`); zwei Filter an zwei Stellen wären die nächste Fehlerquelle.
 
+Die Bytes werden nicht nur behauptet, sondern gegen den C-Code geprüft: ein
+C-Programm baut dieselben Rahmen und `WireTest` vergleicht hexadezimal, inklusive
+des Prüfwerts `CRC-16/CCITT-FALSE("123456789") = 0x29B1`.
+
+### Weg B — Klasse-1-Dongles mit STN-Firmware
+
+Klasse-1-Geräte machen ISO-TP **selbst**: Segmentierung, Flow-Control und
+Wiederzusammensetzung passieren im Dongle, die App sieht nur Textzeilen. Damit
+ist der Rust-Kern auf diesem Weg nicht beteiligt — deshalb steht `DiagnoseKanal`
+neben `CanTransport` und nicht darunter (Begründung und Grenzen:
+[Dongle-Matrix](vci-dongle-matrix.md) §1.1).
+
+Der Ablauf ist der eines jeden ELM-kompatiblen Adapters:
+
+```
+ATZ   → Kennung        (Reset)
+ATE0  → OK             (Echo aus: sonst steht der Befehl in der Antwort)
+ATL0  → OK             (kein Zeilenvorschub)
+ATS0  → OK             (keine Leerzeichen in Hex-Zeilen)
+ATH1  → OK             (Header mit ausgeben — sonst ist die Antwort nicht zuzuordnen)
+ATSP6 → OK             (Protokoll: 11-Bit-CAN, 500 kbit/s)
+ATSH7E0 → OK           (Ziel-Header, nur bei Wechsel)
+<Hex> → 7E8 <PCI> <Daten…>
+```
+
+| Datei | Aufgabe |
+| --- | --- |
+| `transport/DiagnoseKanal.kt` | zwei schmale Schnittstellen: `DiagnoseKanal` (Nachricht rein, Antwort raus) und `SerielleStrecke` (Text raus, Zeilen rein) |
+| `transport/StnKanal.kt` | der Kanal selbst: Initialisierung, Header-Umschaltung, Fehlerzeilen (`?`, `NO DATA`, `CAN ERROR`, `BUFFER FULL`), Fristen; `StnAntwort` setzt Single-/First-/Folgerahmen zur Nutzlast zusammen |
+| `transport/StnKennung.kt` | erkennt STN-Firmware über `STI` (`STN<Geräte-ID> vX.Y.Z`) — bewusst **nicht** über `ATI`, siehe unten |
+| `transport/Zeilenpuffer.kt` | Zeilenbildung für Text-Dongles, gemeinsam für BLE und USB: puffert bis `\r`/`\n`, verwirft NUL-Bytes, behält den unfertigen Rest |
+| `transport/BleSerielleStrecke.kt` | Textweg über BLE-GATT (NUS): Benachrichtigungen kommen asynchron auf einem Binder-Thread, `zeile` blockiert auf dem Aufrufer-Thread — Sperre, `wait`/`notifyAll`, Abbruch weckt sofort |
+| `transport/UsbSerielleStrecke.kt` | Textweg über rohe Bulk-Endpunkte: USB hat keine Benachrichtigungen, hier wird in einer Schleife gelesen, bis die Zeile vollständig ist oder die Frist abläuft |
+| `transport/UsbSerialStrecke.kt` | dieselbe Strecke für Wandler-Chips (`usb-serial-for-android`): `read`/`write` am `UsbSerialPort`, `IOException` wird zu „Gerät weg“ |
+| `transport/FtdiStnVerbindung.kt` | USB-Kabelweg zu OBDLink EX/SX: Gerätesuche, Freigabedialog, Öffnen mit 115.200 Baud, dann `STI`-Prüfung — ohne STN-Kennung wird abgelehnt |
+
+**Warum `STI` und nicht `ATI`:** STN-Geräte antworten auf `ATI` bewusst mit einem
+ELM327-String („ELM327 v1.4b“) — laut STN-Handbuch die maximal vollständig
+unterstützte ELM-Version, per `STSATI` sogar frei setzbar. `ATI` unterscheidet
+also nichts. `STI` liefert dagegen `STN2256 v5.9.1`; ELM327-Clones kennen den
+Befehl nicht und antworten mit `?`.
+
+**Grenzen dieses Wegs:** Lesen und R1-Service. Kein R3, kein Flashen, kein
+Security Access — Textbefehle sind dafür zu langsam und der Nachweis zu schwach.
+Die STN-Prüfung ist ein **Filter, kein Beweis**: ein Clone, der `STI` nachahmt,
+käme durch; unterstützt werden nur die Geräte aus der Dongle-Matrix, alles
+andere ist ein Supportfall.
+
+**Kabelweg nur FTDI:** `FtdiStnVerbindung` spricht ausschließlich Geräte mit
+FTDI-VID (0x0403) an. CP210x, CH340 und PL2303 sind die Chips der
+ausgeschlossenen ELM327-Clones und bleiben es. Der BLE-Weg setzt einen Dongle
+voraus, der unser Textformat als Byte-Strecke über NUS transportiert.
+
 ### BLE-GATT
 
-Der BLE-Weg ist derselbe Vorgang ohne Kabel: dieselben Rahmen, nur über eine
-Charakteristik geschrieben statt über einen Bulk-Endpunkt. Standardprofil ist
-der **Nordic UART Service** (NUS), weil er die verbreitetste transparente
-serielle Strecke über BLE ist; andere Profile lassen sich über die UUIDs im
-Konstruktor von `BleGattVerbindung` setzen. Der Scan filtert auf die Dienst-UUID,
-zeigt also keine Kopfhörer und Sensoren aus der Werkstatt an.
+Der BLE-Weg ist derselbe Vorgang ohne Kabel: dieselben Rahmen (Weg A) bzw.
+dieselben Textzeilen (Weg B), nur über eine Charakteristik geschrieben statt über
+einen Bulk-Endpunkt. Standardprofil ist der **Nordic UART Service** (NUS), weil
+er die verbreitetste transparente serielle Strecke über BLE ist; andere Profile
+lassen sich über die UUIDs im Konstruktor von `BleGattVerbindung` setzen. Der
+Scan filtert auf die Dienst-UUID, zeigt also keine Kopfhörer und Sensoren aus der
+Werkstatt an.
 
 Zwei Eigenheiten von BLE stecken im Transport:
 
@@ -95,20 +173,9 @@ Zwei Eigenheiten von BLE stecken im Transport:
    Verbindungsabbruch weckt es sofort — sonst hinge eine Diagnose bis zum Timeout.
 2. **GATT erlaubt nur eine Schreiboperation zur Zeit.** `BleGattVerbindung`
    wartet auf die Quittung des Systems, bevor der nächste Rahmen geht, und
-   schneidet längere Frames in 20-Byte-Stücke.
-
-**Nicht unterstützt:** ELM327-Klone und andere ASCII-Dongles. Sie machen ISO-TP
-selbst und liefern Textzeilen statt CAN-Rahmen — sie passen nicht durch
-`CanTransport`. **Vorgesehen:** ein eigener Transport für Klasse-1-Geräte mit
-STN-Firmware (OBDLink & Co.), bei dem der Dongle ISO-TP übernimmt und die App
-nur die fertigen Diagnosenachrichten sieht — Aufbau und Grenzen in
-[Dongle-Matrix](vci-dongle-matrix.md) §1.1. Bis dieser Transport existiert, gilt
-unverändert: der BLE-Weg setzt einen Dongle voraus, der unser Drahtformat als
-Byte-Strecke spricht, und ELM327-Klone bleiben ausgeschlossen.
-
-Die Bytes werden nicht nur behauptet, sondern gegen den C-Code geprüft: ein
-C-Programm baut dieselben Rahmen und `WireTest` vergleicht hexadezimal, inklusive
-des Prüfwerts `CRC-16/CCITT-FALSE("123456789") = 0x29B1`.
+   schneidet längere Frames in 20-Byte-Stücke. Auf dem Textweg endet eine
+   Benachrichtigung zusätzlich **nicht** an der Zeilengrenze: je nach MTU kommen
+   20 Byte, ein `\r` fällt mitten in die nächste — dafür ist der `Zeilenpuffer` da.
 
 ## Was der Bildschirm zeigt
 
@@ -120,35 +187,58 @@ des Prüfwerts `CRC-16/CCITT-FALSE("123456789") = 0x29B1`.
 - Fehler werden als `FEHLER` mit der Meldung des Kerns angezeigt, inklusive
   fehlender Bibliothek (`UnsatisfiedLinkError`).
 
+Der Klasse-1-Pfad (Weg B) ist gebaut, aber **noch nicht** an den Bildschirm
+gehängt: `MainActivity` kennt bisher nur `BleGattVerbindung` und den Simulator.
+Bis dahin gilt für die Anzeige unverändert: ohne Dongle und Fahrzeug zeigt die
+Prüfung auf dem Gerät ehrlich „kein USB-Dongle gefunden“ bzw. „kein Dongle
+gefunden“.
+
 ## Geprüft / nicht geprüft
 
-Geprüft: `:bindings:test` (drei Linktests gegen die echte Rust-Bibliothek),
-`:app:testDebugUnitTest` (22 Tests auf der JVM: Kern-Selbsttest, Drahtformat
-gegen die C-Werte, Rahmenleser mit Teilstücken/Müll/CRC-Fehler, Dongle-Prüfung
-gegen ein Gerät auf Drahtebene, BLE-Transport inklusive byteweiser
-Benachrichtigungen, Aufwachen aus `recv` und ISO-TP über die Byte-Strecke),
-`:app:assembleDebug`
-(Kompilierung, Ressourcen, Manifest, Paketierung), APK-Inhalt
-(startbare Activity `de.werkstatt.vci.MainActivity`, minSdk 29), die
-NDK-Übersetzung beider ABIs (`readelf`: AArch64 bzw. X86-64, nur `libdl`/`libc`
-als Abhängigkeit — Bionic, kein glibc), 29 exportierte `uniffi_vci_ffi_*`-Symbole
-darunter `fn_constructor_isotp_new`, und dass `libvci_ffi.so` für `arm64-v8a`
-und `x86_64` in der APK liegt.
+Geprüft: `:bindings:test` (drei Linktests gegen die echte Rust-Bibliothek).
+`:app` enthält **64 `@Test`** in acht Dateien — `VciCheck` 3, `DonglePruefung` 3,
+`Wire` 9, `BleCanTransport` 7, `BleSerielleStrecke` 9, `UsbSerielleStrecke` 8,
+`StnKanal` 15, `StnKennung` 10.
+
+Davon sind **42 in dieser Umgebung tatsächlich gelaufen**: die vier neuen
+Testklassen (`StnKanal`, `StnKennung`, `BleSerielleStrecke`,
+`UsbSerielleStrecke`) wurden mit `kotlinc 2.0.21` gegen JDK 17 übersetzt und über
+`org.junit.runner.JUnitCore` gestartet — alle grün. Die übrigen 22 wurden früher
+über `:app:testDebugUnitTest` ausgeführt; ein Gradle-Lauf ist hier **nicht**
+möglich, weil in dieser Umgebung kein Android SDK installiert ist. Ob die 64
+Tests zusammen unter Gradle durchlaufen, ist damit offen.
+
+Ebenfalls geprüft (früher, mit NDK): `:app:assembleDebug` (Kompilierung,
+Ressourcen, Manifest, Paketierung), APK-Inhalt (startbare Activity
+`de.werkstatt.vci.MainActivity`, minSdk 29), die NDK-Übersetzung beider ABIs
+(`readelf`: AArch64 bzw. X86-64, nur `libdl`/`libc` als Abhängigkeit — Bionic,
+kein glibc), 29 exportierte `uniffi_vci_ffi_*`-Symbole darunter
+`fn_constructor_isotp_new`, und dass `libvci_ffi.so` für `arm64-v8a` und
+`x86_64` in der APK liegt.
+
+**Nicht kompiliert:** `transport/UsbSerialStrecke.kt` und
+`transport/FtdiStnVerbindung.kt`. Beide brauchen das Android SDK und
+`usb-serial-for-android`; ein Probelauf mit dem Kotlin-Compiler dieser
+Umgebung endet an unaufgelösten Symbolen (`android.*`, `com.hoho.*`,
+`Context`). Sie sind geschrieben, aber kein Compiler hat sie bisher gesehen —
+der erste `assembleDebug` auf einer Maschine mit SDK ist ihr erster echter Test.
 
 Nicht geprüft: **Start auf einem Gerät oder Emulator**. In dieser VM ist
 `/dev/kvm` für den Benutzer nicht zugänglich, ein Emulator wäre ohne
 Hardwarebeschleunigung nicht lauffähig; echte Hardware ist nicht angebunden.
 Damit ungeprüft bleiben: das `dlopen` aus `jniLibs` zur Laufzeit, die Anzeige
 selbst, das Verhalten bei fehlender Bibliothek, **jede USB-Strecke**
-(Gerätesuche, Freigabedialog, `bulkTransfer`) und **jede BLE-Strecke** (Scan,
-Verbindungsaufbau, Rechte-Dialog, Benachrichtigungen, MTU-Verhalten, Abbruch bei
-Reichweitenverlust). Ohne Dongle und Fahrzeug zeigt die Prüfung auf dem Gerät
-ehrlich „kein USB-Dongle gefunden“ bzw. „kein Dongle gefunden“. Die JVM-Tests
-zeigen, dass Format, Rahmenleser und Transportlogik stimmen — nicht, dass
-Bluetooth oder USB auf einem echten Tablet funktionieren.
+(Gerätesuche, Freigabedialog, `bulkTransfer`, Baudrate am FTDI-Chip) und **jede
+BLE-Strecke** (Scan, Verbindungsaufbau, Rechte-Dialog, Benachrichtigungen,
+MTU-Verhalten, Abbruch bei Reichweitenverlust). Die JVM-Tests zeigen, dass
+Format, Zeilenbildung, STN-Antwortzusammensetzung und Transportlogik stimmen —
+nicht, dass ein echter OBDLink antwortet oder Bluetooth auf einem Tablet
+funktioniert.
 
 ## Nächste Schritte
 
-1. Gerätetest mit NDK-gebauter Bibliothek (arm64-v8a).
-2. Transport an die Plattform hängen: BLE-GATT oder USB-Host → `CanTransport`.
-3. Erst danach VCI-Status und der erste lesende Dienst am Fahrzeug.
+1. Gerätetest mit NDK-gebauter Bibliothek (arm64-v8a) — inklusive
+   `UsbSerialStrecke`/`FtdiStnVerbindung` erstmals durch den Compiler.
+2. Klasse-1-Pfad an den Bildschirm hängen: `FtdiStnVerbindung` öffnen,
+   `STI`-Kennung anzeigen, einen lesenden Dienst (0x22 F190) fahren.
+3. Erst danach VCI-Status und der erste schreibende Service am Fahrzeug.
