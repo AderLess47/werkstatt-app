@@ -152,9 +152,9 @@ im Bericht, das Bild bleibt lesbar.
 
 | Code | Bedeutung |
 |---|---|
-| 0 | Rollout durch: alle Geräte ok, Quote über Schwelle |
-| 1 | durch, aber Warnungen oder veraltete Firmware |
-| 2 | blockiert: ein Fehler (ohne `--allow-fail`) oder Quote unter `--min-pass` |
+0 | Rollout durch: alle Geräte ok, Quote über Schwelle |
+1 | durch, aber Warnungen oder veraltete Firmware |
+2 | blockiert: ein Fehler (ohne `--allow-fail`) oder Quote unter `--min-pass` |
 
 `--min-pass 80` heißt: mindestens 80 % der Geräte müssen ohne Befund sein, sonst blockiert der Rollout. `--allow-fail` nimmt bekannte Einzelfälle aus der Blockade-Entscheidung, meldet sie aber weiterhin (Code 1) — ein defektes Gerät soll nie unsichtbar werden.
 
