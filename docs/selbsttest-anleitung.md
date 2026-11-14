@@ -278,6 +278,11 @@ Die Knöpfe sind währenddessen absichtlich gesperrt — bitte **nicht** mehrfac
 drücken, nicht abziehen und das Tablet nicht sperren. Warten Sie, bis der Befund
 erscheint; er kommt immer, spätestens wenn die App aufgibt.
 
+Der **Selbsttest-Bericht** (Abschnitt 11) enthält diesen letzten Schritt als
+eigene Zeile „Zuletzt gewartet auf“ — auch dann, wenn nichts abgebrochen ist.
+Steht dort „nicht erfasst“, hat die App in dieser Sitzung keinen Schritt
+angekündigt; das ist kein Fehler.
+
 | Vorgang | Normal | Spätestens |
 | --- | --- | --- |
 | USB-Gerät öffnen (Abschnitte 4 und 13) | unter 1 Sekunde | nach der Freigabe im Dialog sofort; kommt der Dialog nicht, nach etwa einer halben Minute |
