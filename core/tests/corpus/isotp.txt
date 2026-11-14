@@ -1,1 +1,84 @@
-PLACEHOLDER
+# Konformitätskorpus ISO-TP — erzeugt von j2534/tools/golden.c
+# Quelle: C-Implementierung (src/transport_usb.c) gegen usb_sim.c
+# Rollen: tx = Tester->ECU beim Senden, flow_in = Flow Control des ECU
+#         flow_out = Flow Control des Testers beim Empfangen, rx = ECU->Tester
+# Format: <rolle> <can-id hex> <dlc> <daten hex>
+#         req = gesendete Nutzlast, reply = empfangene Nutzlast,
+#         result = Rückgabecodes (send recv), 0 = OK
+
+scenario tester_present
+desc Single Frame, 2 Byte, Padding 0xAA
+req 3E00
+tx 7E0 8 023E00AAAAAAAAAA
+rx 7E8 8 027E00AAAAAAAAAA
+reply 7E00
+result 0 0
+end
+
+scenario session_control
+desc Single Frame, 2 Byte, 6-Byte-Antwort
+req 1001
+tx 7E0 8 021001AAAAAAAAAA
+rx 7E8 8 065001003201F4AA
+reply 5001003201F4
+result 0 0
+end
+
+scenario read_vin_multiframe
+desc Anfrage 3 Byte, Antwort 20 Byte mit Flow Control
+req 22F190
+tx 7E0 8 0322F190AAAAAAAA
+flow_out 7E0 8 300000AAAAAAAAAA
+rx 7E8 8 101462F190575657
+rx 7E8 8 215A5A5A314A5A58
+rx 7E8 8 2257303030303031
+reply 62F1905756575A5A5A314A5A5857303030303031
+result 0 0
+end
+
+scenario write_vin_multiframe
+desc 20 Byte senden (FF + 2 CF), 20 Byte Antwort
+req 2EF1905756575A5A5A314A5A5857303030303031
+tx 7E0 8 10142EF190575657
+tx 7E0 8 215A5A5A314A5A58
+tx 7E0 8 2257303030303031
+flow_in 7E8 8 300000AAAAAAAAAA
+flow_out 7E0 8 300000AAAAAAAAAA
+rx 7E8 8 10146EF190575657
+rx 7E8 8 215A5A5A314A5A58
+rx 7E8 8 2257303030303031
+reply 6EF1905756575A5A5A314A5A5857303030303031
+result 0 0
+end
+
+scenario send_eight_bytes
+desc 8 Byte: Grenze zwischen Single und First Frame
+req 2E01020304050607
+tx 7E0 8 10082E0102030405
+tx 7E0 8 210607AAAAAAAAAA
+flow_in 7E8 8 300000AAAAAAAAAA
+flow_out 7E0 8 300000AAAAAAAAAA
+rx 7E8 8 10086E0102030405
+rx 7E8 8 210607AAAAAAAAAA
+reply 6E01020304050607
+result 0 0
+end
+
+scenario nrc_out_of_range
+desc Negativantwort 7F 22 31
+req 221234
+tx 7E0 8 03221234AAAAAAAA
+rx 7E8 8 037F2231AAAAAAAA
+reply 7F2231
+result 0 0
+end
+
+scenario nrc_response_pending
+desc Negativantwort 7F 11 78
+req 1101
+tx 7E0 8 021101AAAAAAAAAA
+rx 7E8 8 037F1178AAAAAAAA
+reply 7F1178
+result 0 0
+end
+

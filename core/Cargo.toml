@@ -1,0 +1,15 @@
+[package]
+name = "vci-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "App-Kern der Werkstatt-App: Transport, ISO-TP, später UDS und Funktionen"
+license = "proprietary"
+
+[lib]
+name = "vci_core"
+path = "src/lib.rs"
+
+# Dieselbe Regel wie für die DLL: kein Panic über eine fremde Grenze.
+[profile.release]
+panic = "abort"
