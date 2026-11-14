@@ -217,6 +217,8 @@ private fun WerkstattStatus() {
             }
         }
 
+        ObdLinkAbschnitt()
+
         Spacer(Modifier.height(8.dp))
         Button(
             onClick = {
@@ -353,7 +355,7 @@ private fun WerkstattStatus() {
 }
 
 @Composable
-private fun BefundZeile(befund: Befund) {
+internal fun BefundZeile(befund: Befund) {
     val farbe = if (befund.ok) {
         MaterialTheme.colorScheme.primary
     } else {
