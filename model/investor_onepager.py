@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Erzeugt docs/investor-summary.pdf — ein Investor-One-Pager (A4, genau eine Seite).
-Zahlen stammen aus model/wirtschaftlichkeit.py (Konstellation V2 / Stufe B / S4, ARPA 150 EUR).
+Zahlen stammen aus model/wirtschaftlichkeit.py (Konstellation V2 / Stufe B / S3, ARPA 150 EUR).
 """
 import os
 
@@ -73,9 +73,9 @@ story.append(head)
 story.append(Spacer(1, 4))
 
 # --- KPI-Zeile --------------------------------------------------------------
-kpis = [("5,53 Mio&nbsp;€", "Kapitalbedarf"), ("1.050", "Kunden bis Break-even"),
-        ("Monat 46", "Break-even ab Start"), ("88 %", "Deckungsbeitrag"),
-        ("2,15 Mio&nbsp;€", "ARR in Jahr 6")]
+kpis = [("6,07 Mio&nbsp;€", "Kapitalbedarf"), ("1.050", "Kunden bis Break-even"),
+        ("Monat 48", "Break-even ab Start"), ("88 %", "Deckungsbeitrag"),
+        ("2,66 Mio&nbsp;€", "ARR in Jahr 6")]
 kpi_data = [[Paragraph(v, kpi_v) for v, _ in kpis], [Paragraph(l, kpi_l) for _, l in kpis]]
 kw = W / 5
 kpi = Table(kpi_data, colWidths=[kw] * 5)
@@ -114,8 +114,9 @@ zahlen = [["Position", "Wert"],
           ["ARPA-Ziel je Werkstatt", "150 €/Monat = 1.800 €/Jahr"],
           ["Deckungsbeitrag je Kunde", "1.588 €/Jahr (88 %)"],
           ["LTV / CAC / Amortisation je Kunde", "13.233 € / 700 € / <b>5,3 Monate</b>"],
-          ["Break-even", "1.050 Kunden (5,5 % des SAM), Monat 46, ARR 1,89 Mio&nbsp;€"],
-          ["Maximale Liquiditätslücke", "<b>5,53 Mio&nbsp;€</b>"]]
+          ["Break-even", "1.050 Kunden (5,5 % des SAM), Monat 48, Umsatz 1,89 Mio&nbsp;€/Jahr"],
+          ["ARR in Jahr 6", "2,66 Mio&nbsp;€ (1.382 Kunden)"],
+          ["Maximale Liquiditätslücke", "<b>6,07 Mio&nbsp;€</b>; kumuliert nach 72 Monaten −4,61 Mio&nbsp;€"]]
 zahlen = [[Paragraph(c, ParagraphStyle("c", fontName="Helvetica-Bold" if i == 0 else "Helvetica",
                                        fontSize=7.1, leading=8.6, textColor=NAVY if i == 0 else colors.HexColor("#1a1a1a")))
            if not c.startswith("<b>") else Paragraph(c, ParagraphStyle("d", fontName="Helvetica", fontSize=7.1, leading=8.6))
@@ -125,13 +126,14 @@ story.append(tbl(zahlen, [72 * mm, W - 72 * mm]))
 # --- Kapitalverwendung ------------------------------------------------------
 story.append(Paragraph("Kapitalverwendung", h))
 kap = [["Tranche", "Betrag", "Zeitraum", "Inhalt", "Auslöser für die nächste Tranche"],
-       ["T1", "1,8 Mio&nbsp;€", "M0–9", "Rechtsgutachten SERMI/J2534, 3 VCI-Partnerverträge, Diagnose-Core auf beiden Plattformen, Prüfstand",
+       ["T1", "1,8 Mio&nbsp;€", "M0–18", "Rechtsgutachten SERMI/J2534, 3 VCI-Partnerverträge, Diagnose-Core auf beiden Plattformen, Prüfstand",
         "Gutachten liegt vor, ein SDK-Vertrag signiert"],
-       ["T2", "1,7 Mio&nbsp;€", "M9–20", "Codierung R2 mit Backup/Restore, Launch Stufe A/B, Fachhandelsvertrag",
+       ["T2", "1,7 Mio&nbsp;€", "M19–32", "Codierung R2 mit Backup/Restore, Launch Stufe A/B, Fachhandelsvertrag",
         "100 zahlende Werkstätten, Churn < 2 %/Monat"],
-       ["T3", "2,0 Mio&nbsp;€", "M20–46", "Skalierung auf 1.050 Kunden, SERMI-/Flashen-Modul", "300 Kunden, ARPA ≥ 140 €"],
-       ["Summe", "5,5 Mio&nbsp;€", "", "", ""]]
-kap_p = [[Paragraph(c, ParagraphStyle("k", fontName="Helvetica-Bold" if i in (0, 4) else "Helvetica",
+       ["T3", "2,0 Mio&nbsp;€", "M32–48", "Skalierung auf 1.050 Kunden, SERMI-/Flashen-Modul", "300 Kunden, ARPA ≥ 140 €"],
+       ["Reserve", "0,6 Mio&nbsp;€", "ab M32", "Puffer für Anlaufverluste bis zum Break-even", "—"],
+       ["Summe", "6,1 Mio&nbsp;€", "", "", ""]]
+kap_p = [[Paragraph(c, ParagraphStyle("k", fontName="Helvetica-Bold" if i in (0, 5) else "Helvetica",
                                       fontSize=7.1, leading=8.6, textColor=NAVY if i == 0 else colors.HexColor("#1a1a1a")))
           for c in row] for i, row in enumerate(kap)]
 story.append(tbl(kap_p, [13 * mm, 15 * mm, 14 * mm, 78 * mm, W - 120 * mm]))
@@ -140,11 +142,12 @@ story.append(tbl(kap_p, [13 * mm, 15 * mm, 14 * mm, 78 * mm, W - 120 * mm]))
 story.append(Paragraph("Meilensteine", h))
 ms = [["Zeit", "Meilenstein", "Nachweis"],
       ["M2", "Rechtslage und Partner geklärt", "Gutachten, 3 NDAs, 3–5 Pilotwerkstätten"],
-      ["M6", "Diagnose-Core auf beiden Plattformen", "5 Service-Funktionen auf 5 Modellen, 2 VCIs zertifiziert"],
-      ["M9", "Launch, 50 zahlende Werkstätten", "erster Umsatz, ARPA ≥ 140 €"],
-      ["M15", "Codierung R2 produktiv", "300 Kunden, Restore in 100 % der Testfälle"],
-      ["M24", "600 Kunden, ARR 0,9 Mio&nbsp;€", "Flashen/SERMI im Pilotbetrieb"],
-      ["M46", "Break-even", "1.050 Kunden, monatlich positives Ergebnis"]]
+      ["M15", "Codierung R2 produktiv", "Restore in 100 % der Testfälle (Plan-Meilenstein M2)"],
+      ["M18", "Entwicklung V2 abgeschlossen", "5 Service-Funktionen auf 5 Modellen, 2 VCIs zertifiziert"],
+      ["M19", "Launch", "erste zahlende Werkstätten — Modell: erster Umsatz in Monat 19"],
+      ["M27", "~50 zahlende Werkstätten, ARPA ≥ 140 €", "Modellrampe"],
+      ["M48", "Break-even", "1.050 Kunden, monatlich positives Ergebnis"],
+      ["M72", "1.382 Kunden, 2,66 Mio&nbsp;€ ARR", "Modellstand Ende Jahr 6"]]
 ms_p = [[Paragraph(c, ParagraphStyle("m", fontName="Helvetica-Bold" if i == 0 or j == 0 else "Helvetica",
                                      fontSize=7.1, leading=8.6, textColor=NAVY if i == 0 else colors.HexColor("#1a1a1a")))
          for j, c in enumerate(row)] for i, row in enumerate(ms)]
@@ -153,11 +156,12 @@ story.append(tbl(ms_p, [13 * mm, 62 * mm, W - 75 * mm]))
 # --- Bewertung --------------------------------------------------------------
 story.append(Paragraph("Bewertungslogik", h))
 story.append(Paragraph(
-    "B2B-Software mit 88 % Bruttomarge und 12 % Abwanderung wird mit <b>4–8× ARR</b> bewertet. Bei 2,15&nbsp;Mio&nbsp;€ ARR "
-    "(Jahr 6) ergibt das einen Unternehmenswert von <b>8,6–17,2&nbsp;Mio&nbsp;€</b>; ein Anteil von 35 % für "
-    "5,5&nbsp;Mio&nbsp;€ ist damit 3,0–6,0&nbsp;Mio&nbsp;€ wert.", body))
+    "B2B-Software mit 88 % Bruttomarge und 12 % Abwanderung wird mit <b>4–8× ARR</b> bewertet. Bei 2,66&nbsp;Mio&nbsp;€ ARR "
+    "(Jahr 6) ergibt das einen Unternehmenswert von <b>10,6–21,3&nbsp;Mio&nbsp;€</b>; ein Anteil von 35 % für "
+    "6,1&nbsp;Mio&nbsp;€ ist damit 3,7–7,4&nbsp;Mio&nbsp;€ wert.", body))
 story.append(Paragraph(
-    "<b>Der ehrliche Teil:</b> Die volle Amortisation der aufgelaufenen Verluste liegt erst in <b>Jahr 9–10</b>. "
+    "<b>Der ehrliche Teil:</b> Die volle Amortisation der aufgelaufenen Verluste liegt erst in <b>Jahr 9–10</b>; "
+    "kumuliert stehen nach 72 Monaten −4,61&nbsp;Mio&nbsp;€. "
     "Für einen Finanzinvestor ist das unter der Venture-Schwelle. Der passendere Kapitalgeber ist ein "
     "<b>strategischer Partner</b> (Werkstattausrüster, Teilegroßhandel): dort ist der Content mit 0,54 Mio&nbsp;€ die "
     "einzige echte Zusatzkostenposition. Bei vorhandenem Vertrieb und Backoffice sinkt die nötige Kundenzahl von "
@@ -180,7 +184,8 @@ story.append(Paragraph(
 
 story.append(Spacer(1, 4))
 story.append(Paragraph(
-    "Alle Zahlen aus der Wirtschaftlichkeitsrechnung (Modell: model/wirtschaftlichkeit.py, Blatt 10_Empfehlung). "
+    "Alle Zahlen aus der Wirtschaftlichkeitsrechnung (Modell: model/wirtschaftlichkeit.py, "
+    "Konstellation V2 / Stufe B / S3, ARPA 150 €/Monat). "
     "Planungsrechnung auf Basis von Annahmen, keine geprüfte Finanzplanung; Steuern, Finanzierungskosten und "
     "Working Capital nicht enthalten. Keine Rechts- oder Anlageberatung.", small))
 
