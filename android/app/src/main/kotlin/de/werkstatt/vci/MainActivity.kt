@@ -83,7 +83,10 @@ private fun WerkstattStatus() {
     }
 
     var dongleBefunde by remember { mutableStateOf<List<Befund>?>(null) }
-    var dongleLaeuft by remember { mutableStateOf(false) }
+
+    /** Was die Dongle-Prüfung gerade tut — der Text bleibt beim Abbruch lesbar. */
+    var dongleSchritt by remember { mutableStateOf<String?>(null) }
+    val dongleLaeuft = dongleSchritt != null
 
     // Bericht des VCI-Checkers (`vci-check --json`), eingefügt und ausgewertet.
     var berichtJson by remember { mutableStateOf("") }
@@ -98,10 +101,10 @@ private fun WerkstattStatus() {
     var selbsttestOk by remember { mutableStateOf(true) }
     var selbsttestLaeuft by remember { mutableStateOf(false) }
 
-    suspend fun donglePruefen(quelle: suspend () -> List<Befund>) {
-        dongleLaeuft = true
+    suspend fun donglePruefen(schritt: String, quelle: suspend () -> List<Befund>) {
+        dongleSchritt = schritt
         dongleBefunde = quelle()
-        dongleLaeuft = false
+        dongleSchritt = null
     }
 
     // Bluetooth-Rechte sind ab Android 12 Laufzeitrechte; ohne sie kein Scan.
@@ -110,7 +113,9 @@ private fun WerkstattStatus() {
     ) {
         scope.launch {
             if (BleGattVerbindung.rechteVorhanden(context)) {
-                donglePruefen { bluetooth.pruefen() }
+                donglePruefen("Suche Bluetooth-Dongle (bis 10 s) und verbinde (bis 15 s) …") {
+                    bluetooth.pruefen()
+                }
             } else {
                 dongleBefunde = listOf(
                     Befund("Bluetooth", "ohne Berechtigung kein Scan möglich", ok = false)
@@ -156,7 +161,10 @@ private fun WerkstattStatus() {
         Spacer(Modifier.height(24.dp))
 
         if (laeuft) {
-            Text("Prüfe …", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                "Prüfe Kern — Bibliothek laden und ISO-TP gegen den Simulator …",
+                style = MaterialTheme.typography.bodyLarge
+            )
         } else {
             befunde.forEach { BefundZeile(it) }
         }
@@ -169,7 +177,10 @@ private fun WerkstattStatus() {
         Spacer(Modifier.height(8.dp))
 
         when {
-            dongleLaeuft -> Text("Prüfe Dongle …", style = MaterialTheme.typography.bodyLarge)
+            dongleLaeuft -> Text(
+                dongleSchritt.orEmpty(),
+                style = MaterialTheme.typography.bodyLarge
+            )
             dongleBefunde == null -> Text(
                 text = "Stecke den VCI an den USB-Anschluss und starte die Prüfung. " +
                     "Android fragt beim ersten Mal nach der Freigabe.",
@@ -191,7 +202,13 @@ private fun WerkstattStatus() {
                 Text("Kern erneut prüfen")
             }
             Button(
-                onClick = { scope.launch { donglePruefen { verbindung.pruefen() } } },
+                onClick = {
+                    scope.launch {
+                        donglePruefen(
+                            "Suche USB-Dongle, prüfe Freigabe, Bordspannung und TesterPresent …"
+                        ) { verbindung.pruefen() }
+                    }
+                },
                 enabled = !dongleLaeuft
             ) {
                 Text("USB prüfen")
@@ -206,7 +223,11 @@ private fun WerkstattStatus() {
             Button(
                 onClick = {
                     if (BleGattVerbindung.rechteVorhanden(context)) {
-                        scope.launch { donglePruefen { bluetooth.pruefen() } }
+                        scope.launch {
+                            donglePruefen(
+                                "Suche Bluetooth-Dongle (bis 10 s) und verbinde (bis 15 s) …"
+                            ) { bluetooth.pruefen() }
+                        }
                     } else {
                         rechteAnfrage.launch(BleGattVerbindung.benoetigteRechte().toTypedArray())
                     }
