@@ -122,7 +122,7 @@ Knopf drücken, Text der Karte notieren.
 | falscher Text-Dongle (ELM-Clone) | ELM327-Clone anstecken, „OBDLink öffnen“ | „… kein STN-Gerät — nur Geräte mit STN-Firmware werden angesprochen“ |
 
 **Wichtig:** Ein Hänger (die Zeile bleibt und es kommt nie ein Befund) ist der
- einzige echte Blocker in diesem Plan — dann Tablet nicht bedienen, sondern
+einzige echte Blocker in diesem Plan — dann Tablet nicht bedienen, sondern
 notieren, wie lange die Zeile stand, und die App schließen.
 
 ---
