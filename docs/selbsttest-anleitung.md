@@ -115,7 +115,9 @@ Ehrlich benannt, damit niemand mehr hineinliest, als drin ist:
 - **Keine Aussage über den Dongle-Typ**: Die App spricht ein eigenes, dokumentiertes
   Drahtformat. ELM327-Klone und reine Text-Dongles funktionieren bewusst nicht
   (siehe [Dongle-Matrix](vci-dongle-matrix.md)) — sie werden beim USB-Weg u. U.
-  erkannt, antworten aber nicht.
+  erkannt, antworten aber nicht. Klasse-1-Geräte mit STN-Firmware (OBDLink & Co.)
+  sind als eigener Transportweg vorgesehen, stecken aber noch nicht in dieser
+  App-Version; sie melden deshalb heute ebenfalls „kein Dongle gefunden“.
 - **Kein Ersatz für Multimeter oder Oszilloskop**: Die Spannung ist ein
   Näherungswert des Dongles, keine belastbare Messung.
 - **Keine Diagnose des Busses**: Ein verdrehtes CAN-Paar, ein Kurzschluss oder ein
