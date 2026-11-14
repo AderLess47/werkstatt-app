@@ -4,7 +4,7 @@
 
 | Kapitalbedarf | Break-even | Break-even-Monat | Deckungsbeitrag | ARR Jahr 6 |
 |---|---|---|---|---|
-| **5,53 Mio €** | **1.050 Kunden** (5,5 % SAM) | **46** (ab Start) | **88 %** | **2,15 Mio €** |
+**5,53 Mio €** | **1.050 Kunden** (5,5 % SAM) | **46** (ab Start) | **88 %** | **2,15 Mio €** |
 
 ---
 
@@ -20,33 +20,33 @@ Adressierbarer Markt DACH: **~19.000 freie Mehrmarken-Betriebe**, die heute 1.00
 
 | Position | Wert |
 |---|---|
-| Entwicklung (18 Monate, 9,5 FTE) | 2,24 Mio € |
-| Content und Lizenzen (Stufe B, 60 Modelle) | 0,54 Mio € p.a. — Fixkosten, nicht variabel |
-| ARPA-Ziel | 150 €/Monat = 1.800 €/Jahr |
-| Deckungsbeitrag je Kunde | 1.588 €/Jahr (88 %) |
-| LTV / CAC / Amortisation je Kunde | 13.233 € / 700 € / **5,3 Monate** |
-| Break-even | 1.050 Kunden, Monat 46, ARR 1,89 Mio € |
-| Maximale Liquiditätslücke | **5,53 Mio €** |
+Entwicklung (18 Monate, 9,5 FTE) | 2,24 Mio € |
+Content und Lizenzen (Stufe B, 60 Modelle) | 0,54 Mio € p.a. — Fixkosten, nicht variabel |
+ARPA-Ziel | 150 €/Monat = 1.800 €/Jahr |
+Deckungsbeitrag je Kunde | 1.588 €/Jahr (88 %) |
+LTV / CAC / Amortisation je Kunde | 13.233 € / 700 € / **5,3 Monate** |
+Break-even | 1.050 Kunden, Monat 46, ARR 1,89 Mio € |
+Maximale Liquiditätslücke | **5,53 Mio €** |
 
 ## Kapitalverwendung
 
 | Tranche | Betrag | Zeitraum | Inhalt | Auslöser für die nächste Tranche |
 |---|---|---|---|---|
-| T1 | 1,8 Mio € | M0–9 | Rechtsgutachten SERMI/J2534, 3 VCI-Partnerverträge, Diagnose-Core (ISO-TP/UDS) auf Android + iOS, Prüfstand | Gutachten liegt vor, ein SDK-Vertrag signiert |
-| T2 | 1,7 Mio € | M9–20 | Codierung R2 mit Backup/Restore, Launch Stufe A/B, Fachhandelsvertrag | 100 zahlende Werkstätten, Churn < 2 %/Monat |
-| T3 | 2,0 Mio € | M20–46 | Skalierung auf 1.050 Kunden, SERMI-/Flashen-Modul | 300 Kunden, ARPA ≥ 140 € |
+T1 | 1,8 Mio € | M0–9 | Rechtsgutachten SERMI/J2534, 3 VCI-Partnerverträge, Diagnose-Core (ISO-TP/UDS) auf Android + iOS, Prüfstand | Gutachten liegt vor, ein SDK-Vertrag signiert |
+T2 | 1,7 Mio € | M9–20 | Codierung R2 mit Backup/Restore, Launch Stufe A/B, Fachhandelsvertrag | 100 zahlende Werkstätten, Churn < 2 %/Monat |
+T3 | 2,0 Mio € | M20–46 | Skalierung auf 1.050 Kunden, SERMI-/Flashen-Modul | 300 Kunden, ARPA ≥ 140 € |
 | **Summe** | **5,5 Mio €** | | | |
 
 ## Meilensteine
 
 | Zeit | Meilenstein | Nachweis |
 |---|---|---|
-| M2 | Rechtslage und Partner geklärt | Gutachten, 3 NDAs, 3–5 Pilotwerkstätten |
-| M6 | Diagnose-Core auf beiden Plattformen | 5 Service-Funktionen auf 5 Modellen, 2 VCIs zertifiziert |
-| M9 | Launch, 50 zahlende Werkstätten | erster Umsatz, ARPA ≥ 140 € |
-| M15 | Codierung R2 produktiv | 300 Kunden, Restore in 100 % der Testfälle |
-| M24 | 600 Kunden, ARR 0,9 Mio € | Flashen/SERMI im Pilotbetrieb |
-| M46 | Break-even | 1.050 Kunden, monatlich positiv |
+M2 | Rechtslage und Partner geklärt | Gutachten, 3 NDAs, 3–5 Pilotwerkstätten |
+M6 | Diagnose-Core auf beiden Plattformen | 5 Service-Funktionen auf 5 Modellen, 2 VCIs zertifiziert |
+M9 | Launch, 50 zahlende Werkstätten | erster Umsatz, ARPA ≥ 140 € |
+M15 | Codierung R2 produktiv | 300 Kunden, Restore in 100 % der Testfälle |
+M24 | 600 Kunden, ARR 0,9 Mio € | Flashen/SERMI im Pilotbetrieb |
+M46 | Break-even | 1.050 Kunden, monatlich positiv |
 
 ## Bewertungslogik
 
