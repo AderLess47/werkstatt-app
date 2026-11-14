@@ -75,6 +75,27 @@ class AppBerichtTest {
     }
 
     @Test
+    fun `Inhalt nennt den letzten Warteschritt`() {
+        val text = AppBericht.inhalt(
+            "Pixel 6", kern, dongle, zeit,
+            letzterSchritt = "Warte auf die Antwort auf 22 F190 — Frist 1,5 s je Rahmen"
+        )
+
+        assertTrue(
+            text.contains(
+                "Zuletzt gewartet auf\n  Warte auf die Antwort auf 22 F190 — Frist 1,5 s je Rahmen"
+            )
+        )
+    }
+
+    @Test
+    fun `ohne Warteschritt steht nicht erfasst`() {
+        val text = AppBericht.inhalt("Pixel 6", kern, dongle, zeit)
+
+        assertTrue(text.contains("Zuletzt gewartet auf\n  nicht erfasst"))
+    }
+
+    @Test
     fun `Inhalt sagt dass es nicht der Checker-Bericht ist`() {
         val text = AppBericht.inhalt("Pixel 6", kern, dongle, zeit)
 

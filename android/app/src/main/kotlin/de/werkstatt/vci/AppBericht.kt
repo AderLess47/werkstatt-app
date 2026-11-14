@@ -33,12 +33,19 @@ object AppBericht {
      * [kern] und [dongle] dürfen `null` sein: die Dongle-Prüfung läuft erst auf
      * Knopfdruck, und ein Bericht ohne sie soll trotzdem sagen, was er weiß —
      * mit dem ausdrücklichen Vermerk „nicht gelaufen“.
+     *
+     * [letzterSchritt] ist der Schritt, den die App zuletzt angekündigt hat
+     * („Warte auf die Antwort auf 22 F190 …“). Er steht auch dann in der Datei,
+     * wenn nichts abgebrochen ist — dann weiß der Support, wie weit die App
+     * gekommen ist. Ohne Angabe steht dort „nicht erfasst“, nicht ein geratener
+     * Schritt.
      */
     fun inhalt(
         geraet: String,
         kern: List<Befund>?,
         dongle: List<Befund>?,
         zeit: LocalDateTime,
+        letzterSchritt: String? = null,
     ): String {
         val alle = (kern ?: emptyList()) + (dongle ?: emptyList())
         val bestanden = alle.count { it.ok }
@@ -52,6 +59,9 @@ object AppBericht {
         bau.appendLine()
         bau.appendLine("Dongle")
         abschnitt(bau, dongle)
+        bau.appendLine()
+        bau.appendLine("Zuletzt gewartet auf")
+        bau.appendLine("  ${letzterSchritt ?: "nicht erfasst"}")
         bau.appendLine()
         bau.appendLine(ergebnis(alle, bestanden))
         bau.appendLine()
