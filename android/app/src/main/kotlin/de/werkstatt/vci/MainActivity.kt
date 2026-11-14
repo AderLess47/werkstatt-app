@@ -1,5 +1,6 @@
 package de.werkstatt.vci
 
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -75,6 +76,12 @@ private fun WerkstattStatus() {
     val bluetooth = remember { BleGattVerbindung(context) }
     val scope = rememberCoroutineScope()
 
+    // Gerätename für den Dateinamen und den Kopf des Selbsttest-Berichts.
+    val geraet = remember {
+        val hersteller = Build.MANUFACTURER.replaceFirstChar { it.uppercase() }
+        "$hersteller ${Build.MODEL} (Android ${Build.VERSION.RELEASE})"
+    }
+
     var dongleBefunde by remember { mutableStateOf<List<Befund>?>(null) }
     var dongleLaeuft by remember { mutableStateOf(false) }
 
@@ -85,6 +92,11 @@ private fun WerkstattStatus() {
     var berichtAblage by remember { mutableStateOf<String?>(null) }
     var berichtTeilenOk by remember { mutableStateOf(true) }
     var berichtTeilenLaeuft by remember { mutableStateOf(false) }
+
+    // Selbsttest-Bericht: entsteht aus den Prüfungen, die hier schon gelaufen sind.
+    var selbsttestAblage by remember { mutableStateOf<String?>(null) }
+    var selbsttestOk by remember { mutableStateOf(true) }
+    var selbsttestLaeuft by remember { mutableStateOf(false) }
 
     suspend fun donglePruefen(quelle: suspend () -> List<Befund>) {
         dongleLaeuft = true
@@ -205,6 +217,32 @@ private fun WerkstattStatus() {
             }
         }
 
+        Spacer(Modifier.height(8.dp))
+        Button(
+            onClick = {
+                val jetzt = LocalDateTime.now()
+                val name = AppBericht.name(geraet, jetzt)
+                val inhalt = AppBericht.inhalt(geraet, befunde, dongleBefunde, jetzt)
+                selbsttestAblage = null
+                selbsttestLaeuft = true
+                scope.launch {
+                    // Derselbe Weg wie beim Checker-Bericht — nur ohne Eingabe.
+                    val meldung = withContext(Dispatchers.IO) {
+                        BerichtTeilen.teilen(context, name, inhalt)
+                    }
+                    selbsttestOk = meldung == null
+                    selbsttestAblage = meldung ?: BerichtTeilen.ablage(name)
+                    selbsttestLaeuft = false
+                }
+            },
+            enabled = !selbsttestLaeuft && !laeuft && !dongleLaeuft &&
+                (befunde.isNotEmpty() || dongleBefunde != null)
+        ) {
+            Text("Selbsttest-Bericht teilen")
+        }
+
+        selbsttestAblage?.let { ziel -> AblageHinweis(ziel, selbsttestOk) }
+
         Spacer(Modifier.height(24.dp))
         HorizontalDivider()
         Spacer(Modifier.height(16.dp))
@@ -299,18 +337,7 @@ private fun WerkstattStatus() {
                 Text("Bericht als Datei teilen")
             }
 
-            berichtAblage?.let { ziel ->
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = if (berichtTeilenOk) "Gespeichert: $ziel" else ziel,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (berichtTeilenOk) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.error
-                    }
-                )
-            }
+            berichtAblage?.let { ziel -> AblageHinweis(ziel, berichtTeilenOk) }
         }
 
         Spacer(Modifier.height(32.dp))
@@ -360,6 +387,23 @@ private fun BefundZeile(befund: Befund) {
             }
         }
     }
+}
+
+/**
+ * Rückmeldung nach dem Ablegen einer Datei: Ablageort oder Klartextfehler.
+ */
+@Composable
+private fun AblageHinweis(ziel: String, erfolgreich: Boolean) {
+    Spacer(Modifier.height(8.dp))
+    Text(
+        text = if (erfolgreich) "Gespeichert: $ziel" else ziel,
+        style = MaterialTheme.typography.bodySmall,
+        color = if (erfolgreich) {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        } else {
+            MaterialTheme.colorScheme.error
+        }
+    )
 }
 
 /**
