@@ -34,6 +34,18 @@ class DienstAntwortTest {
     }
 
     @Test
+    fun `0x78 wird als Aufschub erkannt, nicht als Ergebnis`() {
+        val aufschub = byteArrayOf(0x7F, 0x22, 0x78)
+        assertTrue(DienstAntwort.istAntwortNochOffen(aufschub))
+        // Es *ist* formal eine Ablehnung — deshalb muss die Prüfung vor der
+        // Anzeige kommen, sonst steht „abgelehnt“ auf dem Bildschirm.
+        assertTrue(DienstAntwort.istAblehnung(aufschub))
+        assertFalse(DienstAntwort.istAntwortNochOffen(byteArrayOf(0x7F, 0x22, 0x31)))
+        assertFalse(DienstAntwort.istAntwortNochOffen(byteArrayOf(0x7F, 0x22)))
+        assertFalse(DienstAntwort.istAntwortNochOffen(vin))
+    }
+
+    @Test
     fun `NRC wird im Klartext erklaert`() {
         assertEquals("Wertebereich nicht unterstützt — falsche Kennung?", DienstAntwort.nrcText(0x31))
         assertEquals("Bedingungen nicht erfüllt — Zündung an?", DienstAntwort.nrcText(0x22))
