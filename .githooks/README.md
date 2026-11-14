@@ -33,7 +33,22 @@ beide Läufe starten. Im Zweifel wird geprüft, nicht geraten. Beide Läufe werd
 auch dann gefahren, wenn der erste rot ist — wer ohnehin nicht pushen kann, soll
 alle Befunde auf einmal sehen.
 
-Voraussetzungen:
+## Trockenlauf
+
+Zeigen, was ein Push jetzt prüfen würde — ohne zu pushen und ohne zu testen:
+
+```
+sh .githooks/pre-push --probe              # gegen den Upstream-Branch
+sh .githooks/pre-push --probe origin/main  # gegen eine bestimmte Basis
+```
+
+Die Ausgabe nennt Basis, geänderte Dateien und die Auswahl. Es ist derselbe Code
+wie im Push; unterschieden wird nur die Herkunft der Dateiliste (Diff gegen die
+Basis statt Gits stdin), damit der Trockenlauf nicht anders entscheiden kann als
+der Ernstfall. Ohne Upstream und ohne `origin/main` meldet er, dass alle
+Prüfungen laufen würden.
+
+## Voraussetzungen
 
 - `make` und ein C-Compiler für den C-Kern,
 - `cargo` für Rust-Kern und FFI-Schicht,
@@ -45,7 +60,7 @@ Voraussetzungen:
 Fehlt eines davon, bricht der Hook mit einer Anleitung ab, statt den Teil still
 zu überspringen.
 
-Überspringen im Notfall:
+## Überspringen
 
 ```
 VCI_SKIP_HOOK=1 git push
@@ -54,6 +69,8 @@ VCI_SKIP_HOOK=1 git push
 Der Hook schreibt dann hin, dass er übersprungen wurde. Absicht: ein stiller
 Sprung wäre von „grün“ nicht zu unterscheiden. `git push --no-verify` umgeht den
 Hook ganz — das ist Gits eigenes Verhalten und braucht hier keine Regel.
+
+## Grenzen des Hooks
 
 Der Hook ersetzt **nicht** die CI. Er prüft nur, was auf der Kommandozeile
 prüfbar ist — kein Android-SDK, kein Gerät, keine APK. `:app:assembleDebug` und

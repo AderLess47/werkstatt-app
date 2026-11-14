@@ -12,10 +12,15 @@
 # `j2534/` keine JVM-Tests. Unbekannte Pfade lassen beide laufen — im Zweifel
 # wird geprüft, nicht geraten.
 #
-# Warum lokal und nicht nur in der CI: die Actions-Läufe dieses Repos starten
-# nicht — jedes Job-Ergebnis ist „The job was not started because recent account
-# payments have failed or your spending limit needs to be increased“, also kein
-# Runner, kein Schritt, kein Test.
+# Trockenlauf, ohne zu pushen und ohne zu testen:
+#
+#   sh .githooks/pre-push --probe              (gegen den Upstream-Branch)
+#   sh .githooks/pre-push --probe origin/main  (gegen eine bestimmte Basis)
+#
+# Er zeigt dieselbe Auswahl, die ein Push jetzt treffen würde — dieselbe
+# Einstufung, kein zweiter Code, der auseinanderlaufen kann. Unterschieden wird
+# nur die Herkunft der Dateiliste: beim Push aus Gits stdin, im Trockenlauf aus
+# dem Diff gegen die Basis.
 #
 # Einbauen:      sh scripts/install-hooks.sh
 # Abschalten:    VCI_SKIP_HOOK=1 git push …   (oder git push --no-verify)
@@ -26,41 +31,81 @@ set -eu
 
 cd "$(git rev-parse --show-toplevel)"
 
+modus=push
+basis=""
+if [ "${1:-}" = "--probe" ]; then
+    modus=probe
+    shift || true
+    basis=${1:-}
+fi
+
 zuruecksetzen() { rm -f "$dateien"; }
 dateien=$(mktemp)
 trap 'zuruecksetzen' EXIT INT TERM
 
-# Git schreibt je Ref „<lokale ref> <sha> <remote ref> <sha>“ nach stdin. Diese
-# Zeilen sind die einzige verlässliche Auskunft darüber, was übertragen wird.
-refs=$(cat)
+if [ "$modus" = "push" ]; then
+    # Git schreibt je Ref „<lokale ref> <sha> <remote ref> <sha>“ nach stdin.
+    # Diese Zeilen sind die einzige verlässliche Auskunft darüber, was
+    # übertragen wird.
+    refs=$(cat)
 
-if [ "${VCI_SKIP_HOOK:-0}" = "1" ]; then
-    echo "pre-push: Tests übersprungen (VCI_SKIP_HOOK=1) — geprüft wurde nichts." >&2
-    exit 0
-fi
+    if [ "${VCI_SKIP_HOOK:-0}" = "1" ]; then
+        echo "pre-push: Tests übersprungen (VCI_SKIP_HOOK=1) — geprüft wurde nichts." >&2
+        exit 0
+    fi
 
-# Die Dateimenge aller gepushten Refs. Vier Fälle:
-#   - Ref wird gelöscht (lokale Sha null): nichts zu prüfen
-#   - neuer Branch (remote Sha null): ohne Vergleichsbasis wird alles geprüft
-#   - bekannt: Diff zwischen remote und lokal
-#   - Diff nicht möglich (force push, unbekannte Sha): alles prüfen
-while read -r _lref lsha _rref rsha; do
-    [ -n "${lsha:-}" ] || continue
-    case "$lsha" in 0000000000*) continue ;; esac
-    case "${rsha:-}" in
-        0000000000*|"")
+    # Vier Fälle je Ref:
+    #   - Ref wird gelöscht (lokale Sha null): nichts zu prüfen
+    #   - neuer Branch (remote Sha null): ohne Vergleichsbasis wird alles geprüft
+    #   - bekannt: Diff zwischen remote und lokal
+    #   - Diff nicht möglich (force push, unbekannte Sha): alles prüfen
+    while read -r _lref lsha _rref rsha; do
+        [ -n "${lsha:-}" ] || continue
+        case "$lsha" in 0000000000*) continue ;; esac
+        case "${rsha:-}" in
+            0000000000*|"")
+                echo '*' >> "$dateien"
+                continue
+                ;;
+        esac
+        git diff --name-only "$rsha" "$lsha" >> "$dateien" 2>/dev/null ||
             echo '*' >> "$dateien"
-            continue
-            ;;
-    esac
-    git diff --name-only "$rsha" "$lsha" >> "$dateien" 2>/dev/null ||
-        echo '*' >> "$dateien"
-done <<EOF
+    done <<EOF
 $refs
 EOF
 
-# Kein stdin (Aufruf von Hand) heißt: nichts bekannt, also alles prüfen.
-[ -s "$dateien" ] || echo '*' >> "$dateien"
+    # Kein stdin (Aufruf von Hand) heißt: nichts bekannt, also alles prüfen.
+    # Ein *leerer* Diff ist dagegen eine gültige Auskunft — „nichts zu
+    # übertragen“ (etwa wenn der Remote-Stand schon erreicht ist) — und darf
+    # nicht als Unbekanntes gewertet werden.
+    if [ -z "$refs" ]; then
+        echo '*' >> "$dateien"
+    fi
+else
+    # Trockenlauf: Basis ist der Upstream des aktuellen Branches, sonst der
+    # übliche Remote-Branch, sonst gibt es nichts zu vergleichen.
+    if [ -z "$basis" ]; then
+        basis=$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)
+    fi
+    if [ -z "$basis" ]; then
+        for kandidat in origin/main origin/master origin/HEAD; do
+            if git rev-parse --verify --quiet "$kandidat" > /dev/null 2>&1; then
+                basis=$kandidat
+                break
+            fi
+        done
+    fi
+
+    if [ -n "$basis" ] && git rev-parse --verify --quiet "$basis" > /dev/null 2>&1; then
+        voraus=$(git rev-list --count "$basis"..HEAD 2>/dev/null || echo '?')
+        echo "Trockenlauf gegen $basis ($voraus Commit(s) voraus)" >&2
+        git diff --name-only "$basis"...HEAD > "$dateien"
+    else
+        basis=""
+        echo '*' >> "$dateien"
+        echo "Trockenlauf ohne Vergleichsbasis — es würden alle Prüfungen laufen." >&2
+    fi
+fi
 
 kern=0
 jvm=0
@@ -81,8 +126,37 @@ while read -r f; do
     esac
 done < "$dateien"
 
+anzahl=$(sort -u "$dateien" | wc -l | tr -d ' ')
+
+if [ "$modus" = "probe" ]; then
+    if [ -n "$basis" ]; then
+        echo "Geänderte Dateien:" >&2
+        sort -u "$dateien" | sed 's/^/  /' >&2
+    fi
+    if [ "$kern" -eq 0 ] && [ "$jvm" -eq 0 ]; then
+        if [ "$anzahl" -eq 0 ]; then
+            echo "Auswahl: nichts — keine Änderungen gegenüber $basis." >&2
+        else
+            echo "Auswahl: nichts — nur Doku, ein Push würde keine Tests starten." >&2
+        fi
+        exit 0
+    fi
+    echo "Auswahl:" >&2
+    if [ "$kern" -eq 1 ]; then
+        echo "  scripts/kern-tests.sh  (C-Kern, Korpus, Rust-Kern, FFI-Schicht)" >&2
+    fi
+    if [ "$jvm" -eq 1 ]; then
+        echo "  scripts/jvm-tests.sh   (die 119 JVM-Tests der App)" >&2
+    fi
+    exit 0
+fi
+
 if [ "$kern" -eq 0 ] && [ "$jvm" -eq 0 ]; then
-    echo "pre-push: nur Doku geändert ($(sort -u "$dateien" | wc -l | tr -d ' ') Dateien) — keine Tests nötig." >&2
+    if [ "$anzahl" -eq 0 ]; then
+        echo "pre-push: nichts zu übertragen — keine Tests nötig." >&2
+    else
+        echo "pre-push: nur Doku geändert ($anzahl Dateien) — keine Tests nötig." >&2
+    fi
     exit 0
 fi
 
