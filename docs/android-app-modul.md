@@ -172,6 +172,7 @@ derselben Begründung wie hier:
 | `StnKonfiguration.startTimeoutMs` | 2 000 ms | Weg B: `ATZ` und die `AT`-Einstellungen | `ATZ` (Reset) ist der langsamste Befehl, alles danach antwortet sofort `OK` |
 | `StnKennung` | 1 500 ms | `STI` | eine Textzeile; Obergrenze, nicht Erwartungswert |
 | `UsbDongleVerbindung` / `FtdiStnVerbindung` | 30 000 ms | USB-Freigabedialog | menschliche Reaktion am Gerät, kein Protokoll |
+| `P2_STERN_MS` / `StnKonfiguration.p2SternTimeoutMs` | 5 000 ms **je Aufschub** | beide Wege: Warten nach einer Negative Response 0x78 | ISO 14229-2: P2\* = 5 000 ms; höchstens `MAX_AUFSCHUB` = 3 Aufschübe, also 15 s zusätzlich |
 
 **Wichtig für Weg A:** die 1 500 ms gelten **je Rahmen**. `IsotpChannel::recv`
 reicht die Frist an jedes `recv` weiter; eine Antwort über 20 Byte (First Frame
@@ -184,11 +185,33 @@ Antwort auf `22 F190` mit P2_server = 50 ms ist nach 50–200 ms da; die Frist w
 nur gebraucht, wenn etwas fehlt — dann steht auf dem Bildschirm ein Fehler statt
 einer Wartezeile, die nie endet.
 
-**Nicht abgedeckt (beide Wege):** P2* — ISO 14229-2 nennt 5 000 ms für die
-Antwort nach einer Negative Response 0x78 („response pending“). Meldet ein
-Steuergerät das, läuft die App in ihre Frist, weil keiner der Wege 0x78 erkennt
-und erneut wartet. Für die hier genutzten lesenden Dienste ist das nicht der
-Regelfall, aber es ist eine Grenze, keine Einstellung.
+**0x78 („response pending“) wird auf beiden Wegen behandelt.** `7F <Dienst> 78`
+ist keine Ablehnung, sondern ein Aufschub: das Steuergerät hat die Anfrage
+angenommen und rechnet noch (typisch bei Routinen). Dann wird **nicht neu
+gefragt** — nach ISO 14229-1 kommt die Antwort von selbst — sondern erneut
+gewertet:
+
+- **Weg A:** `UsbAbschnitt` ruft `IsoTp.recv` mit `P2_STERN_MS` erneut auf; der
+  Kern liest die endgültige Antwort als eigene ISO-TP-Nachricht.
+- **Weg B:** `StnKanal` filtert die 0x78-Zeilen aus der Zeilenfolge
+  (`StnAntwort.ohneAufschub`) und liest mit `p2SternTimeoutMs` weiter, bis eine
+  Zeile ohne Aufschub da ist. Der Prompt `>` beendet weiterhin jede Runde, und
+  der Kanal bleibt offen — nach 0x78 wird nur gelesen, nie erneut gesendet.
+
+Höchstens drei Aufschübe, dann steht ein Fehler statt einer endlosen Wartezeile;
+die Wartezeile nennt den Aufschub samt Frist, damit ein Abbruch zuordenbar bleibt.
+
+**Grenze auf Weg B:** dort entscheidet der Dongle mit `ATST`, wie lange er
+überhaupt zuhört (Werkseinstellung rund 200 ms). Kommt die endgültige Antwort
+später, hat er das Zuhören beendet und meldet `NO DATA` — dann steht eine
+Zeitüberschreitung, und die Ursache ist die Adaptereinstellung, nicht das
+Steuergerät. Die App setzt `ATST` bewusst nicht selbst hoch: sonst würde sie auch
+jeden echten Ausfall 5 s lang aussitzen.
+
+**Nicht geprüft:** die 0x78-Behandlung ist mit aufgezeichneten Zeilen geprüft
+(`StnKanalTest`), aber auf **keinem Gerät** und mit **keinem Steuergerät**, das
+wirklich 0x78 sendet. Auf Weg A hängt sie am Verhalten von `IsotpChannel::recv`,
+das hier nur über die Rust-Bibliothek erreichbar ist.
 
 ### BLE-GATT
 
@@ -276,18 +299,18 @@ gefunden“ bzw. „kein Dongle gefunden“.
 ## Geprüft / nicht geprüft
 
 Geprüft: `:bindings:test` (drei Linktests gegen die echte Rust-Bibliothek).
-`:app` enthält **98 `@Test`** in zwölf Dateien — `VciCheck` 3, `DonglePruefung` 3,
+`:app` enthält **102 `@Test`** in zwölf Dateien — `VciCheck` 3, `DonglePruefung` 3,
 `Wire` 9, `BleCanTransport` 7, `BleSerielleStrecke` 9, `UsbSerielleStrecke` 8,
-`StnKanal` 15, `StnKennung` 10, `VciBericht` 13, `BerichtDatei` 6, `AppBericht` 9,
-`DienstAntwort` 7.
+`StnKanal` 18, `StnKennung` 10, `VciBericht` 13, `BerichtDatei` 6, `AppBericht` 9,
+`DienstAntwort` 8.
 
-Davon sind **76 in dieser Umgebung tatsächlich gelaufen**: die acht neueren
+Davon sind **80 in dieser Umgebung tatsächlich gelaufen**: die acht neueren
 Testklassen (`StnKanal`, `StnKennung`, `BleSerielleStrecke`,
 `UsbSerielleStrecke`, `VciBericht`, `BerichtDatei`, `AppBericht`,
 `DienstAntwort`) wurden mit `kotlinc 2.0.21` gegen JDK 17 übersetzt und über
 `org.junit.runner.JUnitCore` gestartet — alle grün. Die übrigen 22 wurden früher
 über `:app:testDebugUnitTest` ausgeführt; ein Gradle-Lauf ist hier **nicht**
-möglich, weil in dieser Umgebung kein Android SDK installiert ist. Ob die 98
+möglich, weil in dieser Umgebung kein Android SDK installiert ist. Ob die 102
 Tests zusammen unter Gradle durchlaufen, ist damit offen.
 
 Ebenfalls geprüft (früher, mit NDK): `:app:assembleDebug` (Kompilierung,
