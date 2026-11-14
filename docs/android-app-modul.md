@@ -181,8 +181,8 @@ hier drei Rahmen ankommen statt einem.
 
 **Die Fristen sind Obergrenzen für den Abbruch, keine Erwartungswerte:** eine
 Antwort auf `22 F190` mit P2_server = 50 ms ist nach 50–200 ms da; die Frist wird
-nur gebraucht, wenn etwas fehlt — dann steht auf dem Bildschirm ein Fehler
-statt eines hängenden „Läuft …“.
+nur gebraucht, wenn etwas fehlt — dann steht auf dem Bildschirm ein Fehler statt
+einer Wartezeile, die nie endet.
 
 **Nicht abgedeckt (beide Wege):** P2* — ISO 14229-2 nennt 5 000 ms für die
 Antwort nach einer Negative Response 0x78 („response pending“). Meldet ein
@@ -256,6 +256,13 @@ Zwei Eigenheiten von BLE stecken im Transport:
   App auf diesem Telefon, **nicht** der Bericht von `vci-check --json` —
   zwei Berichte, zwei Wahrheiten, nicht vermischt. Ist die Dongle-Prüfung noch
   nicht gelaufen, steht dort „nicht gelaufen“ statt einer erfundenen Messung.
+
+Während des Wartens nennt jeder Abschnitt den Schritt (`schritt`-Zustand im
+Composable, kein blosses „Läuft …“) — etwa „Warte auf die Antwort auf 22 F190 —
+Frist 1,5 s je Rahmen“. Beim Abbruch wiederholt der Befund denselben Schritt
+(„beim Warten auf die Antwort abgebrochen: …“), damit der Selbsttest-Bericht
+erkennen lässt, wobei es gehangen hat. Dieselbe Zeile führt die Dongle-Prüfung in
+`MainActivity.kt` („Suche Bluetooth-Dongle (bis 10 s) und verbinde (bis 15 s) …“).
 
 Beide Wege stehen damit als eigene Abschnitte am Bildschirm: `ObdLinkAbschnitt.kt`
 hängt `FtdiStnVerbindung` (FTDI-Kabel), `StnKennung` (`STI`) und `StnKanal` an
