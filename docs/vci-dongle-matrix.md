@@ -12,21 +12,22 @@
 **Klasse** | 1 = generisch OBD · 2 = Profi-Passthru (J2534) · 3 = DoIP/Ethernet · 4 = OEM-Werkstatttool |
 **Host** | Wie das Gerät mit Tablet/Phone spricht: BLE, WLAN, USB, IP-Gateway |
 **Tiefe** | L = Lesen/Diagnose · S = Service-Rückstellung · C = Codierung/Adaption · F = Flashen |
-**App-Status** | `geplant` · `zu zertifizieren` · `nur über Gateway` · `nicht unterstützt` |
+**App-Status** | `geplant` · `zu zertifizieren` · `nur über Gateway` · `eingestellt` (Gerät nicht mehr beschaffbar, Support nur für den Bestand) · `nicht unterstützt` |
 
 > **Grundregel:** SAE J2534-1 definiert in §7 eine **32-Bit-Windows-DLL**. Ein J2534-Gerät ist damit nie „einfach so" am Tablet. Entweder liefert der Hersteller zusätzlich Android-/iOS-Builds (Weg 1), oder ein Windows-Gateway im Werkstatt-LAN vermittelt (Weg 2). Diese Spalte steht deshalb in jeder Zeile.
 
 ---
 
-## 1. Klasse 1 — generische OBD-Adapter (BLE/WLAN)
+## 1. Klasse 1 — generische OBD-Adapter (BLE, WLAN, USB)
 
 | Gerät | Chipsatz | Host | Busse | Tiefe | App-Status | Anmerkung |
 |---|---|---|---|---|---|---|
-OBDLink MX+ | STN2255 | BLE | CAN, ISO-TP, K-Line, J1850 | L, S (eingeschränkt) | zu zertifizieren (STN) | Bestes generisches Gerät; STN-Befehlssatz statt ELM-Quirk; für Service-Rückstellung brauchbar, **nicht** für Flashen |
-OBDLink CX | STN | BLE | CAN, ISO-TP | L, S (eingeschränkt) | zu zertifizieren (STN) | iOS-freundlich (BLE), kompakt |
-OBDLink EX / SX | STN2120 | USB | CAN, ISO-TP, K-Line | L, S | nur Android | USB → auf iPad nicht nutzbar |
+OBDLink MX+ | STN2256 (früher STN2255) | BLE | CAN, ISO-TP, K-Line, J1850 | L, S (eingeschränkt) | zu zertifizieren (STN) | Bestes generisches Gerät; STN-Befehlssatz statt ELM-Quirk; für Service-Rückstellung brauchbar, **nicht** für Flashen |
+OBDLink CX | STN2310 | BLE | CAN, ISO-TP | L, S (eingeschränkt) | zu zertifizieren (STN) | iOS-freundlich (BLE), kompakt |
+OBDLink EX | STN2232 (früher STN2230/2231) | USB (FTDI) | CAN, ISO-TP, K-Line | L, S | zu zertifizieren (STN, Kabel) | Aktives USB-Modell; sitzt hinter einem FTDI-Wandler, nicht an einem rohen Bulk-Endpunkt. Der Weg ist in der App gebaut, am Gerät aber ungeprüft. Auf iPad nicht nutzbar |
+OBDLink SX | STN1130 | USB (FTDI) | CAN, ISO-TP, K-Line | L, S | eingestellt | Vom Hersteller abgekündigt, im STN-Handbuch als „Obsolete" geführt; nur noch für Geräte im Bestand interessant |
 vLinker-/VGATE-Klasse | div. | BLE | CAN, ISO-TP | L | optional | Qualitätsstreuung; nur nach Einzeltest |
-**ELM327-Clones** | ELM327 (div. Clones) | BLE/WLAN | CAN, ISO-TP (instabil) | L nur mit Warnung | **nicht unterstützt** | Kein zuverlässiges Multi-Frame, keine belastbare Security-Access-Sequenz, Firmware-Streuung → Ausschluss |
+**ELM327-Clones** | ELM327 (div. Clones) | BLE/WLAN/USB | CAN, ISO-TP (instabil) | L nur mit Warnung | **nicht unterstützt** | Kein zuverlässiges Multi-Frame, keine belastbare Security-Access-Sequenz, Firmware-Streuung → Ausschluss |
 
 **Begründung des ELM327-Ausschlusses:** Ein fehlerhaftes ISO-TP-Flow-Control bei einem Schreibvorgang kann ein Steuergerät in einen undefinierten Zustand bringen. Das Risiko ist bei einem 8-€-Clone nicht kalkulierbar, und der Support-Aufwand frisst jede Marge. Wenn überhaupt: reiner Lesemodus, klar gekennzeichnet, ohne Schreibfunktionen.
 
@@ -34,9 +35,14 @@ vLinker-/VGATE-Klasse | div. | BLE | CAN, ISO-TP | L | optional | Qualitätsstre
 
 Klasse-1-Geräte sprechen nicht unser Drahtformat. Sie nehmen Textbefehle
 (`AT …`, `ST …`) über eine serielle Strecke — BLE-GATT-UART, klassisches
-Bluetooth-SPP oder USB-CDC — und **machen ISO-TP selbst**: Segmentierung,
-Flow-Control und Wiederzusammensetzung passieren im Dongle, die App sieht nur
-die fertige Diagnosenachricht als Hex-Zeile.
+Bluetooth-SPP oder, am Kabel, einen **USB-Seriell-Wandler (FTDI, Virtual COM
+Port)** — und **machen ISO-TP selbst**: Segmentierung, Flow-Control und
+Wiederzusammensetzung passieren im Dongle, die App sieht nur die fertige
+Diagnosenachricht als Hex-Zeile.
+
+Nicht USB-CDC: die gelisteten USB-Geräte (OBDLink EX, SX) sitzen hinter einem
+FTDI-Chip, und ein CDC-ACM-Gerät bräuchte Line-Coding über die Klasse `CDC`.
+Die Wandler-Chips der Billig-Clones — CP210x, CH340, PL2303 — bleiben draußen.
 
 Deshalb bekommt Klasse 1 einen eigenen Transport, der **oberhalb** von
 `CanTransport` ansetzt: eine Schnittstelle „Anfrage-Bytes rein, Antwort-Bytes
@@ -58,7 +64,20 @@ Was das mitbringt und was es begrenzt:
 - **Abgrenzung zu ELM327-Clones:** Die Aufnahme gilt für Geräte mit
   dokumentiertem STN-Befehlssatz und fester Firmware (OBDLink & Co.).
   Billig-Clones bleiben ausgeschlossen — dort ist weder Multi-Frame noch
-  Fehlerverhalten reproduzierbar.
+  Fehlerverhalten reproduzierbar. Am Kabel wird das zweifach geprüft: nur
+  Geräte mit FTDI-VID werden angesprochen, und die Firmware-Kennung muss per
+  `STI` die Form `STN<id> vX.Y.Z` haben. `ATI` taugt dafür nicht — STN-Geräte
+  antworten dort bewusst mit einem ELM327-String, der sich mit `STSATI` sogar
+  frei setzen lässt.
+- **Grenze der Prüfung:** Ein Clone, der `STI` nachahmt, käme durch. Der Filter
+  ist eine Hürde, kein Beweis; die Produktentscheidung bleibt §1.
+
+**Stand der Umsetzung (14.11.2026):** Der Transport ist im Android-Modul gebaut —
+`StnKanal` samt ISO-TP-Zusammensetzung, `BleSerielleStrecke` und
+`UsbSerielleStrecke` für die Zeilenbildung, `UsbSerialStrecke` für den
+FTDI-Wandler und `StnKennung` als Gerätefilter. Geprüft ist das auf der JVM
+gegen aufgezeichnete Antworten; **kein Gerät** hat diesen Weg bisher bestätigt,
+und der Android-Anteil ist noch nicht gebaut (kein SDK in der Bauumgebung).
 
 Praktisch heißt das: Klasse 1 ist der Weg für die Werkstatt, die schon einen
 Dongle in der Schublade hat; Klasse 2 (Gateway oder mobiles SDK) bleibt der Weg
@@ -140,7 +159,7 @@ RP1210 ist wie J2534 eine Windows-API → gleiche Gateway-Logik.
 
 ## 6. Was die App je Klasse kann
 
-| Fähigkeit | Klasse 1 (BLE/WLAN) | Klasse 2 (Passthru) | Klasse 3 (DoIP) | Klasse 4 (OEM) |
+| Fähigkeit | Klasse 1 (BLE/WLAN/USB) | Klasse 2 (Passthru) | Klasse 3 (DoIP) | Klasse 4 (OEM) |
 |---|---|---|---|---|
 DTC lesen/löschen | ✅ | ✅ | ✅ | ❌ (Herstellersoftware) |
 Live-Daten / Logging | ✅ | ✅ | ✅ | ❌ |
@@ -171,7 +190,7 @@ Bevor ein Gerät in die Matrix „getestet" bekommt:
 
 ## 8. Empfehlung in einem Satz
 
-**Version 1:** zwei bis drei zertifizierte BLE-/WLAN-VCIs (STN-Klasse) + ein Passthru-Gerät mit mobilem SDK → Diagnose und Service-Rückstellung überall dort, wo die Werkstatt heute schon einen Dongle in der Schublade hat.
+**Version 1:** zwei bis drei zertifizierte BLE-/WLAN-VCIs (STN-Klasse), dazu ein USB-Modell am FTDI-Wandler (OBDLink EX, Status: zu zertifizieren), + ein Passthru-Gerät mit mobilem SDK → Diagnose und Service-Rückstellung überall dort, wo die Werkstatt heute schon einen Dongle in der Schublade hat.
 **Version 2:** Gateway im LAN → alle J2534-Geräte und DoIP werden nutzbar, inklusive Flashen.
 **Version 3:** eigene Hardware nur, wenn Content und Kundenbasis die Investition tragen.
 
