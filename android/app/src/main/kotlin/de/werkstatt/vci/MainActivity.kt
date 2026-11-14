@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import de.werkstatt.vci.transport.BleGattVerbindung
 import de.werkstatt.vci.transport.UsbDongleVerbindung
+import java.time.LocalDateTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -81,6 +82,9 @@ private fun WerkstattStatus() {
     var berichtJson by remember { mutableStateOf("") }
     var bericht by remember { mutableStateOf<VciBericht?>(null) }
     var berichtFehler by remember { mutableStateOf<String?>(null) }
+    var berichtAblage by remember { mutableStateOf<String?>(null) }
+    var berichtTeilenOk by remember { mutableStateOf(true) }
+    var berichtTeilenLaeuft by remember { mutableStateOf(false) }
 
     suspend fun donglePruefen(quelle: suspend () -> List<Befund>) {
         dongleLaeuft = true
@@ -229,6 +233,7 @@ private fun WerkstattStatus() {
             onClick = {
                 bericht = null
                 berichtFehler = null
+                berichtAblage = null
                 try {
                     bericht = VciBericht.ausJson(berichtJson)
                 } catch (e: VciBericht.Fehler) {
@@ -270,6 +275,42 @@ private fun WerkstattStatus() {
             )
             Spacer(Modifier.height(8.dp))
             b.pruefungen.forEach { PruefungZeile(it) }
+
+            Spacer(Modifier.height(12.dp))
+            Button(
+                onClick = {
+                    val jetzt = LocalDateTime.now()
+                    val name = BerichtDatei.name(b, jetzt)
+                    val inhalt = BerichtDatei.inhalt(b, berichtJson, jetzt)
+                    berichtAblage = null
+                    berichtTeilenLaeuft = true
+                    scope.launch {
+                        // Datei schreiben und Teilen-Dialog öffnen — nicht im UI-Thread.
+                        val meldung = withContext(Dispatchers.IO) {
+                            BerichtTeilen.teilen(context, name, inhalt)
+                        }
+                        berichtTeilenOk = meldung == null
+                        berichtAblage = meldung ?: BerichtTeilen.ablage(name)
+                        berichtTeilenLaeuft = false
+                    }
+                },
+                enabled = !berichtTeilenLaeuft
+            ) {
+                Text("Bericht als Datei teilen")
+            }
+
+            berichtAblage?.let { ziel ->
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = if (berichtTeilenOk) "Gespeichert: $ziel" else ziel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (berichtTeilenOk) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    }
+                )
+            }
         }
 
         Spacer(Modifier.height(32.dp))
