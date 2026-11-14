@@ -10,10 +10,10 @@ Bildschirm ist der Transport ein Simulator im Arbeitsspeicher
 (`SimulatorTransport`), der auf TesterPresent antwortet. Alles andere wäre ohne
 Hardware eine Behauptung.
 
-Daneben stehen zwei Transportwege, die noch **nicht** mit dem Bildschirm
-verdrahtet sind: das eigene Drahtformat des C-Kerns über rohe CAN-Rahmen (Weg A)
-und der Textwege zu Klasse-1-Dongles mit STN-Firmware (Weg B, Abschnitt
-[Transport](#transport)).
+Daneben stehen zwei Transportwege: das eigene Drahtformat des C-Kerns über rohe
+CAN-Rahmen (Weg A) und der Textweg zu Klasse-1-Dongles mit STN-Firmware (Weg B,
+Abschnitt [Transport](#transport)). Weg B ist seit dem OBDLink-Abschnitt am
+Bildschirm verdrahtet, Weg A noch nicht — er hat weiterhin keinen Knopf.
 
 ## Aufbau
 
@@ -201,6 +201,13 @@ Zwei Eigenheiten von BLE stecken im Transport:
   Pfad so ohne Provider im Manifest auskommt. Der Dateiname entschärft den
   Gerätenamen (nur `A–Z`, `a–z`, `0–9`, `-`, `_`, `.`), damit kein Gerät mit
   `/` im Namen den Pfad zerlegt.
+- **OBDLink am Kabel (Klasse 1)** — eigener Abschnitt am Bildschirm: „OBDLink
+  öffnen“ sucht ein FTDI-Gerät, holt die USB-Freigabe, öffnet mit 115.200 Baud
+  und fragt `STI`; erst wenn dort `STN…` steht, gilt der Dongle als
+  angesprochen. Danach liest „Dienst 22 F190 lesen“ einen lesenden Dienst und
+  zeigt Größe, Hex und den druckbaren Text. Die Auswertung steckt in
+  `DienstAntwort` (Hex, ASCII, Negative Response Codes im Klartext), damit sie
+  ohne Gerät prüfbar bleibt.
 - **Selbsttest-Bericht ohne Eingabe** — der Knopf „Selbsttest-Bericht teilen“
   steht direkt bei der Dongle-Prüfung und braucht nichts Eingefügtes: er nimmt
   die Kern- und Dongle-Befunde, die ohnehin auf dem Bildschirm stehen, und
@@ -210,27 +217,29 @@ Zwei Eigenheiten von BLE stecken im Transport:
   zwei Berichte, zwei Wahrheiten, nicht vermischt. Ist die Dongle-Prüfung noch
   nicht gelaufen, steht dort „nicht gelaufen“ statt einer erfundenen Messung.
 
-Der Klasse-1-Pfad (Weg B) ist gebaut, aber **noch nicht** an den Bildschirm
-gehängt: `MainActivity` kennt bisher nur `BleGattVerbindung` und den Simulator.
-Bis dahin gilt für die Anzeige unverändert: ohne Dongle und Fahrzeug zeigt die
-Prüfung auf dem Gerät ehrlich „kein USB-Dongle gefunden“ bzw. „kein Dongle
-gefunden“.
+Der Klasse-1-Pfad ist damit am Bildschirm: `ObdLinkAbschnitt.kt` hängt
+`FtdiStnVerbindung` (FTDI-Kabel), `StnKennung` (`STI`) und `StnKanal` an die
+Oberfläche. Der rohe USB-Weg (Weg A) bleibt daneben unverändert — zwei Wege,
+zwei Knöpfe, keine stille Umschaltung. Ohne Dongle und Fahrzeug zeigt die
+Prüfung auf dem Gerät weiter ehrlich „kein USB-Dongle gefunden“ bzw. „kein
+Dongle gefunden“.
 
 ## Geprüft / nicht geprüft
 
 Geprüft: `:bindings:test` (drei Linktests gegen die echte Rust-Bibliothek).
-`:app` enthält **90 `@Test`** in elf Dateien — `VciCheck` 3, `DonglePruefung` 3,
+`:app` enthält **96 `@Test`** in zwölf Dateien — `VciCheck` 3, `DonglePruefung` 3,
 `Wire` 9, `BleCanTransport` 7, `BleSerielleStrecke` 9, `UsbSerielleStrecke` 8,
-`StnKanal` 15, `StnKennung` 10, `VciBericht` 13, `BerichtDatei` 6, `AppBericht` 7.
+`StnKanal` 15, `StnKennung` 10, `VciBericht` 13, `BerichtDatei` 6, `AppBericht` 7,
+`DienstAntwort` 7.
 
-Davon sind **68 in dieser Umgebung tatsächlich gelaufen**: die sieben neueren
+Davon sind **74 in dieser Umgebung tatsächlich gelaufen**: die acht neueren
 Testklassen (`StnKanal`, `StnKennung`, `BleSerielleStrecke`,
-`UsbSerielleStrecke`, `VciBericht`, `BerichtDatei`, `AppBericht`) wurden mit
-`kotlinc 2.0.21` gegen JDK 17 übersetzt und über `org.junit.runner.JUnitCore`
-gestartet — alle grün. Die übrigen 22 wurden früher über `:app:testDebugUnitTest`
-ausgeführt; ein Gradle-Lauf ist hier **nicht** möglich, weil in dieser Umgebung
-kein Android SDK installiert ist. Ob die 90 Tests zusammen unter Gradle
-durchlaufen, ist damit offen.
+`UsbSerielleStrecke`, `VciBericht`, `BerichtDatei`, `AppBericht`,
+`DienstAntwort`) wurden mit `kotlinc 2.0.21` gegen JDK 17 übersetzt und über
+`org.junit.runner.JUnitCore` gestartet — alle grün. Die übrigen 22 wurden früher
+über `:app:testDebugUnitTest` ausgeführt; ein Gradle-Lauf ist hier **nicht**
+möglich, weil in dieser Umgebung kein Android SDK installiert ist. Ob die 96
+Tests zusammen unter Gradle durchlaufen, ist damit offen.
 
 Ebenfalls geprüft (früher, mit NDK): `:app:assembleDebug` (Kompilierung,
 Ressourcen, Manifest, Paketierung), APK-Inhalt (startbare Activity
@@ -246,11 +255,13 @@ kein glibc), 29 exportierte `uniffi_vci_ffi_*`-Symbole darunter
 Umgebung endet an unaufgelösten Symbolen (`android.*`, `com.hoho.*`,
 `Context`). Sie sind geschrieben, aber kein Compiler hat sie bisher gesehen —
 der erste `assembleDebug` auf einer Maschine mit SDK ist ihr erster echter Test.
-Dasselbe gilt für die Erweiterung um den Checker-Bericht in `MainActivity.kt` und
-für `BerichtTeilen.kt`: geprüft ist dort nur, dass beide Dateien syntaktisch
-fehlerfrei parsen (Compilerlauf: keine Syntaxfehler, nur unaufgelöste Android-
-und Compose-Symbole). Die Logik dahinter (`VciBericht`, `BerichtDatei`,
-`AppBericht`) ist dagegen übersetzt und getestet.
+Dasselbe gilt für die Erweiterung um den Checker-Bericht in `MainActivity.kt`,
+für `BerichtTeilen.kt` und für `ObdLinkAbschnitt.kt`: geprüft ist dort nur, dass
+die Dateien syntaktisch fehlerfrei parsen (Compilerlauf: keine Syntaxfehler, nur
+unaufgelöste Android- und Compose-Symbole). Die Logik dahinter (`VciBericht`,
+`BerichtDatei`, `AppBericht`, `DienstAntwort`) ist dagegen übersetzt und
+getestet. **Der OBDLink-Weg ist damit verdrahtet, aber nicht erprobt** — kein
+FTDI-Gerät, kein Fahrzeug, kein Emulator in dieser Umgebung.
 
 Nicht geprüft: **Start auf einem Gerät oder Emulator**. In dieser VM ist
 `/dev/kvm` für den Benutzer nicht zugänglich, ein Emulator wäre ohne
@@ -268,6 +279,7 @@ funktioniert.
 
 1. Gerätetest mit NDK-gebauter Bibliothek (arm64-v8a) — inklusive
    `UsbSerialStrecke`/`FtdiStnVerbindung` erstmals durch den Compiler.
-2. Klasse-1-Pfad an den Bildschirm hängen: `FtdiStnVerbindung` öffnen,
-   `STI`-Kennung anzeigen, einen lesenden Dienst (0x22 F190) fahren.
+2. Klasse-1-Weg am Gerät erproben: `STI`-Kennung eines echten OBDLink EX/SX
+   anzeigen und `22 F190` am Fahrzeug lesen — der Knopf ist da, die Hardware
+   fehlt.
 3. Erst danach VCI-Status und der erste schreibende Service am Fahrzeug.
