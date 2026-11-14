@@ -116,9 +116,8 @@ Ehrlich benannt, damit niemand mehr hineinliest, als drin ist:
 - **Keine Aussage über den Dongle-Typ**: Die App spricht ein eigenes, dokumentiertes
   Drahtformat. ELM327-Klone und reine Text-Dongles funktionieren bewusst nicht
   (siehe [Dongle-Matrix](vci-dongle-matrix.md)) — sie werden beim USB-Weg u. U.
-  erkannt, antworten aber nicht. Klasse-1-Geräte mit STN-Firmware (OBDLink & Co.)
-  sind als eigener Transportweg vorgesehen, stecken aber noch nicht in dieser
-  App-Version; sie melden deshalb heute ebenfalls „kein Dongle gefunden“.
+  erkannt, antworten aber nicht. Klasse-1-Geräte mit STN-Firmware (OBDLink EX/SX
+  am FTDI-Kabel) haben einen **eigenen** Weg — Abschnitt 12.
 - **Kein Ersatz für Multimeter oder Oszilloskop**: Die Spannung ist ein
   Näherungswert des Dongles, keine belastbare Messung.
 - **Keine Diagnose des Busses**: Ein verdrehtes CAN-Paar, ein Kurzschluss oder ein
@@ -201,3 +200,32 @@ Wohin: an die Support-Adresse, die im Werkstattaushang steht.
 gelaufen. Kommt der Dialog nicht oder lässt sich die Datei nicht anhängen, liegt
 sie trotzdem unter Downloads → Werkstatt VCI — von dort per Kabel oder
 Dateien-App weiterschicken.
+
+---
+
+## 12. OBDLink am Kabel (Klasse 1)
+
+OBDLink EX/SX hängen hinter einem FTDI-Wandler und sprechen **Textbefehle** — ein
+eigener Weg neben dem rohen USB-Weg. Der Dongle macht dabei ISO-TP selbst,
+deshalb gibt es hier zwei Schritte statt einer Prüfung.
+
+| Schritt | Knopf | Was passiert |
+| --- | --- | --- |
+| 1 | **OBDLink öffnen** | sucht ein FTDI-Gerät, fragt die USB-Freigabe ab, öffnet mit 115.200 Baud und fragt `STI` — erst wenn dort `STN…` steht, wird der Dongle angenommen |
+| 2 | **Dienst 22 F190 lesen** | liest die Fahrgestellnummer (ein lesender Dienst) und zeigt Größe, Hex und den druckbaren Text |
+
+| Anzeige | Bedeutung | Was tun |
+| --- | --- | --- |
+| **OK** „OBDLink“ · `STN2256 v5.9.1 · VID 0403:PID 6015` (Beispiel) | STN-Firmware bestätigt, Port offen. | Weiter mit Schritt 2. |
+| **FEHLER** „kein FTDI-Dongle gefunden“ | Kein Gerät mit FTDI-Chip sichtbar. | Kabel prüfen, anderen USB-Anschluss nehmen, Dongle an einem PC gegenprüfen. |
+| **FEHLER** „… kein STN-Gerät“ | Es antwortet etwas, aber nicht mit `STN…` — meist ein ELM327-Clone. | Nicht weiterarbeiten; Gerät aus der [Dongle-Matrix](vci-dongle-matrix.md) nehmen. |
+| **FEHLER** „Dongle antwortet nicht“ | Der Port ist offen, aber die Einstellbefehle werden nicht bestätigt. | Zündung an, Dongle ab- und wieder anstecken, neu öffnen. |
+| **OK** „Dienst 22 F190“ · `15 Byte · 62 F1 90 … · Text: …` | Das Steuergerät hat geantwortet. | Nichts — das ist der Nachweis, dass der Weg bis ins Steuergerät steht. |
+| **FEHLER** „abgelehnt (Dienst 22, NRC 31 …)“ | Das Steuergerät kennt diese Kennung nicht. | Anderes Fahrzeug probieren. Der Dongle ist in Ordnung. |
+| **FEHLER** „… NRC 22: Bedingungen nicht erfüllt — Zündung an?“ | Meist fehlt Klemme 15. | Zündung an, erneut lesen. |
+| **FEHLER** „Steuergerät antwortet nicht“ | Kein Gerät auf dem Bus. | Wie Abschnitt 7 — Zündung, Pin, anderes Steuergerät. |
+
+**Grenzen dieses Wegs:** nur lesen. Kein Schreiben, kein Codieren, kein Flashen,
+und langsam: Textbefehle brauchen Sekunden, große Blöcke länger. Der rohe
+USB-Weg (Abschnitt 4) bleibt für Dongles, die unser eigenes Drahtformat sprechen —
+die beiden Knöpfe schalten sich nicht gegenseitig um.
