@@ -40,6 +40,16 @@ echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 gradle -p android :app:assembleDebug
 ```
 
+Die Tests von `:app` brauchen weder Gradle noch ein Gerät:
+
+```sh
+sh scripts/jvm-tests.sh
+```
+
+Das Skript übersetzt Bindings, Haupt- und Testcode mit dem Kotlin-Compiler aus dem
+Gradle-Cache gegen JDK 17 und startet JUnit auf der JVM; die native Bibliothek
+kommt aus dem Host-Build (siehe [Geprüft / nicht geprüft](#geprüft--nicht-geprüft)).
+
 Der erste Gradle-Lauf braucht **Netzzugang**: `:app` hängt an
 `com.github.mik3y:usb-serial-for-android:3.11.0`, das nur über JitPack verteilt
 wird. Das Repository steht dafür in `android/settings.gradle.kts`; ohne JitPack
@@ -304,19 +314,26 @@ Geprüft: `:bindings:test` (drei Linktests gegen die echte Rust-Bibliothek).
 `UsbSerielleStrecke` 8, `StnKanal` 18, `StnKennung` 10, `Zeilenpuffer` 11,
 `VciBericht` 13, `BerichtDatei` 6, `AppBericht` 9, `DienstAntwort` 8, `Frist` 5.
 
-Davon sind **106 in dieser Umgebung tatsächlich gelaufen**: elf Testklassen
-(`StnKanal`, `StnKennung`, `BleSerielleStrecke`, `UsbSerielleStrecke`,
-`Zeilenpuffer`, `Wire`, `VciBericht`, `BerichtDatei`, `AppBericht`,
-`DienstAntwort`, `Frist`) wurden mit `kotlinc 2.0.21` gegen JDK 17 übersetzt und
-über `org.junit.runner.JUnitCore` gestartet — alle grün.
+Alle **119 sind in dieser Umgebung gelaufen** — `sh scripts/jvm-tests.sh` endet
+mit `OK (119 tests)`. Übersetzt wird mit `kotlinc 2.0.21` gegen JDK 17,
+gestartet über `org.junit.runner.JUnitCore`.
 
-Die übrigen 13 (`VciCheck` 3, `DonglePruefung` 3, `BleCanTransport` 7) brauchen
-die native Bibliothek und laufen hier nicht: die mitgelieferte `libvci_ffi.so`
-ist gegen Bionic gelinkt (`DT_NEEDED libdl.so`) und lässt sich auf glibc nicht
-öffnen; die erzeugten Bindings sind außerdem gegen ein neueres JDK übersetzt als
-das, das in dieser Umgebung liegt. Ein Gradle-Lauf ist ebenfalls **nicht**
-möglich, weil kein Android SDK installiert ist. Ob alle 119 zusammen unter Gradle
-durchlaufen, ist damit offen.
+Dafür brauchte es zwei Handgriffe, die das Skript festhält:
+
+1. **Die Bindings werden mit übersetzt** (`-jvm-target 17`). Die erzeugte
+   `vci_ffi.kt` ist auf Java 21 eingestellt; ein älteres JDK kann die
+   Klassendateien sonst nicht laden (`UnsupportedClassVersionError`, 65.0).
+2. **Geladen wird der Host-Build der Bibliothek**, nicht der aus `jniLibs`. Die
+   Datei für Android verlangt `libdl.so` und Symbole der Version `LIBC` — auf
+   glibc heißt die Version `GLIBC_2.2.5`, `dlopen` scheitert also unabhängig von
+   den Tests. `core-ffi/target/release/libvci_ffi.so` aus
+   `cargo build --release` ist derselbe Rust-Code für diese Plattform und lässt
+   sich laden. Damit laufen `VciCheck`, `DonglePruefung` und `BleCanTransport`
+   gegen den **echten Kern**, nicht gegen eine Attrappe.
+
+Ein Gradle-Lauf bleibt **nicht** möglich — kein Android SDK, kein NDK. Dass
+`:app:testDebugUnitTest` dieselben 119 Tests grün sieht, ist damit weiterhin
+offen; geprüft ist die Testlogik, nicht die Gradle-Verdrahtung.
 
 Ebenfalls geprüft (früher, mit NDK): `:app:assembleDebug` (Kompilierung,
 Ressourcen, Manifest, Paketierung), APK-Inhalt (startbare Activity
