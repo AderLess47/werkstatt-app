@@ -28,7 +28,8 @@ unten lesen.
 ## 2. Die Zeichen auf dem Bildschirm
 
 Jeder Befund ist eine Karte mit **OK** oder **FEHLER** in der ersten Zeile.
-„Prüfe …“ heißt: es läuft noch. Ein Lauf über USB dauert normalerweise unter
+Eine Wartezeile („Prüfe …“, „Suche …“, „Warte auf …“) heißt: es läuft noch —
+und sie sagt, worauf gewartet wird. Ein Lauf über USB dauert normalerweise unter
 zwei Sekunden. Über Bluetooth kommen bis zu 10 Sekunden Suche und bis zu
 15 Sekunden Verbindungsaufbau dazu — dort also ruhig bis zu einer halben Minute
 warten, bevor „nichts gefunden“ geglaubt wird. Wie lange im Einzelfall gewartet
@@ -251,7 +252,7 @@ Hier rechnet **die App** ISO-TP: der Dongle sieht nur CAN-Rahmen.
 | **FEHLER** „ließ sich nicht öffnen — von einer anderen App belegt?“ | Ein anderes Programm hält das Gerät. | Diagnose-Apps schließen, Kabel ab/an, erneut. |
 | **OK** „Dienst 22 F190“ · `15 Byte · 62 F1 90 … · Text: …` | Der Weg bis ins Steuergerät steht, auf **diesem** Weg. | Nichts. |
 | **FEHLER** „abgelehnt (Dienst 22, NRC 31 …)“ | Das Steuergerät kennt die Kennung nicht. | Anderes Fahrzeug; der Dongle ist in Ordnung. |
-| **FEHLER** „keine Antwort — Zündung an, Bus erreichbar?“ | Kein Gerät auf dem Bus oder Abbruch der Segmentierung. | Wie Abschnitt 7: Zündung, Pin, anderes Steuergerät. |
+| **FEHLER** „beim Warten auf die Antwort abgebrochen: …“ | In der Frist kam keine vollständige Antwort. | Zündung, Stecker, anderes Steuergerät (Abschnitt 7). Der Satz nach dem Doppelpunkt nennt den Grund aus der App. |
 
 **Abgrenzung zu „USB prüfen“ (Abschnitt 4):** Der Knopf weiter oben macht den
 Schnelltest — Gerät finden, Bordspannung, TesterPresent — und sein Ergebnis geht
@@ -264,12 +265,18 @@ beiden Wegen erneut prüfen und beide Berichte mitschicken.
 
 ---
 
-## 14. Wie lange „Läuft …“ stehen darf
+## 14. Wie lange die App wartet
 
-Solange „Läuft …“ auf dem Bildschirm steht, arbeitet die App. Die Knöpfe sind
-dann absichtlich gesperrt — bitte **nicht** mehrfach drücken, nicht abziehen und
-das Tablet nicht sperren. Warten Sie, bis der Befund erscheint; er kommt immer,
-spätestens wenn die App aufgibt.
+Solange eine Wartezeile auf dem Bildschirm steht, arbeitet die App — und sie nennt
+dabei den Schritt, zum Beispiel:
+
+> Warte auf die Antwort auf 22 F190 — Frist 1,5 s je Rahmen, bei 20 Byte bis 4,5 s
+
+Bricht etwas ab, steht derselbe Schritt im Fehler („beim Warten auf die Antwort
+abgebrochen: …“). So lässt sich einem Bericht ansehen, **wobei** es gehangen hat.
+Die Knöpfe sind währenddessen absichtlich gesperrt — bitte **nicht** mehrfach
+drücken, nicht abziehen und das Tablet nicht sperren. Warten Sie, bis der Befund
+erscheint; er kommt immer, spätestens wenn die App aufgibt.
 
 | Vorgang | Normal | Spätestens |
 | --- | --- | --- |
@@ -278,6 +285,7 @@ spätestens wenn die App aufgibt.
 | Dienst lesen, roher USB-Weg (Abschnitt 13) | unter 1 Sekunde | nach etwa 5 Sekunden |
 | Dienst lesen, OBDLink am Kabel (Abschnitt 12) | 1–2 Sekunden | beim ersten Mal nach etwa 5 Sekunden (die App stellt dabei den Ziel-Header ein), danach nach etwa 3 Sekunden |
 | OBDLink öffnen (Abschnitt 12) | 1–2 Sekunden | nach etwa 15 Sekunden |
+| Bluetooth-Dongle suchen und verbinden (Abschnitt 5) | 2–5 Sekunden | nach etwa 25 Sekunden |
 
 **Wird die Grenze ohne Antwort erreicht**, steht dort ein Fehler — meist „keine
 Antwort“ oder „Dongle antwortet nicht“. Das ist kein Hänger: Die App hat gewartet
