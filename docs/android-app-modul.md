@@ -250,8 +250,9 @@ Zwei Eigenheiten von BLE stecken im Transport:
   ohne Gerät prüfbar bleibt.
 - **Selbsttest-Bericht ohne Eingabe** — der Knopf „Selbsttest-Bericht teilen“
   steht direkt bei der Dongle-Prüfung und braucht nichts Eingefügtes: er nimmt
-  die Kern- und Dongle-Befunde, die ohnehin auf dem Bildschirm stehen, und
-  schreibt daraus `vci-selbsttest-<gerät>-<jjjjmmtt-hhmm>.txt` (gleiche Ablage,
+  die Kern- und Dongle-Befunde, die ohnehin auf dem Bildschirm stehen, dazu den
+  zuletzt angekündigten Warteschritt („Zuletzt gewartet auf“), und schreibt
+  daraus `vci-selbsttest-<gerät>-<jjjjmmtt-hhmm>.txt` (gleiche Ablage,
   gleicher Teilen-Dialog). Die Datei sagt selbst, was sie ist: Selbsttest der
   App auf diesem Telefon, **nicht** der Bericht von `vci-check --json` —
   zwei Berichte, zwei Wahrheiten, nicht vermischt. Ist die Dongle-Prüfung noch
@@ -275,18 +276,18 @@ gefunden“ bzw. „kein Dongle gefunden“.
 ## Geprüft / nicht geprüft
 
 Geprüft: `:bindings:test` (drei Linktests gegen die echte Rust-Bibliothek).
-`:app` enthält **96 `@Test`** in zwölf Dateien — `VciCheck` 3, `DonglePruefung` 3,
+`:app` enthält **98 `@Test`** in zwölf Dateien — `VciCheck` 3, `DonglePruefung` 3,
 `Wire` 9, `BleCanTransport` 7, `BleSerielleStrecke` 9, `UsbSerielleStrecke` 8,
-`StnKanal` 15, `StnKennung` 10, `VciBericht` 13, `BerichtDatei` 6, `AppBericht` 7,
+`StnKanal` 15, `StnKennung` 10, `VciBericht` 13, `BerichtDatei` 6, `AppBericht` 9,
 `DienstAntwort` 7.
 
-Davon sind **74 in dieser Umgebung tatsächlich gelaufen**: die acht neueren
+Davon sind **76 in dieser Umgebung tatsächlich gelaufen**: die acht neueren
 Testklassen (`StnKanal`, `StnKennung`, `BleSerielleStrecke`,
 `UsbSerielleStrecke`, `VciBericht`, `BerichtDatei`, `AppBericht`,
 `DienstAntwort`) wurden mit `kotlinc 2.0.21` gegen JDK 17 übersetzt und über
 `org.junit.runner.JUnitCore` gestartet — alle grün. Die übrigen 22 wurden früher
 über `:app:testDebugUnitTest` ausgeführt; ein Gradle-Lauf ist hier **nicht**
-möglich, weil in dieser Umgebung kein Android SDK installiert ist. Ob die 96
+möglich, weil in dieser Umgebung kein Android SDK installiert ist. Ob die 98
 Tests zusammen unter Gradle durchlaufen, ist damit offen.
 
 Ebenfalls geprüft (früher, mit NDK): `:app:assembleDebug` (Kompilierung,
