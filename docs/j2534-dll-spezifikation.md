@@ -21,8 +21,7 @@ Drei Gründe, in dieser Reihenfolge:
 
 | Plattform | Artefakt | Status |
 |---|---|---|
-Windows x64 | `j2534.dll` (MSVC), Registry-Eintrag | Quellen + Exportliste vorhanden, Build erfordert MSVC/MinGW |
-Linux x64 | `libj2534.so` | gebaut, 46 Abnahmeprüfungen grün (`make test`) |
+Windows x64 | `j2534.dll` (MSVC), Registry-Eintrag | Quellen + Exportliste vorhanden, Build erfordert MSVC/MinGW | Linux x64 | `libj2534.so` | gebaut, 46 Abnahmeprüfungen grün (`make test`) |
 macOS | `libj2534.dylib` | gleiche Quellen, nicht gebaut |
 Android / iOS | **kein J2534** | dort direkt die Rust-API; kein DLL-Loading, kein Bedarf |
 
