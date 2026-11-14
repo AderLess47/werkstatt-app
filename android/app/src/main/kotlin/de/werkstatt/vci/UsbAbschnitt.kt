@@ -22,7 +22,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import de.werkstatt.vci.transport.UsbCanTransport
 import de.werkstatt.vci.transport.UsbDongleVerbindung
-import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -48,13 +47,6 @@ import uniffi.vci_ffi.IsoTp
  * nicht beliebig lange warten lässt.
  */
 private const val ANTWORT_FRIST_MS = 1_500u
-
-/**
- * Sekundenangabe für die Wartezeile — deutsch formatiert (`1,5 s`), damit die
- * Anzeige zur Werkstatt-Anleitung passt und nicht `1.5` schreibt.
- */
-internal fun fristText(ms: Long): String =
-    String.format(Locale.GERMANY, "%.1f s", ms.toDouble() / 1_000.0)
 
 /**
  * Roher USB-Weg (Weg A): eigenes Drahtformat, ISO-TP rechnet der Kern.
