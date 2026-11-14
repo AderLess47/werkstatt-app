@@ -217,6 +217,8 @@ private fun WerkstattStatus() {
             }
         }
 
+        UsbAbschnitt()
+
         ObdLinkAbschnitt()
 
         Spacer(Modifier.height(8.dp))
