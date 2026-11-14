@@ -12,8 +12,9 @@ Hardware eine Behauptung.
 
 Daneben stehen zwei Transportwege: das eigene Drahtformat des C-Kerns über rohe
 CAN-Rahmen (Weg A) und der Textweg zu Klasse-1-Dongles mit STN-Firmware (Weg B,
-Abschnitt [Transport](#transport)). Weg B ist seit dem OBDLink-Abschnitt am
-Bildschirm verdrahtet, Weg A noch nicht — er hat weiterhin keinen Knopf.
+Abschnitt [Transport](#transport)). Beide Wege hängen inzwischen am Bildschirm:
+Weg B im Abschnitt „OBDLink (Klasse 1)“, Weg A im Abschnitt „Eigenes
+Drahtformat (Weg A)“.
 
 ## Aufbau
 
@@ -95,7 +96,7 @@ spricht exakt das Drahtformat, das der C-Kern unter Windows schon spricht
 | --- | --- |
 | `transport/Wire.kt` | Format: Rahmen bauen, CRC-16/CCITT-FALSE, CAN-Nutzlast, Spannung; `RahmenLeser` puffert, resynchronisiert, verwirft CRC-Fehler |
 | `transport/UsbCanTransport.kt` | `CanTransport` über `UsbDeviceConnection.bulkTransfer`; sucht ein Gerät mit herstellerspezifischer Schnittstelle und Bulk-Endpunkten |
-| `transport/UsbDongleVerbindung.kt` | Gerätesuche, USB-Freigabe per Broadcast, Öffnen, Prüflauf |
+| `transport/UsbDongleVerbindung.kt` | Gerätesuche, USB-Freigabe per Broadcast, Öffnen, Prüflauf; `oeffnen()` gibt den offenen Transport einzeln heraus |
 | `transport/BleCanTransport.kt` | `CanTransport` über eine GATT-Benachrichtigung; **kennt kein Android**, nimmt nur eine Schreibfunktion und `empfangen()` |
 | `transport/BleGattVerbindung.kt` | Scan auf die Dienst-UUID, Verbindung, Dienst-Suche, Benachrichtigung einschalten, Schreibquittungen |
 | `DonglePruefung.kt` | Bordspannung und TesterPresent (0x3E 0x00) durch den Kern — für beide Wege dieselbe Prüfung |
@@ -201,6 +202,12 @@ Zwei Eigenheiten von BLE stecken im Transport:
   Pfad so ohne Provider im Manifest auskommt. Der Dateiname entschärft den
   Gerätenamen (nur `A–Z`, `a–z`, `0–9`, `-`, `_`, `.`), damit kein Gerät mit
   `/` im Namen den Pfad zerlegt.
+- **Eigenes Drahtformat (Weg A)** — „USB-Dongle öffnen“ holt Freigabe und Gerät
+  (`UsbDongleVerbindung.oeffnen`), „Dienst 22 F190 lesen“ schickt die Kennung
+  durch `IsoTp` über `UsbCanTransport`; gelesen wird die Antwort mit demselben
+  `DienstAntwort` wie auf dem Klasse-1-Weg, damit sich beide Wege vergleichen
+  lassen. Der Knopf „USB prüfen“ bleibt daneben der Schnelltest (Bordspannung,
+  TesterPresent) und speist den Selbsttest-Bericht.
 - **OBDLink am Kabel (Klasse 1)** — eigener Abschnitt am Bildschirm: „OBDLink
   öffnen“ sucht ein FTDI-Gerät, holt die USB-Freigabe, öffnet mit 115.200 Baud
   und fragt `STI`; erst wenn dort `STN…` steht, gilt der Dongle als
@@ -217,12 +224,13 @@ Zwei Eigenheiten von BLE stecken im Transport:
   zwei Berichte, zwei Wahrheiten, nicht vermischt. Ist die Dongle-Prüfung noch
   nicht gelaufen, steht dort „nicht gelaufen“ statt einer erfundenen Messung.
 
-Der Klasse-1-Pfad ist damit am Bildschirm: `ObdLinkAbschnitt.kt` hängt
-`FtdiStnVerbindung` (FTDI-Kabel), `StnKennung` (`STI`) und `StnKanal` an die
-Oberfläche. Der rohe USB-Weg (Weg A) bleibt daneben unverändert — zwei Wege,
-zwei Knöpfe, keine stille Umschaltung. Ohne Dongle und Fahrzeug zeigt die
-Prüfung auf dem Gerät weiter ehrlich „kein USB-Dongle gefunden“ bzw. „kein
-Dongle gefunden“.
+Beide Wege stehen damit als eigene Abschnitte am Bildschirm: `ObdLinkAbschnitt.kt`
+hängt `FtdiStnVerbindung` (FTDI-Kabel), `StnKennung` (`STI`) und `StnKanal` an
+die Oberfläche, `UsbAbschnitt.kt` den rohen USB-Weg über `UsbDongleVerbindung`
+und `IsoTp`. Keine stille Umschaltung: der eine Knopf entscheidet nicht über den
+anderen, und was ein Weg nicht kann, steht im Klartext daneben. Ohne Dongle und
+Fahrzeug zeigt die Prüfung auf dem Gerät weiter ehrlich „kein USB-Dongle
+gefunden“ bzw. „kein Dongle gefunden“.
 
 ## Geprüft / nicht geprüft
 
@@ -256,12 +264,13 @@ Umgebung endet an unaufgelösten Symbolen (`android.*`, `com.hoho.*`,
 `Context`). Sie sind geschrieben, aber kein Compiler hat sie bisher gesehen —
 der erste `assembleDebug` auf einer Maschine mit SDK ist ihr erster echter Test.
 Dasselbe gilt für die Erweiterung um den Checker-Bericht in `MainActivity.kt`,
-für `BerichtTeilen.kt` und für `ObdLinkAbschnitt.kt`: geprüft ist dort nur, dass
-die Dateien syntaktisch fehlerfrei parsen (Compilerlauf: keine Syntaxfehler, nur
-unaufgelöste Android- und Compose-Symbole). Die Logik dahinter (`VciBericht`,
-`BerichtDatei`, `AppBericht`, `DienstAntwort`) ist dagegen übersetzt und
-getestet. **Der OBDLink-Weg ist damit verdrahtet, aber nicht erprobt** — kein
-FTDI-Gerät, kein Fahrzeug, kein Emulator in dieser Umgebung.
+für `BerichtTeilen.kt`, `UsbAbschnitt.kt` und `ObdLinkAbschnitt.kt`: geprüft ist
+dort nur, dass die Dateien syntaktisch fehlerfrei parsen (Compilerlauf: keine
+Syntaxfehler, nur unaufgelöste Android- und Compose-Symbole). Die Logik dahinter
+(`VciBericht`, `BerichtDatei`, `AppBericht`, `DienstAntwort`) ist dagegen
+übersetzt und getestet. **Die beiden Wege sind damit verdrahtet, aber nicht
+erprobt** — kein FTDI-Gerät, kein VCI, kein Fahrzeug, kein Emulator in dieser
+Umgebung.
 
 Nicht geprüft: **Start auf einem Gerät oder Emulator**. In dieser VM ist
 `/dev/kvm` für den Benutzer nicht zugänglich, ein Emulator wäre ohne
