@@ -45,6 +45,9 @@ Steuergerät: mit beiden Wegen wiederholen und **beide Berichte** mitschicken.
 
 ---
 
+**Bittet das Steuergerät um Aufschub** (in der Wartezeile steht „0x78“), wartet
+die App bis zu dreimal je 5 Sekunden länger — das ist normal und kein Hänger.
+
 *Aushang zur Werkstatt-Anleitung §14. Ausführlich: `docs/selbsttest-anleitung.md` ·
 Prüfplan für die Geräteprüfung: `docs/geraetepruefung.md` · Die Zeiten sind
 Obergrenzen, an denen die App aufgibt — keine Messwerte vom Fahrzeug.*

@@ -8,8 +8,10 @@ das nach, in einer Reihenfolge, in der ein Fehler sofort zuzuordnen ist.
 
 Was hier **nicht** geprüft wird, weil es dafür einen anderen Aufbau braucht:
 Bluetooth-Strecken (zweiter Dongle, Kopplung), Zeitmessung auf die Millisekunde
-(Stoppuhr reicht nicht) und die 0x78-Behandlung (nicht implementiert, siehe
-[android-app-modul.md](android-app-modul.md), Abschnitt „Wartezeiten“).
+(Stoppuhr reicht nicht). Die 0x78-Behandlung ist seit Kurzem eingebaut, lässt
+sich mit diesem Aufbau aber nur prüfen, wenn ein Steuergerät sie wirklich
+sendet — die Prüfung ist als Punkt 9 aufgenommen, mit der Alternative, sie
+weiterhin offen zu lassen.
 
 ---
 
@@ -127,7 +129,27 @@ notieren, wie lange die Zeile stand, und die App schließen.
 
 ---
 
-## 9. Abhaken
+## 9. 0x78-Aufschub (optional, nur mit passendem Steuergerät)
+
+1. Ein Steuergerät suchen, das 0x78 sendet — typisch bei Routinen (Dienst `31`)
+   oder trägen Kennungen; bei `22 F190` selten. Ohne solches Steuergerät diesen
+   Abschnitt **überspringen** und im Abhaken „nicht prüfbar“ eintragen.
+2. Den Dienst auf beiden Wegen fahren (Abschnitte 4 und 6).
+3. Erwartet auf **Weg A**: die Wartezeile wechselt auf „Steuergerät meldet 0x78
+   (Antwort kommt noch) — warte erneut bis 5,0 s, Aufschub 1 von 3“, danach
+   kommt die Karte mit der echten Antwort. Auf **Weg B**: die erste Frist bleibt
+   bei 3,0 s, danach liest der Kanal bis 5,0 s weiter; kommt nichts, steht
+   „nach 0x78 keine Antwort innerhalb von 5000 ms (Dongle-Timeout ATST?)“.
+4. **Abweichung wäre:** „abgelehnt (Dienst …, NRC 78: Antwort kommt noch)“ als
+   Ergebnis; ein Hänger; oder mehr als drei Aufschübe.
+5. **Nicht prüfbar mit diesem Aufbau:** ob `IsotpChannel::recv` die Antwort nach
+   0x78 wirklich als neue ISO-TP-Nachricht liefert. Das zeigt nur dieser Versuch
+   am Fahrzeug — genau deshalb steht er hier und nicht in der Entwickler-Doku
+   als erledigt.
+
+---
+
+## 10. Abhaken
 
 | # | Schritt | erwartet | gesehen | Abweichung |
 | --- | --- | --- | --- | --- |
@@ -139,14 +161,15 @@ notieren, wie lange die Zeile stand, und die App schließen.
 | 6 | Klasse 1 lesen | Zeile mit „3,0 s“ | | |
 | 7 | Bericht | „Zuletzt gewartet auf“ = letzter Schritt | | |
 | 8 | Fehlerfälle | Karten statt Hänger | | |
+| 9 | 0x78-Aufschub | „0x78“ in der Wartezeile, danach echte Antwort; kein „NRC 78“ als Ergebnis | | |
 
 ---
 
-## 10. Wenn etwas abweicht
+## 11. Wenn etwas abweicht
 
 Notieren und mitschicken:
 
-1. welcher Schritt aus Abschnitt 9,
+1. welcher Schritt aus Abschnitt 10,
 2. der **genaue Text** der Zeile oder Karte (Foto ist erlaubt, wenn es lesbar ist),
 3. Tablet-Modell und Android-Version (steht im Kopf des Selbsttest-Berichts),
 4. Dongle (VID/PID oder Name),
