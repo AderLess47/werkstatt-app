@@ -3,6 +3,7 @@
 **Stand:** 14.11.2026 · Ergänzung zu [`werkstatt-app-plan.md`](werkstatt-app-plan.md) §9
 **Rechentool:** [wirtschaftlichkeit.xlsx](../model/wirtschaftlichkeit.xlsx) (11 Blätter) · **Quelle:** [wirtschaftlichkeit.py](../model/wirtschaftlichkeit.py)
 *Alle Beträge EUR netto. Annahmen und Grenzen: Blatt `09_Hinweise`.*
+*Bezugszahlen der Empfehlung: **V2 / Stufe B / S3 bei ARPA 150 €/Monat** — Modell-Lauf vom 14.11.2026, Kontrollausgabe mit `python model/wirtschaftlichkeit.py`.*
 
 ---
 
@@ -11,7 +12,7 @@
 1. **Die Unit Economics sind gut:** 120 €/Monat je Werkstatt, 85 % Deckungsbeitrag, Kunde hat seinen Akquise-Aufwand (700 €) nach **7 Monaten** bezahlt.
 2. **Das Problem ist nicht der Kunde, sondern die Zeit:** Der Fixkostenblock (Content + Overhead + Vertrieb) liegt bei **1,22 Mio €/Jahr** und startet am Launch-Tag — die Kundenbasis wächst aber nur mit 8–22 Betrieben pro Monat.
 3. **Deshalb liegt der Break-even bei 1.050–1.500 Werkstätten** — das sind **5–8 % des adressierbaren Marktes** in DACH und realistisch **4–6 Jahre** nach Markteintritt.
-4. **Der Kapitalbedarf ist 1,5- bis 2-mal so hoch wie die Entwicklung:** 3,4 Mio € (schlanke Variante) bis 13,6 Mio € (Herstellerniveau) — nicht 1,3–3,2 Mio € Entwicklungssumme.
+4. **Der Kapitalbedarf ist 1,5- bis 2-mal so hoch wie die Entwicklung:** 3,4 Mio € (schlanke Variante) bis 16,0 Mio € (Herstellerniveau mit reinem Direktvertrieb); in der empfohlenen Konstellation V2/B/S3 bei 150 €/Monat sind es **6,07 Mio €** — nicht 1,33–3,18 Mio € Entwicklungssumme.
 5. **Empfehlung:** schlanker Einstieg (Variante V1 oder V2, Stufe A/B), Preis ab 150 €/Monat statt 49-€-Einstieg, Vertrieb über Fachhandel/Ketten — oder die App im Portfolio eines etablierten Werkstattausrüsters (White-Label). Als eigenständiges Startup mit Direktvertrieb trägt das Modell nicht.
 
 ---
@@ -137,7 +138,7 @@ V3 / D | kein BE (16,02 M€) | kein BE (15,00 M€) | kein BE (13,56 M€) | ke
 
 1. **Reiner Direktvertrieb funktioniert nicht.** 8 Abschlüsse/Monat sind realistisch, reichen aber nicht: nach 6 Jahren sind es 322 Kunden, benötigt werden 1.358. Der Engpass ist der Vertrieb, nicht das Produkt.
 2. **Der Vertriebsweg verändert das Ergebnis stärker als die Technik.** Zwischen S1 und S3 liegen bei V2/B fast 2,2 Mio € Kapitalbedarf.
-3. **Herstellerniveau als Startup ist nicht finanzierbar.** V3/D braucht 13,6 Mio € — das ist eine Größenordnung für einen etablierten Ausrüster, nicht für ein Gründerteam.
+3. **Herstellerniveau als Startup ist nicht finanzierbar.** V3/D braucht 13,6 Mio € über den besten Vertriebsweg (reiner Direktvertrieb: 16,0 Mio €) — das ist eine Größenordnung für einen etablierten Ausrüster, nicht für ein Gründerteam.
 
 ---
 
@@ -161,7 +162,7 @@ Der Preis verbessert das **Endergebnis** deutlich (−5,75 → −3,46 M€), de
 **B — Kanal** | Fachhandel/Ausrüster und Ketten-Deals statt eigener Vertriebsmannschaft | Cash-BE 42–56 statt >72 Monate; Kapitalbedarf sinkt um 0,5–2 Mio € | 15–25 % Händlerrabatt, aber 140–280 T€ Vertriebsfixkosten gespart |
 **C — Partner/White-Label** | App im Portfolio eines etablierten Werkstattausrüsters | Entwicklung fremdfinanziert, Vertrieb und Markenaufbau entfallen | Marge je Kunde sinkt; Produktkontrolle geteilt |
 
-**Empfehlung:** Weg **B + C kombiniert**. Variante V1 oder V2 mit Stufe A/B, Preis ab 150 €/Monat, Fachhandel ab Monat 10, und parallel ein White-Label-Gespräch mit einem Werkstattausrüster. Kapitalbedarf in dieser Konstellation: **3,4–5,5 Mio €**, Break-even Monat 40–48. Das ist finanzierbar — die im Plan genannten 2,5 Mio € Entwicklungssumme sind es nicht.
+**Empfehlung:** Weg **B + C kombiniert**. Variante V1 oder V2 mit Stufe A/B, Preis ab 150 €/Monat, Fachhandel ab Monat 10, und parallel ein White-Label-Gespräch mit einem Werkstattausrüster. Kapitalbedarf in dieser Konstellation: **3,4–6,1 Mio €**, Break-even Monat 40–48 — die Spanne reicht von V1/A/S4 (3,38 Mio €, Monat 40) bis V2/B/S3 bei 150 €/Monat (6,07 Mio €, Monat 48). Das ist finanzierbar; die im Plan genannte Größenordnung von 2,5–4,0 Mio € beziffert den **Gesamtkostenrahmen** inklusive Lab, Fahrzeugen und Mehrmonaten bis M3, nicht die Entwicklungssumme von 1,33–3,18 Mio €.
 
 ---
 
