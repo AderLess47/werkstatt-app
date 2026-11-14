@@ -99,9 +99,12 @@ Zwei Eigenheiten von BLE stecken im Transport:
 
 **Nicht unterstützt:** ELM327-Klone und andere ASCII-Dongles. Sie machen ISO-TP
 selbst und liefern Textzeilen statt CAN-Rahmen — sie passen nicht durch
-`CanTransport` und sind laut [Dongle-Matrix](vci-dongle-matrix.md) bewusst
-ausgeschlossen. Der BLE-Weg setzt einen Dongle voraus, der unser Drahtformat
-als Byte-Strecke spricht.
+`CanTransport`. **Vorgesehen:** ein eigener Transport für Klasse-1-Geräte mit
+STN-Firmware (OBDLink & Co.), bei dem der Dongle ISO-TP übernimmt und die App
+nur die fertigen Diagnosenachrichten sieht — Aufbau und Grenzen in
+[Dongle-Matrix](vci-dongle-matrix.md) §1.1. Bis dieser Transport existiert, gilt
+unverändert: der BLE-Weg setzt einen Dongle voraus, der unser Drahtformat als
+Byte-Strecke spricht, und ELM327-Klone bleiben ausgeschlossen.
 
 Die Bytes werden nicht nur behauptet, sondern gegen den C-Code geprüft: ein
 C-Programm baut dieselben Rahmen und `WireTest` vergleicht hexadezimal, inklusive
