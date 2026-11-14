@@ -14,16 +14,24 @@ und kann nicht veralten — eine Kopie in `.git/hooks` tut beides nicht.
 
 ## `pre-push`
 
-Fährt beide Testskripte und bricht den Push ab, wenn eines rot ist:
+Fährt die Tests, die zu den **gepushten Dateien** passen, und bricht den Push ab,
+wenn einer rot ist:
 
-| Skript | Was es prüft |
+| geänderte Pfade | was läuft |
 | --- | --- |
-| `scripts/kern-tests.sh` | C-Kern (159 Prüfungen), Korpus-Aktualität, Rust-Kern, FFI-Schicht |
-| `scripts/jvm-tests.sh` | die 119 JVM-Tests der App |
+| `docs/`, `*.md`, `artifacts/`, `model/` | nichts — „nur Doku geändert“ |
+| `core/`, `core-ffi/`, `j2534/`, `scripts/kern-tests.sh` | `scripts/kern-tests.sh` |
+| `android/`, `scripts/jvm-tests.sh` | `scripts/jvm-tests.sh` |
+| alles andere: Workflows, `.githooks/`, andere Skripte | beide |
+| neuer Branch oder unbekannte Vergleichsbasis | beide |
 
-Beide laufen auch dann, wenn der erste rot ist — wer ohnehin nicht pushen kann,
-soll alle Befunde auf einmal sehen. Rot heißt: nichts wird übertragen, also auch
-kein Commit, der den Build bricht.
+`scripts/kern-tests.sh` prüft C-Kern (159 Prüfungen), Korpus-Aktualität,
+Rust-Kern und FFI-Schicht; `scripts/jvm-tests.sh` die 119 JVM-Tests der App.
+
+Die Einordnung ist bewusst grob: ein Pfad, den die Tabelle nicht kennt, lässt
+beide Läufe starten. Im Zweifel wird geprüft, nicht geraten. Beide Läufe werden
+auch dann gefahren, wenn der erste rot ist — wer ohnehin nicht pushen kann, soll
+alle Befunde auf einmal sehen.
 
 Voraussetzungen:
 
@@ -44,7 +52,8 @@ VCI_SKIP_HOOK=1 git push
 ```
 
 Der Hook schreibt dann hin, dass er übersprungen wurde. Absicht: ein stiller
-Sprung wäre von „grün“ nicht zu unterscheiden.
+Sprung wäre von „grün“ nicht zu unterscheiden. `git push --no-verify` umgeht den
+Hook ganz — das ist Gits eigenes Verhalten und braucht hier keine Regel.
 
 Der Hook ersetzt **nicht** die CI. Er prüft nur, was auf der Kommandozeile
 prüfbar ist — kein Android-SDK, kein Gerät, keine APK. `:app:assembleDebug` und
