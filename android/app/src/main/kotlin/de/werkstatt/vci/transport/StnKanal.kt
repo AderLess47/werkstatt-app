@@ -24,6 +24,27 @@ open class StnFehler(message: String) : Exception(message) {
  * `ATSP6` ist der Protokollbefehl, den STN-Geräte wie OBDLink verstehen; sie
  * akzeptieren ihn als ELM-kompatiblen Befehl. Andere Fahrzeuge brauchen andere
  * Werte — deshalb steht das hier als Datenklasse und nicht als Konstante.
+ *
+ * **Beide Wartezeiten sind Obergrenzen, nach denen *wir* aufgeben** — keine
+ * Protokollfristen. Auf diesem Weg segmentiert der Dongle selbst; die Fristen
+ * begrenzen nur, wie lange die App auf Textzeilen wartet.
+ *
+ * - [antwortTimeoutMs] (3 000 ms): Der Adapter entscheidet mit seinem eigenen
+ *   Timer, wie lange er auf das Steuergerät wartet (`ATST`; Werkseinstellung
+ *   `ST = 32`, rund 200 ms laut ELM327-Datenblatt), und antwortet danach
+ *   `NO DATA`. Unsere Frist muss nur diesen Entscheidungsweg samt
+ *   Übertragung überschreiten: eine Antwort über drei Rahmen braucht auf
+ *   500 kbit/s weniger als eine Millisekunde Buszeit, der Rest ist Adapter-
+ *   und USB-Zeit. 3 000 ms sind deshalb reichlich Reserve — auch für einen
+ *   langsamen Clone, bewusst großzügiger als die 1 500 ms je Rahmen auf dem
+ *   Kern-Weg.
+ * - [startTimeoutMs] (2 000 ms): gilt für `ATZ` und die `AT`-Einstellungen.
+ *   `ATZ` ist der langsamste Befehl (Reset), alles danach antwortet sofort mit
+ *   `OK`; 2 000 ms decken den Reset mit Reserve ab.
+ *
+ * **Nicht abgedeckt:** P2* — ISO 14229-2 nennt 5 000 ms für die Antwort nach
+ * einer Negative Response 0x78 („response pending“). Meldet ein Steuergerät das,
+ * läuft der Kanal in diese Frist, weil 0x78 hier nicht gesondert behandelt wird.
  */
 data class StnKonfiguration(
     val anfrageHeader: Int = 0x7E0,
