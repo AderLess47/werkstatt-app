@@ -206,6 +206,78 @@ class StnKanalTest {
         kanal.anfrage(ByteArray(0))
     }
 
+    /**
+     * Strecke, die nach der Initialisierung auf jede Anfrage nur Aufschub liefert
+     * (mit Prompt dahinter, wie ein Dongle es tut) — für die Obergrenze.
+     */
+    private class DauerAufschub(private val start: Map<String, List<String>>) : SerielleStrecke {
+        private var puffer = ArrayDeque<String>()
+
+        override fun schreibe(text: String): Boolean {
+            puffer = ArrayDeque(start[text].orEmpty())
+            return true
+        }
+
+        override fun zeile(timeoutMs: Long): String? {
+            if (puffer.isEmpty()) {
+                puffer.add("7E8 03 7F 22 78")
+                puffer.add(">")
+            }
+            return puffer.removeFirst()
+        }
+    }
+
+    @Test
+    fun `Aufschub 0x78 wird abgewartet und die spaetere Antwort geliefert`() {
+        // Erste Runde: nur 0x78. Danach — ohne neue Anfrage — die echte Antwort.
+        val (kanal, strecke) = kanal(
+            mapOf(
+                "22F190" to listOf(
+                    "7E8 03 7F 22 78",
+                    ">",
+                    "7E8 06 62 F1 90 57 44 42",
+                    ">",
+                )
+            )
+        )
+
+        val antwort = kanal.anfrage(byteArrayOf(0x22, 0xF1.toByte(), 0x90.toByte()))
+
+        assertArrayEquals(
+            byteArrayOf(0x62, 0xF1.toByte(), 0x90.toByte(), 0x57, 0x44, 0x42),
+            antwort
+        )
+        // Entscheidend: die Anfrage geht genau einmal raus. Ein zweites Senden
+        // würde eine zweite Routine starten.
+        assertEquals(1, strecke.gesendet.count { it == "22F190" })
+    }
+
+    @Test
+    fun `nur Aufschub ohne Antwort ergibt Zeitueberschreitung`() {
+        val (kanal, _) = kanal(mapOf("22F190" to listOf("7E8 03 7F 22 78", ">")))
+
+        try {
+            kanal.anfrage(byteArrayOf(0x22, 0xF1.toByte(), 0x90.toByte()))
+            fail("0x78 wurde als Antwort durchgereicht")
+        } catch (e: StnFehler.Zeitueberschreitung) {
+            assertTrue(e.message!!.contains("0x78"))
+        }
+    }
+
+    @Test
+    fun `dauerhafter Aufschub endet nach der Obergrenze`() {
+        val strecke = DauerAufschub(initialisierung + ("ATSH7E0" to listOf("OK")))
+        val k = StnKanal(strecke)
+        k.oeffnen()
+
+        try {
+            k.anfrage(byteArrayOf(0x22, 0xF1.toByte(), 0x90.toByte()))
+            fail("endloser Aufschub wurde durchgelassen")
+        } catch (e: StnFehler.Zeitueberschreitung) {
+            assertTrue(e.message!!.contains("3-mal 0x78"))
+        }
+    }
+
     @Test
     fun `Antwortzeilen ohne Header werden uebergangen`() {
         val (kanal, _) = kanal(
