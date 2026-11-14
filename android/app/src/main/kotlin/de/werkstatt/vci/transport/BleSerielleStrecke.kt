@@ -20,6 +20,9 @@ package de.werkstatt.vci.transport
  * Eintreffen fortgesetzt. `zeile` liefert `null` bei Fristablauf und bei
  * Verbindungsabbruch — [StnKanal] macht daraus eine Zeitüberschreitung.
  *
+ * Die Zeilenbildung selbst steckt im [Zeilenpuffer], den sich dieser Weg mit
+ * der USB-Strecke teilt.
+ *
  * Diese Klasse kennt kein Android: alles Ausgehende geht durch [schreibeBytes],
  * alles Eingehende durch [empfangen]. Damit ist sie auf der JVM gegen
  * aufgezeichnete Benachrichtigungen prüfbar; Scan, Verbindungsaufbau und das
@@ -29,7 +32,7 @@ package de.werkstatt.vci.transport
 class BleSerielleStrecke(private val schreibeBytes: (ByteArray) -> Boolean) : SerielleStrecke {
 
     private val sperre = Object()
-    private val puffer = StringBuilder()
+    private val puffer = Zeilenpuffer()
     private var abbruch: String? = null
 
     /**
@@ -41,9 +44,7 @@ class BleSerielleStrecke(private val schreibeBytes: (ByteArray) -> Boolean) : Se
     fun empfangen(bytes: ByteArray, anzahl: Int = bytes.size) {
         if (anzahl <= 0) return
         synchronized(sperre) {
-            // ISO-8859-1, damit kein Byte unterwegs verloren geht: die Antwort
-            // ist ASCII, aber ein 0x80 im Fehlerfall soll nicht zu U+FFFD werden.
-            puffer.append(String(bytes, 0, anzahl, Charsets.ISO_8859_1))
+            puffer.anhaengen(bytes, anzahl)
             sperre.notifyAll()
         }
     }
@@ -71,7 +72,7 @@ class BleSerielleStrecke(private val schreibeBytes: (ByteArray) -> Boolean) : Se
         val frist = System.nanoTime() + timeoutMs * 1_000_000L
         synchronized(sperre) {
             while (true) {
-                val fertig = holeZeile()
+                val fertig = puffer.naechste()
                 if (fertig != null) {
                     // Leerzeilen (etwa das zweite Byte eines \r\n) verbrauchen,
                     // aber nicht als Antwort melden.
@@ -84,17 +85,6 @@ class BleSerielleStrecke(private val schreibeBytes: (ByteArray) -> Boolean) : Se
                 sperre.wait(restMs)
             }
         }
-    }
-
-    /** Nächste vollständige Zeile aus dem Puffer, oder `null`, wenn noch keine da ist. */
-    private fun holeZeile(): String? {
-        val ende = puffer.indexOfFirst { it == '\r' || it == '\n' }
-        if (ende < 0) return null
-        val zeile = puffer.substring(0, ende).trim('\u0000')
-        var weiter = ende
-        while (weiter < puffer.length && (puffer[weiter] == '\r' || puffer[weiter] == '\n')) weiter++
-        puffer.delete(0, weiter)
-        return zeile
     }
 
     companion object {
