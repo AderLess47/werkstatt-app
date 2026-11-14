@@ -157,6 +157,39 @@ FTDI-VID (0x0403) an. CP210x, CH340 und PL2303 sind die Chips der
 ausgeschlossenen ELM327-Clones und bleiben es. Der BLE-Weg setzt einen Dongle
 voraus, der unser Textformat als Byte-Strecke über NUS transportiert.
 
+### Wartezeiten
+
+Alle Fristen sind **Obergrenzen, nach denen die App aufgibt** — keine
+Protokollfristen. Jede steht als benannte Konstante an ihrer Stelle im Code, mit
+derselben Begründung wie hier:
+
+| Ort | Wert | Gilt für | Herleitung |
+| --- | --- | --- | --- |
+| `UsbAbschnitt` (`IsoTp.recv`) | 1 500 ms **je Rahmen** | Weg A: First Frame, dann jeder Folgeantwort-Rahmen | ISO 15765-2 setzt N_Cr = 1 000 ms; +50 % Reserve für Bulk-Transfer und Scheduler |
+| Kern `IsotpChannel::send` | 1 000 ms fest | Weg A: Warten auf Flow-Control bei Anfragen über 7 Byte | entspricht N_Bs (ISO 15765-2); im Kern verdrahtet, von der App nicht einstellbar |
+| `DonglePruefung` | 800 ms | TesterPresent (Single Frame) | ISO 14229-2: P2_server = 50 ms für die erste Antwort; Reserve für den ersten Transfer nach dem Öffnen |
+| `StnKonfiguration.antwortTimeoutMs` | 3 000 ms | Weg B: eine ganze Antwort | der Dongle segmentiert selbst und entscheidet mit `ATST` (Werkseinstellung `ST = 32`, rund 200 ms laut ELM327-Datenblatt); Buszeit für drei Rahmen < 1 ms |
+| `StnKonfiguration.startTimeoutMs` | 2 000 ms | Weg B: `ATZ` und die `AT`-Einstellungen | `ATZ` (Reset) ist der langsamste Befehl, alles danach antwortet sofort `OK` |
+| `StnKennung` | 1 500 ms | `STI` | eine Textzeile; Obergrenze, nicht Erwartungswert |
+| `UsbDongleVerbindung` / `FtdiStnVerbindung` | 30 000 ms | USB-Freigabedialog | menschliche Reaktion am Gerät, kein Protokoll |
+
+**Wichtig für Weg A:** die 1 500 ms gelten **je Rahmen**. `IsotpChannel::recv`
+reicht die Frist an jedes `recv` weiter; eine Antwort über 20 Byte (First Frame
+plus zwei Folgeantworten) darf also bis 4,5 s brauchen, bevor sie als Fristablauf
+zählt. Das ist bewusst großzügiger als ein einzelner TesterPresent (800 ms), weil
+hier drei Rahmen ankommen statt einem.
+
+**Die Fristen sind Obergrenzen für den Abbruch, keine Erwartungswerte:** eine
+Antwort auf `22 F190` mit P2_server = 50 ms ist nach 50–200 ms da; die Frist wird
+nur gebraucht, wenn etwas fehlt — dann steht auf dem Bildschirm ein Fehler
+statt eines hängenden „Läuft …“.
+
+**Nicht abgedeckt (beide Wege):** P2* — ISO 14229-2 nennt 5 000 ms für die
+Antwort nach einer Negative Response 0x78 („response pending“). Meldet ein
+Steuergerät das, läuft die App in ihre Frist, weil keiner der Wege 0x78 erkennt
+und erneut wartet. Für die hier genutzten lesenden Dienste ist das nicht der
+Regelfall, aber es ist eine Grenze, keine Einstellung.
+
 ### BLE-GATT
 
 Der BLE-Weg ist derselbe Vorgang ohne Kabel: dieselben Rahmen (Weg A) bzw.
@@ -270,7 +303,8 @@ Syntaxfehler, nur unaufgelöste Android- und Compose-Symbole). Die Logik dahinte
 (`VciBericht`, `BerichtDatei`, `AppBericht`, `DienstAntwort`) ist dagegen
 übersetzt und getestet. **Die beiden Wege sind damit verdrahtet, aber nicht
 erprobt** — kein FTDI-Gerät, kein VCI, kein Fahrzeug, kein Emulator in dieser
-Umgebung.
+Umgebung. Die Wartezeiten sind aus Normwerten hergeleitet (siehe
+[Wartezeiten](#wartezeiten)), aber **nicht am Bus nachgemessen**.
 
 Nicht geprüft: **Start auf einem Gerät oder Emulator**. In dieser VM ist
 `/dev/kvm` für den Benutzer nicht zugänglich, ein Emulator wäre ohne
