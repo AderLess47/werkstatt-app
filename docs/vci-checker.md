@@ -81,7 +81,7 @@ Ziel: im Rust-Kern via UniFFI | mittel | der Checker wird nach `core/` portiert 
 ## 5. Was der Checker bewusst nicht kann
 
 - **Bus-Widerstand (60 Ω)** — braucht eine echte Widerstandsmessung an CAN-H/CAN-L. Die Hardware kann das heute nicht; als Prüfung vorgesehen, sobald das VCI es kann (Aufwand: Hardware, nicht Software).
-- **Protokollerekennung** (K-Line, DoIP, CAN FD) — der Checker testet ISO 15765 auf CAN. Ein Fahrzeug mit K-Line meldet –nkein Steuergerät", obwohl der Adapter in Ordnung ist. Deshalb nennt der Hinweis ausdrücklich das Protokoll.
+- **Protokollererkennung** (K-Line, DoIP, CAN FD) — der Checker testet ISO 15765 auf CAN. Ein Fahrzeug mit K-Line meldet „kein Steuergerät", obwohl der Adapter in Ordnung ist. Deshalb nennt der Hinweis ausdrücklich das Protokoll.
 - **Firmware-Update** — der Checker stellt fest, dass die Firmware alt ist; das Update ist ein eigener, signierter Vorgang.
 - **Lastverhalten** — Dauerlast, Buslast, Spannungseinbrüche unter Schreibvorgängen prüft der Prüfstand, nicht der Checker.
 
