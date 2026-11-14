@@ -229,3 +229,34 @@ deshalb gibt es hier zwei Schritte statt einer Prüfung.
 und langsam: Textbefehle brauchen Sekunden, große Blöcke länger. Der rohe
 USB-Weg (Abschnitt 4) bleibt für Dongles, die unser eigenes Drahtformat sprechen —
 die beiden Knöpfe schalten sich nicht gegenseitig um.
+
+---
+
+## 13. Eigenes Drahtformat (Weg A)
+
+Für Dongles, die unser eigenes Rahmenformat sprechen (die Geräte aus Abschnitt 4).
+Hier rechnet **die App** ISO-TP: der Dongle sieht nur CAN-Rahmen.
+
+| Schritt | Knopf | Was passiert |
+| --- | --- | --- |
+| 1 | **USB-Dongle öffnen** | sucht ein USB-Gerät mit Bulk-Endpunkten, fragt die Freigabe ab, öffnet es und bestätigt das Rahmenformat |
+| 2 | **Dienst 22 F190 lesen** | schickt die Kennung durch den Kern (`IsoTp`) und zeigt Größe, Hex und Text der Antwort |
+
+| Anzeige | Bedeutung | Was tun |
+| --- | --- | --- |
+| **OK** „USB-Dongle“ · `VID 0403:PID 6001 · <Name>` (Beispiel) | Gerät offen und angenommen. | Weiter mit Schritt 2. |
+| **FEHLER** „kein USB-Dongle gefunden …“ | Kein passendes Gerät sichtbar. | Wie Abschnitt 4: Kabel, Anschluss, PC-Gegenprobe. |
+| **FEHLER** „Zugriff verweigert“ | Die Freigabe fehlt. | Erneut öffnen und **Zulassen** wählen; sonst App neu starten. |
+| **FEHLER** „ließ sich nicht öffnen — von einer anderen App belegt?“ | Ein anderes Programm hält das Gerät. | Diagnose-Apps schließen, Kabel ab/an, erneut. |
+| **OK** „Dienst 22 F190“ · `15 Byte · 62 F1 90 … · Text: …` | Der Weg bis ins Steuergerät steht, auf **diesem** Weg. | Nichts. |
+| **FEHLER** „abgelehnt (Dienst 22, NRC 31 …)“ | Das Steuergerät kennt die Kennung nicht. | Anderes Fahrzeug; der Dongle ist in Ordnung. |
+| **FEHLER** „keine Antwort — Zündung an, Bus erreichbar?“ | Kein Gerät auf dem Bus oder Abbruch der Segmentierung. | Wie Abschnitt 7: Zündung, Pin, anderes Steuergerät. |
+
+**Abgrenzung zu „USB prüfen“ (Abschnitt 4):** Der Knopf weiter oben macht den
+Schnelltest — Gerät finden, Bordspannung, TesterPresent — und sein Ergebnis geht
+in den Selbsttest-Bericht. Dieser Abschnitt liest zusätzlich einen Dienst.
+
+**Vergleich der beiden Wege:** Abschnitt 12 und 13 lesen dieselbe Kennung. Kommt
+beim selben Fahrzeug einmal eine Antwort und einmal „keine Antwort“, liegt es am
+Weg (Adressierung, Header oder Segmentierung), nicht am Steuergerät — dann mit
+beiden Wegen erneut prüfen und beide Berichte mitschicken.
