@@ -48,6 +48,12 @@ dependencies {
     // Der Kern spricht über JNA mit libvci_ffi.so (kommt aus jniLibs).
     implementation("net.java.dev.jna:jna:5.14.0@aar")
 
+    // FTDI-Wandler für Klasse-1-Dongles am Kabel (OBDLink EX/SX): Baudrate,
+    // Leitungsparameter und Statusbytes macht diese Bibliothek (MIT-Lizenz).
+    // Begrenzt wird der Einsatz in FtdiStnVerbindung: nur FTDI-VID und nur
+    // Geräte, deren STI-Kennung STN-Firmware bestätigt.
+    implementation("com.github.mik3y:usb-serial-for-android:3.11.0")
+
     implementation(platform("androidx.compose:compose-bom:2024.09.03"))
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")

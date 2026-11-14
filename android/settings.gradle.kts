@@ -10,6 +10,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // usb-serial-for-android (FTDI-Wandler) wird nur über JitPack verteilt.
+        maven { url = uri("https://jitpack.io") }
     }
 }
 
