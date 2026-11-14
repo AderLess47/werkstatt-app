@@ -1,5 +1,6 @@
 package de.werkstatt.vci.transport
 
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -14,7 +15,6 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import android.app.PendingIntent
 
 /**
  * Findet den Dongle, holt die USB-Freigabe und öffnet den Transport.
@@ -24,6 +24,12 @@ import android.app.PendingIntent
  * gibt es kein `openDevice`, und ohne offenes Gerät keinen Test.
  */
 class UsbDongleVerbindung(context: Context) : AutoCloseable {
+
+    /** Ergebnis eines Öffnungsversuchs — dieselbe Form wie beim Kabelweg. */
+    sealed interface Ergebnis {
+        data class Bereit(val transport: UsbCanTransport, val kennung: String) : Ergebnis
+        data class Abgelehnt(val text: String) : Ergebnis
+    }
 
     private val app = context.applicationContext
     private val usb = app.getSystemService(Context.USB_SERVICE) as UsbManager
@@ -73,6 +79,36 @@ class UsbDongleVerbindung(context: Context) : AutoCloseable {
         transport?.close()
         transport = geoeffnet
         listOf(kopf) + DonglePruefung.pruefe(geoeffnet)
+    }
+
+    /**
+     * Öffnet nur den Transport und gibt ihn heraus — ohne Prüflauf.
+     *
+     * Für den selbstständigen Weg-A-Abschnitt am Bildschirm: dort wird zuerst
+     * geöffnet und danach ein Dienst gelesen. `pruefen()` bleibt daneben
+     * bestehen, weil es die Bordspannung mitnimmt.
+     */
+    suspend fun oeffnen(): Ergebnis = withContext(Dispatchers.IO) {
+        val device = UsbCanTransport.kandidat(usb)
+            ?: return@withContext Ergebnis.Abgelehnt(
+                "kein USB-Dongle gefunden — Kabel, USB-Host und Stromversorgung prüfen"
+            )
+
+        if (!usb.hasPermission(device) && !freigabeAnfordern(device)) {
+            return@withContext Ergebnis.Abgelehnt(
+                "Zugriff verweigert — im Dialog „Zulassen“ wählen oder die App neu starten"
+            )
+        }
+
+        val geoeffnet = UsbCanTransport.oeffne(usb, device)
+            ?: return@withContext Ergebnis.Abgelehnt(
+                "ließ sich nicht öffnen — von einer anderen App belegt?"
+            )
+
+        // Ein zweites Öffnen darf das alte Gerät nicht offen lassen.
+        transport?.close()
+        transport = geoeffnet
+        Ergebnis.Bereit(geoeffnet, UsbCanTransport.beschreibung(device))
     }
 
     private suspend fun freigabeAnfordern(device: UsbDevice): Boolean {
