@@ -1,4 +1,4 @@
-//! SFD — „Schutz Fahrzeug Diagnose" (VAG) über UDS.
+//! SFD — „Schutz Fahrzeug Diagnose“ (VAG) über UDS.
 //!
 //! SFD sperrt sicherheitsrelevante Steuergeräte, bis ein **Token** gesendet
 //! wird. Der Token wird nicht hier erzeugt: er kommt aus dem Herstellerportal
@@ -33,13 +33,30 @@
 //! ## Ablehnungen
 //!
 //! Jede Antwort kann statt der positiven auch `7F <Dienst> <NRC>` sein. Der NRC
-//! wird als [`SfdError::Nrc`] zurückgegeben — samt Klartext, weil „abgelehnt"
+//! wird als [`SfdError::Nrc`] zurückgegeben — samt Klartext, weil „abgelehnt“
 //! allein in der Werkstatt nicht weiterhilft.
+//!
+//! ## Ein Sendepfad
+//!
+//! Gesendet wird über [`crate::uds::UdsClient::runde`] — dieselbe Stelle, die
+//! jeder andere UDS-Dienst benutzt. Dieses Modul kennt nur noch seine eigenen
+//! Nachrichten; NRC-Texte, Aufschub-Grenze und Sitzungsauswertung liegen in
+//! [`crate::uds`]. Zwei Sendestellen hätten sich früher oder später
+//! unterschiedlich verhalten, und kein Test hätte es gemerkt.
 
 use std::fmt;
 
 use crate::isotp::IsotpChannel;
 use crate::transport::{Result as TransportResult, Transport, TransportError};
+use crate::uds::{UdsClient, UdsFehler};
+
+// Diese Namen standen einmal hier; sie kommen jetzt aus `uds`, damit es eine
+// NRC-Tabelle und eine Aufschub-Grenze gibt. Sie bleiben unter dem alten Namen
+// erreichbar (`sfd::nrc_text`), damit Aufrufer nichts ändern müssen.
+pub use crate::uds::{
+    ist_aufschub, nrc_text, pruefe_nrc, sitzung_anfrage, ANTWORT_NEGATIV, ANTWORT_SITZUNG,
+    DIENST_SITZUNG, MAX_AUFSCHUB, NRC_RESPONSE_PENDING, P2_STERN_MS, SITZUNG_EXTENDED,
+};
 
 /// Dienst „ReadDataByIdentifier".
 pub const DIENST_READ_DATA: u8 = 0x22;
@@ -47,13 +64,6 @@ pub const DIENST_READ_DATA: u8 = 0x22;
 pub const DIENST_ROUTINE: u8 = 0x31;
 /// Subfunktion `startRoutine`.
 pub const SUB_START: u8 = 0x01;
-/// Dienst „DiagnosticSessionControl".
-pub const DIENST_SITZUNG: u8 = 0x10;
-/// Subfunktion `extendedDiagnosticSession`.
-pub const SITZUNG_EXTENDED: u8 = 0x03;
-/// Positive Antwort auf DiagnosticSessionControl.
-pub const ANTWORT_SITZUNG: u8 = 0x50;
-
 /// DID der SFD-Statusabfrage (`22 01 74`).
 pub const STATUS_DID: [u8; 2] = [0x01, 0x74];
 /// Routine-Kennung im vierten Byte der RoutineControl-Anfrage.
@@ -69,10 +79,6 @@ pub const MODUS_SPERREN: u8 = 0x09;
 pub const ANTWORT_ROUTINE: u8 = 0x71;
 /// Positive Antwort auf ReadDataByIdentifier.
 pub const ANTWORT_READ_DATA: u8 = 0x62;
-/// Negative Antwort (`7F`).
-pub const ANTWORT_NEGATIV: u8 = 0x7F;
-/// NRC „responsePending" — kein Ergebnis, sondern ein Aufschub.
-pub const NRC_RESPONSE_PENDING: u8 = 0x78;
 
 /// Längster Token, der in eine ISO-TP-Nachricht passt.
 ///
@@ -80,12 +86,6 @@ pub const NRC_RESPONSE_PENDING: u8 = 0x78;
 /// vier Byte Kopf ab (`31 01 C0 08`) — mehr passt nicht in **eine** Nachricht,
 /// und ein zweiter Block wäre ein anderes Protokoll.
 pub const MAX_TOKEN: usize = 0x0FFF - 4;
-
-/// Höchstzahl an Aufschüben (`NRC 0x78`), die ein Aufruf abwartet.
-pub const MAX_AUFSCHUB: usize = 3;
-
-/// Frist nach einem Aufschub (`P2*`), in Millisekunden.
-pub const P2_STERN_MS: u32 = 5_000;
 
 /// Fehler einer SFD-Nachricht — vor dem Senden oder beim Auswerten.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -163,52 +163,6 @@ impl fmt::Display for SfdError {
 
 impl std::error::Error for SfdError {}
 
-/// Klartext zu einem NRC (ISO 14229-1, Anhang A).
-///
-/// Unbekannte Codes bleiben als Zahl stehen — ein erfundener Text wäre
-/// schlimmer als die Zahl, die im Fehlerspeicher des Testers landet.
-pub fn nrc_text(code: u8) -> &'static str {
-    match code {
-        0x10 => "generalReject",
-        0x11 => "serviceNotSupported",
-        0x12 => "subFunctionNotSupported",
-        0x13 => "incorrectMessageLengthOrInvalidFormat",
-        0x14 => "responseTooLong",
-        0x21 => "busyRepeatRequest",
-        0x22 => "conditionsNotCorrect",
-        0x24 => "requestSequenceError",
-        0x25 => "noResponseFromSubnetComponent",
-        0x26 => "failurePreventsExecutionOfRequestedAction",
-        0x31 => "requestOutOfRange",
-        0x33 => "securityAccessDenied",
-        0x35 => "invalidKey",
-        0x36 => "exceedNumberOfAttempts",
-        0x37 => "requiredTimeDelayNotExpired",
-        0x72 => "generalProgrammingFailure",
-        0x78 => "responsePending (Antwort kommt noch)",
-        0x7E => "subFunctionNotSupportedInActiveSession",
-        0x7F => "serviceNotSupportedInActiveSession",
-        _ => "unbekannter NRC",
-    }
-}
-
-/// Erkennt eine negative Antwort und gibt `(Dienst, NRC)` zurück.
-///
-/// `None` heißt: die Antwort ist nicht negativ — ob sie passt, entscheidet
-/// danach der jeweilige Parser.
-pub fn pruefe_nrc(antwort: &[u8]) -> Option<(u8, u8)> {
-    if antwort.len() >= 3 && antwort[0] == ANTWORT_NEGATIV {
-        Some((antwort[1], antwort[2]))
-    } else {
-        None
-    }
-}
-
-/// Ist das ein Aufschub (`7F <Dienst> 78`)?
-pub fn ist_aufschub(antwort: &[u8]) -> bool {
-    matches!(pruefe_nrc(antwort), Some((_, NRC_RESPONSE_PENDING)))
-}
-
 /// `22 01 74` — Status des SFD-Schutzes lesen.
 pub fn status_anfrage() -> Vec<u8> {
     vec![DIENST_READ_DATA, STATUS_DID[0], STATUS_DID[1]]
@@ -267,35 +221,33 @@ pub fn extended_anfrage() -> Vec<u8> {
     sitzung_anfrage(SITZUNG_EXTENDED)
 }
 
-/// `10 <Sitzung>` — Sitzungswechsel mit beliebiger Subfunktion.
-pub fn sitzung_anfrage(sitzung: u8) -> Vec<u8> {
-    vec![DIENST_SITZUNG, sitzung]
-}
-
 /// Wertet `50 <Sitzung>` aus.
+///
+/// Die Prüfung selbst liegt in [`crate::uds::parse_sitzung`]; hier bleibt nur
+/// die Übersetzung in die SFD-Sprache. Für SFD heißt eine Subfunktion
+/// „Schritt“ (`FalscherModus`), und die Fristen `P2`/`P2*` aus der Antwort
+/// braucht dieser Ablauf nicht — er wartet ohnehin auf den Abschluss.
 pub fn parse_sitzung(antwort: &[u8], sitzung: u8) -> std::result::Result<(), SfdError> {
-    if let Some((dienst, code)) = pruefe_nrc(antwort) {
-        return Err(SfdError::Nrc { dienst, code });
-    }
-    if antwort.len() < 2 {
-        return Err(SfdError::ZuKurz {
-            gelesen: antwort.len(),
-            mindestens: 2,
-        });
-    }
-    if antwort[0] != ANTWORT_SITZUNG {
-        return Err(SfdError::FalscherDienst {
+    match crate::uds::parse_sitzung(antwort, sitzung) {
+        Ok(_) => Ok(()),
+        Err(UdsFehler::Nrc { dienst, code }) => Err(SfdError::Nrc { dienst, code }),
+        Err(UdsFehler::FalscherDienst { erwartet, gesehen }) => {
+            Err(SfdError::FalscherDienst { erwartet, gesehen })
+        }
+        Err(UdsFehler::FalscheSubfunktion { erwartet, gesehen }) => {
+            Err(SfdError::FalscherModus { erwartet, gesehen })
+        }
+        Err(UdsFehler::ZuKurz { gelesen, mindestens }) => {
+            Err(SfdError::ZuKurz { gelesen, mindestens })
+        }
+        // Eine Sitzungsantwort trägt keine Kennung und keine DTC-Liste, und
+        // gesendet wird hier nichts — diese Fälle kann der Parser nicht
+        // liefern. Als Dienstfehler gemeldet, damit nichts als Erfolg durchgeht.
+        Err(_) => Err(SfdError::FalscherDienst {
             erwartet: ANTWORT_SITZUNG,
-            gesehen: antwort[0],
-        });
+            gesehen: antwort.first().copied().unwrap_or(0),
+        }),
     }
-    if antwort[1] != sitzung {
-        return Err(SfdError::FalscherModus {
-            erwartet: sitzung,
-            gesehen: antwort[1],
-        });
-    }
-    Ok(())
 }
 
 /// Rohe Statusantwort (`62 01 74 …`).
@@ -473,13 +425,48 @@ impl From<SfdError> for SfdFehler {
     }
 }
 
+/// Übersetzt einen Fehler aus [`crate::uds`] in die SFD-Sprache.
+///
+/// Nötig, weil der Ablauf unten nur noch `uds::runde()` aufruft: ein Timeout
+/// bleibt ein Transportfehler, ein NRC behält Dienst und Code, und eine
+/// Subfunktion heißt bei SFD „Schritt".
+impl From<UdsFehler> for SfdFehler {
+    fn from(e: UdsFehler) -> Self {
+        match e {
+            UdsFehler::Transport(t) => SfdFehler::Transport(t),
+            UdsFehler::Nrc { dienst, code } => SfdFehler::Sfd(SfdError::Nrc { dienst, code }),
+            UdsFehler::FalscherDienst { erwartet, gesehen } => {
+                SfdFehler::Sfd(SfdError::FalscherDienst { erwartet, gesehen })
+            }
+            UdsFehler::FalscheSubfunktion { erwartet, gesehen } => {
+                SfdFehler::Sfd(SfdError::FalscherModus { erwartet, gesehen })
+            }
+            UdsFehler::ZuKurz { gelesen, mindestens } => {
+                SfdFehler::Sfd(SfdError::ZuKurz { gelesen, mindestens })
+            }
+            // `runde` wertet nur Kopf und Aufschub aus; eine Kennung oder eine
+            // DTC-Liste kann es nicht liefern. Landet so ein Fehler hier, ist
+            // die Verdrahtung falsch — gemeldet wird er als Protokollfehler,
+            // nie als Erfolg.
+            UdsFehler::FalscheDid { .. } | UdsFehler::DtcRest { .. } => {
+                SfdFehler::Sfd(SfdError::FalscherDienst {
+                    erwartet: ANTWORT_ROUTINE,
+                    gesehen: 0x00,
+                })
+            }
+        }
+    }
+}
+
 /// SFD-Ablauf über einen ISO-TP-Kanal.
 ///
 /// Die Anfragen sind reine Bytefolgen; dieser Typ erledigt Senden, Warten und
 /// Auswerten inklusive der Aufschübe (`NRC 0x78`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SfdClient {
-    iso: IsotpChannel,
+    /// Der allgemeine Client — er besitzt den ISO-TP-Kanal und die einzige
+    /// Sendestelle. `SfdClient` fügt nur die SFD-Nachrichten hinzu.
+    uds: UdsClient,
 }
 
 impl Default for SfdClient {
@@ -491,39 +478,13 @@ impl Default for SfdClient {
 impl SfdClient {
     pub const fn new() -> Self {
         SfdClient {
-            iso: IsotpChannel::new(),
+            uds: UdsClient::new(),
         }
     }
 
     pub const fn with_ids(req_id: u32, rsp_id: u32) -> Self {
         SfdClient {
-            iso: IsotpChannel::with_ids(req_id, rsp_id),
-        }
-    }
-
-    /// Schickt `anfrage` und liefert die Antwort — Aufschübe werden abgewartet.
-    fn runde<T: Transport>(
-        &self,
-        t: &mut T,
-        anfrage: &[u8],
-        timeout_ms: u32,
-    ) -> std::result::Result<Vec<u8>, SfdFehler> {
-        self.iso.send(t, anfrage)?;
-        let mut frist = timeout_ms;
-        let mut aufschuebe = 0;
-        loop {
-            let antwort = self.iso.recv(t, frist)?;
-            if !ist_aufschub(&antwort) {
-                return Ok(antwort);
-            }
-            if aufschuebe >= MAX_AUFSCHUB {
-                // Aufschub ohne Ende: als Ablehnung melden, nicht als Timeout —
-                // die Ursache ist das Steuergerät, nicht die Leitung.
-                let (dienst, code) = pruefe_nrc(&antwort).unwrap_or((DIENST_ROUTINE, NRC_RESPONSE_PENDING));
-                return Err(SfdError::Nrc { dienst, code }.into());
-            }
-            aufschuebe += 1;
-            frist = P2_STERN_MS;
+            uds: UdsClient::with_ids(req_id, rsp_id),
         }
     }
 
@@ -533,7 +494,7 @@ impl SfdClient {
         t: &mut T,
         timeout_ms: u32,
     ) -> std::result::Result<SfdStatus, SfdFehler> {
-        let antwort = self.runde(t, &status_anfrage(), timeout_ms)?;
+        let antwort = self.uds.runde(t, &status_anfrage(), timeout_ms)?;
         Ok(parse_status(&antwort)?)
     }
 
@@ -545,7 +506,7 @@ impl SfdClient {
         timeout_ms: u32,
     ) -> std::result::Result<Vec<u8>, SfdFehler> {
         let anfrage = challenge_anfrage(rolle)?;
-        let antwort = self.runde(t, &anfrage, timeout_ms)?;
+        let antwort = self.uds.runde(t, &anfrage, timeout_ms)?;
         Ok(parse_challenge(&antwort)?)
     }
 
@@ -557,7 +518,7 @@ impl SfdClient {
         timeout_ms: u32,
     ) -> std::result::Result<(), SfdFehler> {
         let anfrage = token_anfrage(token)?;
-        let antwort = self.runde(t, &anfrage, timeout_ms)?;
+        let antwort = self.uds.runde(t, &anfrage, timeout_ms)?;
         Ok(parse_entsperrt(&antwort)?)
     }
 
@@ -567,7 +528,7 @@ impl SfdClient {
         t: &mut T,
         timeout_ms: u32,
     ) -> std::result::Result<(), SfdFehler> {
-        let antwort = self.runde(t, &sperren_anfrage(), timeout_ms)?;
+        let antwort = self.uds.runde(t, &sperren_anfrage(), timeout_ms)?;
         Ok(parse_gesperrt(&antwort)?)
     }
 
@@ -587,12 +548,12 @@ impl SfdClient {
         sitzung: u8,
         timeout_ms: u32,
     ) -> std::result::Result<(), SfdFehler> {
-        let antwort = self.runde(t, &sitzung_anfrage(sitzung), timeout_ms)?;
+        let antwort = self.uds.runde(t, &sitzung_anfrage(sitzung), timeout_ms)?;
         Ok(parse_sitzung(&antwort, sitzung)?)
     }
 
     pub fn iso(&self) -> &IsotpChannel {
-        &self.iso
+        self.uds.iso()
     }
 }
 
