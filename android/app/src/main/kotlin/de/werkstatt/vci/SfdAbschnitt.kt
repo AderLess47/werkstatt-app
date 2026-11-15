@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -15,6 +16,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -23,6 +25,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -38,9 +41,9 @@ import kotlinx.coroutines.withContext
 import uniffi.vci_ffi.Sfd
 
 /**
- * Frist für Status, Challenge und Sperren.
+ * Frist für Status, Session, Challenge und Sperren.
  *
- * Die drei sind kurze Nachrichten (Anfrage und Antwort je ein Rahmen); 5 s sind
+ * Die vier sind kurze Nachrichten (Anfrage und Antwort je ein Rahmen); 5 s sind
  * P2 plus Reserve für einen trägen Dongle.
  */
 private const val SFD_FRIST_MS = 5_000u
@@ -57,10 +60,10 @@ private const val SFD_FRIST_MS = 5_000u
 private const val TOKEN_FRIST_MS = 20_000u
 
 /**
- * SFD-Ablauf am Bildschirm: Status, Challenge, Token, Sperren.
+ * SFD-Ablauf am Bildschirm: Ziel, Status, Challenge, Token, Sperren.
  *
  * Der Kern macht die Arbeit (Nachrichten bauen, ISO-TP, NRC auswerten), dieser
- * Abschnitt sammelt nur ein, was er zurückgibt — inklusive der Rohbytes, damit
+ * Abschnitt sammelt nur ein, was er zurückgibt — inklusive der Rohantwort, damit
  * eine Deutung, die nicht stimmt, am Fahrzeug auffällt statt geglaubt zu werden.
  *
  * Jeder Busaufruf läuft über [SfdSperre] und `Dispatchers.IO`: solange gewartet
@@ -78,6 +81,17 @@ internal fun SfdAbschnitt(onSchritt: (String) -> Unit = {}) {
 
     var transport by remember { mutableStateOf<UsbCanTransport?>(null) }
     var geraet by remember { mutableStateOf<String?>(null) }
+
+    // Ziel-Steuergerät: Voreinstellung oder freie Kennungen. `null` = frei.
+    var preset by remember { mutableStateOf<SfdZiel?>(SfdZiele.STANDARD) }
+    var freieAnfrage by remember { mutableStateOf("7E0") }
+    var freieAntwort by remember { mutableStateOf("7E8") }
+    val freiesErgebnis = SfdZiele.frei(freieAnfrage, freieAntwort)
+    val ziel: SfdZiel? = preset ?: (freiesErgebnis as? SfdZiele.Ergebnis.Bereit)?.ziel
+
+    // Extended Session vorab? Viele Steuergeräte verweigern 31 01 C0 04/08 sonst.
+    var extended by remember { mutableStateOf(true) }
+
     var rolle by remember { mutableStateOf(SfdRolle.EXTENDED) }
     var tokenText by remember { mutableStateOf("") }
     var status by remember { mutableStateOf<SfdStatusDeutung.Deutung?>(null) }
@@ -98,10 +112,23 @@ internal fun SfdAbschnitt(onSchritt: (String) -> Unit = {}) {
      * Führt einen Busaufruf aus: Knöpfe sperren, im Hintergrund rechnen,
      * Ergebnis auf dem Main-Thread ablegen, Sperre wieder frei.
      */
-    fun <T> starte(was: String, block: (UsbCanTransport) -> T, erfolgMit: (T) -> Unit) {
+    fun <T> starte(
+        was: String,
+        block: (UsbCanTransport, SfdZiel) -> T,
+        erfolgMit: (T) -> Unit,
+    ) {
         val offen = transport
         if (offen == null) {
             meldung = SfdFehler.keinTransport()
+            return
+        }
+        val adresse = ziel
+        if (adresse == null) {
+            meldung = SfdFehler.Meldung(
+                SfdFehler.Art.FORMAT,
+                "Ziel-Kennungen sind nicht gültig",
+                "Anfrage- und Antwort-ID als Hex eingeben, gleiche Bitbreite",
+            )
             return
         }
         // Doppelklick: der zweite Druck startet nichts, solange der erste läuft.
@@ -113,7 +140,7 @@ internal fun SfdAbschnitt(onSchritt: (String) -> Unit = {}) {
         onSchritt(was)
         scope.launch {
             try {
-                val ergebnis = withContext(Dispatchers.IO) { block(offen) }
+                val ergebnis = withContext(Dispatchers.IO) { block(offen, adresse) }
                 erfolgMit(ergebnis)
             } catch (e: CancellationException) {
                 throw e
@@ -158,19 +185,28 @@ internal fun SfdAbschnitt(onSchritt: (String) -> Unit = {}) {
     }
 
     fun statusPruefen() = starte(
-        was = "Sende 22 01 74 und warte auf den Status — Frist " +
+        was = "Sende 22 01 74 an ${ziel?.anzeige ?: "?"} und warte auf den Status — Frist " +
             fristText(SFD_FRIST_MS.toLong()),
-        block = { offen -> mitSfd { sfd -> sfd.status(offen, SFD_FRIST_MS) } },
+        block = { offen, adresse ->
+            mitSfd(adresse) { sfd -> sfd.status(offen, SFD_FRIST_MS) }
+        },
         erfolgMit = { st ->
-            status = SfdStatusDeutung.deute(st.daten)
-            erfolg = "Status gelesen"
+            // Rohantwort mitgeben: passt das Layout nicht, bleibt sie sichtbar.
+            status = SfdStatusDeutung.deute(st.daten, st.rohHex)
+            erfolg = "Status gelesen (${st.rohHex.length / 2} Byte Antwort)"
         },
     )
 
     fun challengeAnfordern() = starte(
-        was = "Sende 31 01 C0 04 mit Rolle 0x%02X (%s) — Frist %s"
-            .format(rolle.code, rolle.anzeige, fristText(SFD_FRIST_MS.toLong())),
-        block = { offen -> mitSfd { sfd -> sfd.challenge(offen, rolle.code.toUInt(), SFD_FRIST_MS) } },
+        was = "Sende ${SfdAblauf.vorChallenge(extended).joinToString(" → ") { it.anzeige }} " +
+            "mit Rolle 0x%02X (%s) — Frist %s"
+                .format(rolle.code, rolle.anzeige, fristText(SFD_FRIST_MS.toLong())),
+        block = { offen, adresse ->
+            mitSfd(adresse) { sfd ->
+                if (extended) sfd.extendedSession(offen, SFD_FRIST_MS)
+                sfd.challenge(offen, rolle.code.toUInt(), SFD_FRIST_MS)
+            }
+        },
         erfolgMit = { hex ->
             challenge = hex
             erfolg = "Challenge empfangen (${hex.length / 2} Byte) — kopieren und im Portal einlösen"
@@ -188,31 +224,40 @@ internal fun SfdAbschnitt(onSchritt: (String) -> Unit = {}) {
             return
         }
         starte(
-            was = "Sende 31 01 C0 08 mit ${geprueft.bytes} Byte Token als Multi-Frame — " +
+            was = "Sende ${SfdAblauf.vorEntsperren(extended).joinToString(" → ") { it.anzeige }} " +
+                "mit ${geprueft.bytes} Byte Token als Multi-Frame — " +
                 "Frist ${fristText(TOKEN_FRIST_MS.toLong())}, danach Status lesen",
-            block = { offen ->
-                mitSfd { sfd -> sfd.entsperren(offen, geprueft.normalisiert, TOKEN_FRIST_MS) }
+            block = { offen, adresse ->
+                mitSfd(adresse) { sfd ->
+                    if (extended) sfd.extendedSession(offen, SFD_FRIST_MS)
+                    sfd.entsperren(offen, geprueft.normalisiert, TOKEN_FRIST_MS)
+                }
                 // Direkt nachlesen, statt den alten Status stehen zu lassen: ob
                 // das Entsperren gewirkt hat, sagt nur das Steuergerät.
-                mitSfd { sfd -> sfd.status(offen, SFD_FRIST_MS) }
+                mitSfd(adresse) { sfd -> sfd.status(offen, SFD_FRIST_MS) }
             },
             erfolgMit = { st ->
-                status = SfdStatusDeutung.deute(st.daten)
-                erfolg = "Token gesendet — Status danach: ${SfdStatusDeutung.deute(st.daten).text}"
+                val deutung = SfdStatusDeutung.deute(st.daten, st.rohHex)
+                status = deutung
+                erfolg = "Token gesendet — Status danach: ${deutung.text}"
             },
         )
     }
 
     fun sperren() = starte(
-        was = "Sende 31 01 C0 09 und lese den Status danach — Frist " +
-            fristText(SFD_FRIST_MS.toLong()),
-        block = { offen ->
-            mitSfd { sfd -> sfd.sperren(offen, SFD_FRIST_MS) }
-            mitSfd { sfd -> sfd.status(offen, SFD_FRIST_MS) }
+        was = "Sende ${SfdAblauf.vorSperren(extended).joinToString(" → ") { it.anzeige }} " +
+            "und lese den Status danach — Frist ${fristText(SFD_FRIST_MS.toLong())}",
+        block = { offen, adresse ->
+            mitSfd(adresse) { sfd ->
+                if (extended) sfd.extendedSession(offen, SFD_FRIST_MS)
+                sfd.sperren(offen, SFD_FRIST_MS)
+            }
+            mitSfd(adresse) { sfd -> sfd.status(offen, SFD_FRIST_MS) }
         },
         erfolgMit = { st ->
-            status = SfdStatusDeutung.deute(st.daten)
-            erfolg = "SFD gesperrt — Status danach: ${SfdStatusDeutung.deute(st.daten).text}"
+            val deutung = SfdStatusDeutung.deute(st.daten, st.rohHex)
+            status = deutung
+            erfolg = "SFD gesperrt — Status danach: ${deutung.text}"
         },
     )
 
@@ -229,10 +274,8 @@ internal fun SfdAbschnitt(onSchritt: (String) -> Unit = {}) {
     Text(
         text = "Sperrt sicherheitsrelevante Steuergeräte, bis ein Token aus dem " +
             "Herstellerportal gesendet wird. Die App baut nur die UDS-Nachrichten " +
-            "(22 01 74, 31 01 C0 04/08/09) und wertet die Antworten aus — sie erzeugt " +
-            "keine Schlüssel. Welche Rolle ein Fahrzeug erwartet und wie es seine " +
-            "Statusbytes legt, steht in seiner Diagnosebeschreibung; die Rohbytes " +
-            "stehen deshalb immer neben der Deutung.",
+            "(22 01 74, 10 03, 31 01 C0 04/08/09) und wertet die Antworten aus — sie " +
+            "erzeugt keine Schlüssel. Die Rohantwort steht immer neben der Deutung.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
@@ -247,7 +290,7 @@ internal fun SfdAbschnitt(onSchritt: (String) -> Unit = {}) {
         }
         Button(
             onClick = { statusPruefen() },
-            enabled = !laeuft && transport != null
+            enabled = !laeuft && transport != null && ziel != null
         ) {
             Text("SFD-Status prüfen")
         }
@@ -260,6 +303,108 @@ internal fun SfdAbschnitt(onSchritt: (String) -> Unit = {}) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+
+    // --- Ziel-Steuergerät ---------------------------------------------------
+
+    Spacer(Modifier.height(16.dp))
+    Text(
+        "Ziel-Steuergerät",
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Bold
+    )
+    Spacer(Modifier.height(4.dp))
+    Text(
+        "SFD läuft nicht nur gegen das Motorsteuergerät. Die Voreinstellungen sind " +
+            "die üblichen; welches Steuergerät welche Kennung hat, steht in der " +
+            "Diagnosebeschreibung des Fahrzeugs. Kennungen werden hexadezimal gelesen.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
+    Spacer(Modifier.height(4.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        SfdZiele.presets.forEach { kandidat ->
+            FilterChip(
+                selected = preset == kandidat,
+                onClick = { preset = kandidat },
+                enabled = !laeuft,
+                label = { Text(kandidat.name) },
+            )
+        }
+        FilterChip(
+            selected = preset == null,
+            onClick = { preset = null },
+            enabled = !laeuft,
+            label = { Text("frei") },
+        )
+    }
+
+    if (preset == null) {
+        Spacer(Modifier.height(4.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedTextField(
+                value = freieAnfrage,
+                onValueChange = { freieAnfrage = it },
+                modifier = Modifier.width(160.dp),
+                label = { Text("Anfrage-ID") },
+                singleLine = true,
+                enabled = !laeuft,
+                isError = SfdZiele.idPruefen(freieAnfrage).fehler != null,
+            )
+            OutlinedTextField(
+                value = freieAntwort,
+                onValueChange = { freieAntwort = it },
+                modifier = Modifier.width(160.dp),
+                label = { Text("Antwort-ID") },
+                singleLine = true,
+                enabled = !laeuft,
+                isError = SfdZiele.idPruefen(freieAntwort).fehler != null,
+            )
+        }
+        Spacer(Modifier.height(2.dp))
+        val hinweis = (freiesErgebnis as? SfdZiele.Ergebnis.Ungueltig)?.fehler
+        Text(
+            text = hinweis ?: "11-Bit bis 0x7FF, darüber 29-Bit (z. B. 18DA10F1). " +
+                "Beide Kennungen müssen dieselbe Bitbreite haben.",
+            style = MaterialTheme.typography.bodySmall,
+            color = if (hinweis != null) MaterialTheme.colorScheme.error
+            else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+
+    ziel?.let { adresse ->
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Adressierung: ${adresse.anzeige}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+
+    // --- Diagnosesitzung ----------------------------------------------------
+
+    Spacer(Modifier.height(12.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(
+            checked = extended,
+            onCheckedChange = { extended = it },
+            enabled = !laeuft,
+        )
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Text(
+                "Extended Session vorab senden (10 03)",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                "Viele Steuergeräte lehnen 31 01 C0 04 / C0 08 in der Default-Session " +
+                    "mit NRC 0x7E oder 0x7F ab. Steht der Hinweis „in der aktiven Sitzung " +
+                    "nicht unterstützt“ im Fehlerfeld, ist dieser Schalter die Antwort.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 
     // --- Status -------------------------------------------------------------
@@ -303,7 +448,7 @@ internal fun SfdAbschnitt(onSchritt: (String) -> Unit = {}) {
     ) {
         Button(
             onClick = { challengeAnfordern() },
-            enabled = !laeuft && transport != null
+            enabled = !laeuft && transport != null && ziel != null
         ) {
             Text("Challenge anfordern")
         }
@@ -396,7 +541,7 @@ internal fun SfdAbschnitt(onSchritt: (String) -> Unit = {}) {
         }
         Button(
             onClick = { tokenSenden() },
-            enabled = !laeuft && transport != null && tokenPruefung.ok
+            enabled = !laeuft && transport != null && ziel != null && tokenPruefung.ok
         ) {
             Text("Token senden / Entsperren")
         }
@@ -411,7 +556,7 @@ internal fun SfdAbschnitt(onSchritt: (String) -> Unit = {}) {
     ) {
         OutlinedButton(
             onClick = { sperren() },
-            enabled = !laeuft && transport != null
+            enabled = !laeuft && transport != null && ziel != null
         ) {
             Text("SFD manuell sperren")
         }
@@ -462,10 +607,12 @@ internal fun SfdAbschnitt(onSchritt: (String) -> Unit = {}) {
 }
 
 /**
- * Statuskarte: Zustand als Wort, Rolle, Restlaufzeit — und die Rohbytes.
+ * Statuskarte: Zustand als Wort, Rolle, Restlaufzeit — und die Rohantwort.
  *
  * Farbe allein reicht nicht: in der Halle ist das Licht schlecht, und
- * „gesperrt/entsperrt“ muss auch ohne Farbsehen lesbar sein.
+ * „gesperrt/entsperrt“ muss auch ohne Farbsehen lesbar sein. Die Rohantwort
+ * steht immer da, weil SFD1 und SFD2 unterschiedlich lange antworten und eine
+ * Deutung ohne Rohwert nicht überprüfbar wäre.
  */
 @Composable
 private fun StatusKarte(deutung: SfdStatusDeutung.Deutung) {
@@ -518,13 +665,18 @@ private fun StatusKarte(deutung: SfdStatusDeutung.Deutung) {
 
             Spacer(Modifier.height(4.dp))
             Text(
-                if (deutung.roh.isEmpty()) "Rohbytes: keine" else "Rohbytes: ${deutung.roh}",
+                "Rohantwort (${deutung.rohAntwort.length / 2} Byte): ${deutung.rohAntwort}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                "Statusbytes: ${deutung.roh.ifEmpty { "keine" }}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
                 "Deutung der Statusbytes ist vorläufig — am Fahrzeug mit bekanntem " +
-                    "Zustand zu prüfen.",
+                    "Zustand zu prüfen. Passt das Layout nicht, bleibt der Rohwert maßgeblich.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -533,13 +685,13 @@ private fun StatusKarte(deutung: SfdStatusDeutung.Deutung) {
 }
 
 /**
- * Ein SFD-Objekt je Aufruf, und immer geschlossen.
+ * Ein SFD-Objekt je Aufruf, immer geschlossen, immer auf das gewählte Ziel.
  *
- * Das Objekt hält nur den ISO-TP-Zustand; mehrere Instanzen nebeneinander wären
- * kein Fehler, aber eine je Aufruf ist die einfachere Regel.
+ * `withIds` ist nötig, weil der Kern sonst auf `0x7E0/0x7E8` festgelegt ist —
+ * das Gateway antwortet dort nicht.
  */
-private fun <T> mitSfd(block: (Sfd) -> T): T {
-    val sfd = Sfd()
+private fun <T> mitSfd(ziel: SfdZiel, block: (Sfd) -> T): T {
+    val sfd = Sfd.withIds(ziel.anfrageId.toUInt(), ziel.antwortId.toUInt())
     try {
         return block(sfd)
     } finally {
