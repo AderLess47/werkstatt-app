@@ -4,10 +4,10 @@
 
 | Job | Was er prüft |
 | --- | --- |
-| `c` | `make -C j2534 test` (159 Prüfungen) und dass `core/tests/corpus/isotp.txt` unverändert aus dem Erzeuger hervorgeht |
+| `c` | `make -C j2534 test` (165 Prüfungen) und dass `core/tests/corpus/isotp.txt` unverändert aus dem Erzeuger hervorgeht |
 | `rust` | `cargo test` für `core` (ISO-TP gegen den Korpus) und für `core-ffi` |
 | `bindings` | erzeugt Kotlin- und Swift-Bindings neu, lädt sie als Artefakt hoch (`needs: rust`) |
-| `jvm-tests` | die 119 Tests der App ohne Gerät über `sh scripts/jvm-tests.sh`, gegen den Host-Build der Bibliothek |
+| `jvm-tests` | die 125 Tests der App ohne Gerät über `sh scripts/jvm-tests.sh`, gegen den Host-Build der Bibliothek |
 | `android` | NDK-Bibliothek für `arm64-v8a` und `x86_64`; `./android/gradlew -p android :bindings:test`; dann `:app:testDebugUnitTest :app:assembleDebug` und eine Prüfung, dass beide ABIs in der APK liegen |
 
 Der Android-Job baut über den Wrapper, nicht über ein vom Runner gestelltes
@@ -91,7 +91,7 @@ diesem Repository **kein** CI-Ergebnis belegt.
 
 Solange 0 von 125 Läufen erfolgreich sind, stützt sich keine Aussage in der
 Dokumentation auf die CI. Belegt ist, was lokal gelaufen ist: `make -C j2534
-test`, `cargo test` für beide Crates, `sh scripts/jvm-tests.sh` (119 Tests) und
+test`, `cargo test` für beide Crates, `sh scripts/jvm-tests.sh` (125 Tests) und
 der Android-Build über den Wrapper
 (`./android/gradlew -p android :app:testDebugUnitTest :app:assembleDebug`).
 Ungeprüft bleibt alles, was nur auf dem Runner passiert: `cargo ndk` für beide

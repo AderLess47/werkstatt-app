@@ -8,7 +8,7 @@
 # Vier Schritte, in dieser Reihenfolge (billig vor teuer):
 #
 #   1. C-Kern: ABI-, Transport- und Checker-Tests gegen das Simulationsgerät
-#      (`make -C j2534 test`, 159 Prüfungen)
+#      (`make -C j2534 test`, 165 Prüfungen)
 #   2. Korpus: ist `core/tests/corpus/isotp.txt` noch das, was der C-Kern
 #      erzeugt? Der Korpus ist der Vertrag zwischen C-Kern und Rust-Kern — ein
 #      veralteter Korpus lässt den Rust-Test grün aussehen, obwohl sich das
