@@ -17,6 +17,13 @@ bewusst kein `gradle-version` — ohne diese Angabe nimmt die Aktion den Wrapper
 des Projekts an und richtet nur den Cache ein. Damit gibt es genau einen Pin und
 keine zweite Gradle-Distribution, die niemand benutzt.
 
+Die Zahlen in den Jobnamen sind eine Ankündigung, keine Messung. Damit sie nicht
+abdriften, zählt `sh scripts/zahlen-pruefen.sh` alle fünf lokal nach —
+`make -C j2534 test`, beide `cargo test`, `scripts/jvm-tests.sh` — und bricht ab,
+sobald eine Zahl von der im Workflow genannten abweicht (Exit 1). Es zählt, was
+die Suiten melden, nicht was im Quelltext deklariert ist. Laufen kann es nur
+lokal: die Jobs selbst werden ja nicht gestartet (siehe unten).
+
 ## Stand: die Jobs werden nicht gestartet
 
 Gemessen am 15.11.2026 über die GitHub-API:
