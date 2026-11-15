@@ -5,9 +5,9 @@
 | Job | Was er prüft |
 | --- | --- |
 | `c` | `make -C j2534 test` (165 Prüfungen) und dass `core/tests/corpus/isotp.txt` unverändert aus dem Erzeuger hervorgeht |
-| `rust` | `cargo test` für `core` (ISO-TP gegen den Korpus) und für `core-ffi` |
+| `rust` | `cargo test` für `core` (48 Tests, dazu 4 Korpus-Tests aus `core/tests/corpus/isotp.txt`) und für `core-ffi` (8 Tests) |
 | `bindings` | erzeugt Kotlin- und Swift-Bindings neu, lädt sie als Artefakt hoch (`needs: rust`) |
-| `jvm-tests` | die 125 Tests der App ohne Gerät über `sh scripts/jvm-tests.sh`, gegen den Host-Build der Bibliothek |
+| `jvm-tests` | die 157 Tests der App ohne Gerät über `sh scripts/jvm-tests.sh`, gegen den Host-Build der Bibliothek |
 | `android` | NDK-Bibliothek für `arm64-v8a` und `x86_64`; `./android/gradlew -p android :bindings:test`; dann `:app:testDebugUnitTest :app:assembleDebug` und eine Prüfung, dass beide ABIs in der APK liegen |
 
 Der Android-Job baut über den Wrapper, nicht über ein vom Runner gestelltes
@@ -23,15 +23,16 @@ Gemessen am 15.11.2026 über die GitHub-API:
 
 | Frage | Antwort |
 | --- | --- |
-| Läufe insgesamt | 136 (Stand vor diesem Commit; jeder Push zählt weiter) |
+| Läufe insgesamt | 147 (gemessen 15.11.2026, 16:56 UTC; jeder Push zählt weiter) |
 | davon erfolgreich | **0** |
+| die fünf Läufe zu den SFD- und Doku-Commits (`11948610`…`e0ad5607`) | je `conclusion: failure`, Laufzeit 3–5 s |
 | die acht Läufe zu den Commits dieser Sitzung (`f5ea5eb`…`41a81222`, Lauf 129–136) | je `conclusion: failure`, Laufzeit 4–5 s |
-| letzter Lauf (`43726214646`, Commit `41a81222`) | 5 Jobs: vier mit `conclusion: failure`, je `runner_id: 0`, `steps: []`, gestartet und beendet in derselben Sekunde; `bindings` `skipped`, weil `rust` nicht gelaufen ist |
+| letzter Lauf (`43737325391`, Commit `e0ad5607`, Lauf 147) | 5 Jobs: vier mit `conclusion: failure`, je `runner_id: 0`, `steps: []`; gestartet 16:46:11, beendet 16:46:14/15; `bindings` `skipped`, weil `rust` nicht gelaufen ist — dasselbe Bild wie beim vorigen Stand |
 | Repository | **privat** (`private: true`) |
 | Actions im Repository | `enabled: true`, `allowed_actions: all` |
 | Actions-Minuten im Monat (Konto) | 978 Linux + 388 macOS, brutto rund 30 $, im Nutzungsbericht mit 0 $ netto ausgewiesen |
 | Lauf des Commits, der diese Seite hinzufügte (#126) | `created_at` 13:44:10, `updated_at` 13:44:14, `conclusion: failure` |
-| erneuter Lauf, Versuch 2 (#126, „Re-run failed jobs“) | 13:49:00 → 13:49:04, wieder `steps: []`, `runner_id: 0`, `failure` |
+| erneuter Lauf, Versuch 2 (#126, „Re-run failed jobs") | 13:49:00 → 13:49:04, wieder `steps: []`, `runner_id: 0`, `failure` |
 
 Die Zahl der Läufe wächst mit jedem Push; erfolgreich war bisher keiner — auch
 der Lauf, der diese Seite ins Repository brachte, endete nach vier Sekunden
@@ -90,9 +91,9 @@ diesem Repository **kein** CI-Ergebnis belegt.
 
 ## Was das für den Stand der Verifikation heißt
 
-Solange 0 von 136 Läufen erfolgreich sind, stützt sich keine Aussage in der
+Solange 0 von 147 Läufen erfolgreich sind, stützt sich keine Aussage in der
 Dokumentation auf die CI. Belegt ist, was lokal gelaufen ist: `make -C j2534
-test`, `cargo test` für beide Crates, `sh scripts/jvm-tests.sh` (125 Tests) und
+test`, `cargo test` für beide Crates, `sh scripts/jvm-tests.sh` (157 Tests) und
 der Android-Build über den Wrapper
 (`./android/gradlew -p android :app:testDebugUnitTest :app:assembleDebug`).
 Ungeprüft bleibt alles, was nur auf dem Runner passiert: `cargo ndk` für beide

@@ -23,7 +23,10 @@ jobs:
           git diff --exit-code -- core/tests/corpus/isotp.txt
 
   rust:
-    name: Rust-Kern
+    # Die Zahlen im Namen sind die lokal belegten: 48 Tests im Kern, 4 aus dem
+    # Konformitätskorpus, 8 in der FFI-Schicht. Sie stehen hier, damit ein
+    # Blick auf den Lauf genügt, um zu sehen, ob noch alle da sind.
+    name: Rust-Kern (48 Kern, 4 Korpus, 8 FFI)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +58,7 @@ jobs:
           path: core-ffi/bindings
 
   jvm-tests:
-    name: JVM-Tests ohne Gerät (125)
+    name: JVM-Tests ohne Gerät (157)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
