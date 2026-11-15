@@ -12,8 +12,9 @@ use std::cell::RefCell;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
+use vci_core::sfd::{SfdError, SfdFehler};
 use vci_core::transport::{Capabilities, PAD};
-use vci_core::{CanFrame, IsotpChannel, Loopback, Transport, TransportError};
+use vci_core::{CanFrame, IsotpChannel, Loopback, SfdClient, Transport, TransportError};
 
 uniffi::setup_scaffolding!();
 
@@ -59,6 +60,17 @@ pub enum VciError {
     /// Kotlin eine Property, und `message` verdeckt `Throwable.message` —
     /// die generierte Datei kompiliert dann nicht.
     Protocol { detail: String },
+    /// Negative Antwort des Steuergeräts (UDS NRC, ISO 14229-1).
+    ///
+    /// Eigener Fall statt Klartext, damit die App auf `0x78` (Antwort kommt
+    /// noch), `0x35` (falscher Token) oder `0x36` (zu viele Versuche)
+    /// unterschiedlich reagieren kann. Die Felder sind `u32`, weil UniFFI
+    /// `u8` in Kotlin als `UByte` abbildet — für einen Vergleich mit
+    /// Konstanten ist das nur Zusatzarbeit.
+    Nrc { dienst: u32, code: u32 },
+    /// SFD-Meldung, deren Form nicht zum Ablauf passt (zu kurz, falscher
+    /// Dienst, ungültiger Token-Text).
+    Sfd { detail: String },
 }
 
 impl fmt::Display for VciError {
@@ -68,6 +80,12 @@ impl fmt::Display for VciError {
             VciError::Io => write!(f, "Transportfehler"),
             VciError::Disconnected => write!(f, "Gerät getrennt"),
             VciError::Protocol { detail } => write!(f, "Protokollfehler: {detail}"),
+            VciError::Nrc { dienst, code } => write!(
+                f,
+                "abgelehnt (Dienst 0x{dienst:02X}, NRC 0x{code:02X}: {})",
+                vci_core::sfd::nrc_text(*code as u8)
+            ),
+            VciError::Sfd { detail } => write!(f, "SFD: {detail}"),
         }
     }
 }
@@ -83,6 +101,29 @@ impl From<TransportError> for VciError {
             TransportError::Protocol(detail) => VciError::Protocol {
                 detail: detail.to_string(),
             },
+        }
+    }
+}
+
+impl From<SfdError> for VciError {
+    fn from(e: SfdError) -> Self {
+        match e {
+            SfdError::Nrc { dienst, code } => VciError::Nrc {
+                dienst: dienst as u32,
+                code: code as u32,
+            },
+            other => VciError::Sfd {
+                detail: other.to_string(),
+            },
+        }
+    }
+}
+
+impl From<SfdFehler> for VciError {
+    fn from(e: SfdFehler) -> Self {
+        match e {
+            SfdFehler::Transport(t) => VciError::from(t),
+            SfdFehler::Sfd(s) => VciError::from(s),
         }
     }
 }
@@ -122,6 +163,17 @@ impl<'a> ForeignTransport<'a> {
 
     /// Nimmt den ursprünglichen Plattform-Fehler zurück, falls einer anfiel.
     fn finish<T>(&self, result: vci_core::Result<T>) -> Result<T, VciError> {
+        match result {
+            Ok(v) => Ok(v),
+            Err(e) => match self.last.borrow_mut().take() {
+                Some(original) => Err(original),
+                None => Err(VciError::from(e)),
+            },
+        }
+    }
+
+    /// Dasselbe für SFD-Abläufe, deren Fehlerart `SfdFehler` ist.
+    fn finish_sfd<T>(&self, result: std::result::Result<T, SfdFehler>) -> Result<T, VciError> {
         match result {
             Ok(v) => Ok(v),
             Err(e) => match self.last.borrow_mut().take() {
@@ -303,6 +355,124 @@ pub fn padding_byte() -> u8 {
     PAD
 }
 
+/// Roher SFD-Status, wie ihn das Steuergerät liefert.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SfdStatusFfi {
+    /// Bytes hinter `62 01 74`.
+    pub daten: Vec<u8>,
+    /// Dieselben Bytes als Hex — für die Anzeige.
+    pub hex: String,
+}
+
+/// SFD-Ablauf für die App („Schutz Fahrzeug Diagnose", VAG).
+///
+/// Der Token wird **nicht** hier erzeugt: er kommt aus dem Herstellerportal
+/// und wird als Hex-Text übergeben. Dieses Objekt baut die UDS-Nachrichten,
+/// schickt sie über den übergebenen Transport und wertet die Antwort aus —
+/// inklusive NRC (`VciError::Nrc`) und der Aufschübe (`NRC 0x78`).
+#[derive(uniffi::Object)]
+pub struct Sfd {
+    inner: SfdClient,
+}
+
+#[uniffi::export]
+impl Sfd {
+    /// Standardadressierung: Anfragen `0x7E0`, Antworten `0x7E8`.
+    #[uniffi::constructor]
+    pub fn new() -> Arc<Self> {
+        Arc::new(Sfd {
+            inner: SfdClient::new(),
+        })
+    }
+
+    /// Für Fahrzeuge mit abweichender Adressierung.
+    #[uniffi::constructor]
+    pub fn with_ids(req_id: u32, rsp_id: u32) -> Arc<Self> {
+        Arc::new(Sfd {
+            inner: SfdClient::with_ids(req_id, rsp_id),
+        })
+    }
+
+    /// `22 01 74` — Status des SFD-Schutzes lesen.
+    pub fn status(
+        &self,
+        transport: Box<dyn CanTransport>,
+        timeout_ms: u32,
+    ) -> Result<SfdStatusFfi, VciError> {
+        let mut t = ForeignTransport::new(transport.as_ref());
+        let res = self.inner.status(&mut t, timeout_ms);
+        t.finish_sfd(res).map(|s| SfdStatusFfi {
+            hex: vci_core::sfd::hex(&s.daten),
+            daten: s.daten,
+        })
+    }
+
+    /// `31 01 C0 04 <Rolle>` — Challenge anfordern, Rückgabe als Hex-Text.
+    pub fn challenge(
+        &self,
+        transport: Box<dyn CanTransport>,
+        rolle: u32,
+        timeout_ms: u32,
+    ) -> Result<String, VciError> {
+        let rolle = u8::try_from(rolle).map_err(|_| VciError::Sfd {
+            detail: format!("Rolle {rolle} passt nicht in ein Byte"),
+        })?;
+        let mut t = ForeignTransport::new(transport.as_ref());
+        let res = self.inner.challenge(&mut t, rolle, timeout_ms);
+        t.finish_sfd(res).map(|c| vci_core::sfd::hex(&c))
+    }
+
+    /// `31 01 C0 08 <Token>` — Token als Hex-Text senden (entsperren).
+    ///
+    /// Der Text darf Leerzeichen, `:` und `-` als Trenner enthalten, so wie
+    /// Portale Token ausgeben. Ungültige Zeichen werden abgelehnt, nicht
+    /// übersprungen.
+    pub fn entsperren(
+        &self,
+        transport: Box<dyn CanTransport>,
+        token_hex: String,
+        timeout_ms: u32,
+    ) -> Result<(), VciError> {
+        let token = vci_core::sfd::aus_hex(&token_hex).map_err(VciError::from)?;
+        self.entsperren_mit_bytes(transport, token, timeout_ms)
+    }
+
+    /// Dasselbe mit einem schon vorhandenen Byte-Array.
+    pub fn entsperren_mit_bytes(
+        &self,
+        transport: Box<dyn CanTransport>,
+        token: Vec<u8>,
+        timeout_ms: u32,
+    ) -> Result<(), VciError> {
+        let mut t = ForeignTransport::new(transport.as_ref());
+        let res = self.inner.entsperren(&mut t, &token, timeout_ms);
+        t.finish_sfd(res)
+    }
+
+    /// `31 01 C0 09` — wieder sperren.
+    pub fn sperren(
+        &self,
+        transport: Box<dyn CanTransport>,
+        timeout_ms: u32,
+    ) -> Result<(), VciError> {
+        let mut t = ForeignTransport::new(transport.as_ref());
+        let res = self.inner.sperren(&mut t, timeout_ms);
+        t.finish_sfd(res)
+    }
+}
+
+/// Wandelt Hex-Text in Bytes — dieselbe Regel wie beim Token.
+#[uniffi::export]
+pub fn sfd_aus_hex(text: String) -> Result<Vec<u8>, VciError> {
+    vci_core::sfd::aus_hex(&text).map_err(VciError::from)
+}
+
+/// Wandelt Bytes in Hex-Text (Großbuchstaben, ohne Trenner).
+#[uniffi::export]
+pub fn sfd_hex(daten: Vec<u8>) -> String {
+    vci_core::sfd::hex(&daten)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -337,5 +507,82 @@ mod tests {
         let iso = IsoTp::new();
         let err = iso.recv(Box::new(lb), 10).unwrap_err();
         assert_eq!(err, VciError::Timeout);
+    }
+
+    fn push_sf(lb: &Arc<LoopbackTransport>, uds: &[u8]) {
+        let mut data = vec![uds.len() as u8];
+        data.extend_from_slice(uds);
+        lb.push(CanFrameFfi {
+            id: 0x7E8,
+            data,
+            dlc: 8,
+        });
+    }
+
+    #[test]
+    fn sfd_status_und_challenge_ueber_die_grenze() {
+        let lb = LoopbackTransport::new();
+        push_sf(&lb, &[0x62, 0x01, 0x74, 0x01]);
+        let sfd = Sfd::new();
+
+        let status = sfd.status(Box::new(lb.clone()), 100).unwrap();
+        assert_eq!(status.daten, vec![0x01]);
+        assert_eq!(status.hex, "01");
+        assert_eq!(lb.sent()[0].data[..4], [0x03, 0x22, 0x01, 0x74]);
+
+        lb.clear_sent();
+        push_sf(&lb, &[0x71, 0x01, 0xC0, 0x04, 0xA1, 0xB2]);
+        let challenge = sfd.challenge(Box::new(lb.clone()), 0x01, 100).unwrap();
+        assert_eq!(challenge, "A1B2");
+        assert_eq!(lb.sent()[0].data[..5], [0x05, 0x31, 0x01, 0xC0, 0x04]);
+    }
+
+    #[test]
+    fn sfd_nrc_kommt_als_eigener_fehlerfall() {
+        let lb = LoopbackTransport::new();
+        push_sf(&lb, &[0x7F, 0x31, 0x35]);
+        let err = Sfd::new()
+            .entsperren(Box::new(lb), "DEAD".to_string(), 100)
+            .unwrap_err();
+        assert_eq!(
+            err,
+            VciError::Nrc {
+                dienst: 0x31,
+                code: 0x35
+            }
+        );
+        assert!(err.to_string().contains("invalidKey"), "{err}");
+    }
+
+    #[test]
+    fn sfd_lehnt_ungueltigen_hex_text_ab() {
+        let lb = LoopbackTransport::new();
+        let err = Sfd::new()
+            .entsperren(Box::new(lb), "A1G2".to_string(), 100)
+            .unwrap_err();
+        assert!(matches!(err, VciError::Sfd { .. }), "{err}");
+    }
+
+    #[test]
+    fn sfd_token_mit_300_byte_geht_ueber_die_grenze() {
+        let lb = LoopbackTransport::new();
+        // Flow Control, danach die positive Antwort — der Sender wartet selbst.
+        lb.push(CanFrameFfi {
+            id: 0x7E8,
+            data: vec![0x30, 0x00, 0x00],
+            dlc: 8,
+        });
+        push_sf(&lb, &[0x71, 0x01, 0xC0, 0x08]);
+
+        let token = vec![0x5Au8; 300];
+        Sfd::new()
+            .entsperren_mit_bytes(Box::new(lb.clone()), token.clone(), 100)
+            .unwrap();
+
+        let sent = lb.sent();
+        assert_eq!(sent[0].data[0] & 0xF0, 0x10, "First Frame");
+        let angekuendigt = (((sent[0].data[0] as usize) & 0x0F) << 8) | sent[0].data[1] as usize;
+        assert_eq!(angekuendigt, 4 + token.len());
+        assert!(sent.len() > 40, "300 Byte brauchen viele Rahmen");
     }
 }
