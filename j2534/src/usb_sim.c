@@ -14,8 +14,11 @@
 #include <stdio.h>
 #include <string.h>
 
-#define SIM_Q_MAX   16
+#define SIM_Q_MAX   64
 #define SIM_FRAME   300
+/* Lange Nutzlasten (SFD-Token: gut 300 Byte, dazu Kopf) brauchen Platz —
+ * sowohl im Empfangspuffer als auch in der Antwort des Echos (0x2E). */
+#define SIM_MSG     512
 
 typedef struct {
     uint8_t buf[SIM_FRAME];
@@ -34,8 +37,13 @@ static struct {
     int vbat_mv;             /* gemeldete Bordspannung */
     uint32_t firmware;       /* gemeldete Firmware-Version */
     int ecu_absent;          /* kein Steuergerät am Bus */
+    int fc_bs;               /* Blockgröße, die das SG verlangt */
+    int fc_stmin;            /* Mindestabstand in ms, die das SG verlangt */
+    int fc_wait_once;        /* erst 0x31 (wait), dann 0x30 senden */
+    int bad_single_once;     /* nächste Antwort mit unzulässiger SF-Länge */
+    int cf_count;            /* Consecutive Frames im laufenden Block */
     /* ISO-TP-Empfangspuffer für die Anfrage */
-    uint8_t isotp[256];
+    uint8_t isotp[SIM_MSG];
     uint32_t isotp_len;
     uint32_t isotp_total;
 } sim;
@@ -97,6 +105,14 @@ static void isotp_respond(const uint8_t *msg, uint32_t n)
 {
     uint8_t f[8];
 
+    if (sim.bad_single_once) {
+        /* Fehlerfall für den Empfangspfad: Längenfeld 15 in 8 Byte. */
+        uint8_t bad[8] = {0x0F, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
+        sim.bad_single_once = 0;
+        send_can(0x7E8, bad, 8);
+        return;
+    }
+
     if (n <= 7) {
         f[0] = (uint8_t)n;
         memset(f + 1, 0xAA, 7);
@@ -128,7 +144,7 @@ static void isotp_respond(const uint8_t *msg, uint32_t n)
 /* UDS-Dienst des simulierten Steuergeräts */
 static void ecu_handle(const uint8_t *req, uint32_t n)
 {
-    uint8_t r[64];
+    uint8_t r[SIM_MSG];
     static const char vin[] = "WVWZZZ1JZXW000001";
 
     if (n == 0 || sim.ecu_absent) {
@@ -167,6 +183,9 @@ static void ecu_handle(const uint8_t *req, uint32_t n)
         }
         break;
     case 0x2E: /* WriteDataByIdentifier: Echo, damit langer Schreibpfad geprüft wird */
+        if (n - 1 > sizeof(r) - 1) {
+            break; /* passt nicht in den Puffer: keine Antwort statt Überlauf */
+        }
         r[0] = 0x6E;
         memcpy(r + 1, req + 1, n - 1);
         isotp_respond(r, n);
@@ -200,17 +219,35 @@ static void ecu_rx(const uint8_t *data, uint8_t dlc)
     }
     case 0x10: {
         sim.isotp_total = (uint32_t)(((data[0] & 0x0F) << 8) | data[1]);
+        if (sim.isotp_total > sizeof(sim.isotp)) {
+            /* Zu lang für den Simulator: keine Antwort, kein Überlauf. */
+            sim.isotp_total = 0;
+            sim.isotp_len = 0;
+            break;
+        }
         memcpy(sim.isotp, data + 2, 6);
         sim.isotp_len = 6;
-        /* Flow Control an den Tester */
+        sim.cf_count = 0;
+        /* Flow Control an den Tester — mit den Werten, die der Test verlangt. */
         {
             uint8_t f[8] = {0x30, 0x00, 0x00, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
+            if (sim.fc_wait_once) {
+                uint8_t w[8] = {0x31, 0x00, 0x00, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
+                sim.fc_wait_once = 0;
+                send_can(0x7E8, w, 8);
+            }
+            f[1] = (uint8_t)sim.fc_bs;
+            f[2] = (uint8_t)sim.fc_stmin;
             send_can(0x7E8, f, 8);
         }
         break;
     }
     case 0x20: {
-        uint32_t chunk = sim.isotp_total - sim.isotp_len;
+        uint32_t chunk;
+        if (sim.isotp_total == 0 || sim.isotp_len >= sim.isotp_total) {
+            break; /* kein laufender Block */
+        }
+        chunk = sim.isotp_total - sim.isotp_len;
         if (chunk > 7) {
             chunk = 7;
         }
@@ -218,10 +255,18 @@ static void ecu_rx(const uint8_t *data, uint8_t dlc)
             memcpy(sim.isotp + sim.isotp_len, data + 1, chunk);
             sim.isotp_len += chunk;
         }
+        sim.cf_count++;
         if (sim.isotp_len >= sim.isotp_total) {
             ecu_handle(sim.isotp, sim.isotp_total);
             sim.isotp_len = 0;
             sim.isotp_total = 0;
+            sim.cf_count = 0;
+        } else if (sim.fc_bs > 0 && (sim.cf_count % sim.fc_bs) == 0) {
+            /* Block voll: das echte SG quittiert mit einem neuen Flow Control,
+             * sonst wartet der Tester nach BS Rahmen vergeblich. */
+            uint8_t f[8] = {0x30, (uint8_t)sim.fc_bs, (uint8_t)sim.fc_stmin,
+                            0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
+            send_can(0x7E8, f, 8);
         }
         break;
     }
@@ -402,4 +447,20 @@ void sim_force_timeout(void)
 void sim_set_disconnected(int on)
 {
     sim.disconnect = on;
+}
+
+void sim_set_flow_control(int bs, int stmin)
+{
+    sim.fc_bs = bs < 0 ? 0 : bs;
+    sim.fc_stmin = stmin < 0 ? 0 : stmin;
+}
+
+void sim_flow_wait_once(void)
+{
+    sim.fc_wait_once = 1;
+}
+
+void sim_force_bad_single_frame(void)
+{
+    sim.bad_single_once = 1;
 }
