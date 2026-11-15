@@ -362,6 +362,12 @@ pub struct SfdStatusFfi {
     pub daten: Vec<u8>,
     /// Dieselben Bytes als Hex — für die Anzeige.
     pub hex: String,
+    /// Die ganze Antwort als Hex, `62 01 74` eingeschlossen.
+    ///
+    /// SFD1 und SFD2 liefern unterschiedlich lange Antworten. Die App zeigt
+    /// diese Zeichenkette immer, damit eine Deutung, die nicht passt, am
+    /// Rohwert auffällt statt geglaubt zu werden.
+    pub roh_hex: String,
 }
 
 /// SFD-Ablauf für die App („Schutz Fahrzeug Diagnose", VAG).
@@ -403,6 +409,7 @@ impl Sfd {
         let res = self.inner.status(&mut t, timeout_ms);
         t.finish_sfd(res).map(|s| SfdStatusFfi {
             hex: vci_core::sfd::hex(&s.daten),
+            roh_hex: vci_core::sfd::hex(&s.roh),
             daten: s.daten,
         })
     }
@@ -446,6 +453,35 @@ impl Sfd {
     ) -> Result<(), VciError> {
         let mut t = ForeignTransport::new(transport.as_ref());
         let res = self.inner.entsperren(&mut t, &token, timeout_ms);
+        t.finish_sfd(res)
+    }
+
+    /// `10 03` — Extended Session starten.
+    ///
+    /// Vor Challenge und Token nötig, wenn das Steuergerät `31 01 C0 04` in der
+    /// Default-Session mit NRC `0x7E`/`0x7F` ablehnt.
+    pub fn extended_session(
+        &self,
+        transport: Box<dyn CanTransport>,
+        timeout_ms: u32,
+    ) -> Result<(), VciError> {
+        let mut t = ForeignTransport::new(transport.as_ref());
+        let res = self.inner.extended(&mut t, timeout_ms);
+        t.finish_sfd(res)
+    }
+
+    /// `10 <Sitzung>` — Sitzungswechsel mit beliebiger Subfunktion.
+    pub fn sitzung(
+        &self,
+        transport: Box<dyn CanTransport>,
+        sitzung: u32,
+        timeout_ms: u32,
+    ) -> Result<(), VciError> {
+        let sitzung = u8::try_from(sitzung).map_err(|_| VciError::Sfd {
+            detail: format!("Sitzung {sitzung} passt nicht in ein Byte"),
+        })?;
+        let mut t = ForeignTransport::new(transport.as_ref());
+        let res = self.inner.sitzung(&mut t, sitzung, timeout_ms);
         t.finish_sfd(res)
     }
 
@@ -535,6 +571,30 @@ mod tests {
         let challenge = sfd.challenge(Box::new(lb.clone()), 0x01, 100).unwrap();
         assert_eq!(challenge, "A1B2");
         assert_eq!(lb.sent()[0].data[..5], [0x05, 0x31, 0x01, 0xC0, 0x04]);
+    }
+
+    #[test]
+    fn sfd_extended_session_wird_gesendet_und_ausgewertet() {
+        let lb = LoopbackTransport::new();
+        push_sf(&lb, &[0x50, 0x03, 0x00, 0x32, 0x01, 0xF4]);
+
+        Sfd::new().extended_session(Box::new(lb.clone()), 100).unwrap();
+
+        let sent = lb.sent();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(&sent[0].data[..3], &[0x02, 0x10, 0x03]);
+    }
+
+    #[test]
+    fn sfd_status_liefert_die_rohe_antwort_mit() {
+        let lb = LoopbackTransport::new();
+        push_sf(&lb, &[0x62, 0x01, 0x74, 0x01]);
+
+        let status = Sfd::new().status(Box::new(lb), 100).unwrap();
+
+        assert_eq!(status.hex, "01");
+        // Roh: die ganze Antwort, nicht nur die Nutzlast.
+        assert_eq!(status.roh_hex, "62017401");
     }
 
     #[test]
