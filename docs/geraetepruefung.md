@@ -4,22 +4,26 @@
 syntaktisch geprüft — aber auf **keinem Gerät** gelaufen. Dieser Plan prüft genau
 das nach, in einer Reihenfolge, in der ein Fehler sofort zuzuordnen ist.
 
-**Dauer:** etwa 15 Minuten mit Dongle und Fahrzeug (oder einer Diagnosebank).
+**Dauer:** etwa 25 Minuten mit Dongle und Fahrzeug (oder einer Diagnosebank) —
+Abschnitt 10 (SFD) braucht zusätzlich ein Fahrzeug, das auf `22 01 74` antwortet.
 
 Was hier **nicht** geprüft wird, weil es dafür einen anderen Aufbau braucht:
 Bluetooth-Strecken (zweiter Dongle, Kopplung), Zeitmessung auf die Millisekunde
-(Stoppuhr reicht nicht). Die 0x78-Behandlung ist seit Kurzem eingebaut, lässt
-sich mit diesem Aufbau aber nur prüfen, wenn ein Steuergerät sie wirklich
-sendet — die Prüfung ist als Punkt 9 aufgenommen, mit der Alternative, sie
-weiterhin offen zu lassen.
+(Stoppuhr reicht nicht) und ob der Dongle eine 29-Bit-Kennung als Extended Frame
+ausgibt (dafür braucht es ein Fahrzeug mit bekannter 29-Bit-Adresse, siehe 10.1).
+Die 0x78-Behandlung ist seit Kurzem eingebaut, lässt sich mit diesem Aufbau aber
+nur prüfen, wenn ein Steuergerät sie wirklich sendet — die Prüfung ist als Punkt
+9 aufgenommen, mit der Alternative, sie weiterhin offen zu lassen.
 
 **Ohne Gerät schon geprüft** (JVM-Tests, siehe
 [android-app-modul.md](android-app-modul.md#geprüft--nicht-geprüft)): die
 Zeilenbildung der Textwege, das Zusammensetzen und der Aufschub einer
 STN-Antwort samt 0x78-Erkennung, die Fristformatierung der Wartezeile, die
-Auswertung einer Dienstantwort sowie Bericht und Dateiname. Diese Punkte
-müssen unten nicht mehr bewiesen werden — nur, dass die App sie auf diesem
-Gerät auch anzeigt.
+Auswertung einer Dienstantwort sowie Bericht und Dateiname. Beim SFD sind es die
+Token-Prüfung, die Deutung der Statusbytes samt Rohantwort, die Ziel-Kennungen
+mit Bitbreiten-Prüfung und die Schrittfolge mit `10 03` (157 JVM-Tests). Diese
+Punkte müssen unten nicht mehr bewiesen werden — nur, dass die App sie auf
+diesem Gerät auch anzeigt.
 
 ---
 
@@ -157,7 +161,90 @@ notieren, wie lange die Zeile stand, und die App schließen.
 
 ---
 
-## 10. Abhaken
+## 10. SFD am Fahrzeug
+
+Der SFD-Bildschirm ist der einzige, der ein Steuergerät **verändert** — er
+entsperrt und sperrt. Eine Abweichung ist hier mehr als eine Anzeige: ein
+falscher Token ist ein Fehlversuch, und nach `0x36` (zu viele Versuche) wartet
+das Steuergerät eine Weile. Deshalb in dieser Reihenfolge prüfen: erst die
+Adressierung (10.1), dann nur lesend den Status (10.2), erst danach die
+Schritte, die senden (10.3).
+
+**Vorher:** Zündung an, und im SFD-Abschnitt auf „USB-Dongle öffnen“ — der Knopf
+gehört zum SFD-Abschnitt, unabhängig von „Weg A“.
+
+### 10.1 Adressierung wählen
+
+1. Voreingestellt ist „Motor (01)“. Erwartet unter den Chips die Zeile
+   „Adressierung: Motor (01) · 0x7E0 → 0x7E8 (11 Bit)“.
+2. Chip „Gateway (19)“ drücken. Erwartet:
+   „Adressierung: Gateway (19) · 0x710 → 0x718 (11 Bit)“.
+3. Chip „frei“ drücken. Erwartet: zwei Felder „Anfrage-ID“ und „Antwort-ID“ und
+   darunter der graue Hinweis „11-Bit bis 0x7FF, darüber 29-Bit (z. B. 18DA10F1).
+   Beide Kennungen müssen dieselbe Bitbreite haben.“
+4. `7E0` und `7E8` eingeben — der Hinweis bleibt grau. Dann in „Antwort-ID“
+   `18DAF110` eingeben. Erwartet: der Hinweis wird **rot** und lautet „Anfrage
+   11 Bit, Antwort 29 Bit — ein gemischtes Paar kommt am Bus nicht an“; der Knopf
+   „SFD-Status prüfen“ ist gesperrt.
+5. **Abweichung wäre:** eine Kennung wird dezimal gelesen (`710` muss als 0x710
+   verstanden werden, nicht als 710 = 0x2C6), oder ein gemischtes Paar wird
+   angenommen, oder eine 29-Bit-Kennung über `0x1FFFFFFF` wird stillschweigend
+   abgeschnitten statt abgelehnt.
+
+**Nicht prüfbar mit diesem Aufbau:** ob der Dongle eine **29-Bit**-Kennung
+wirklich als Extended Frame auf den Bus gibt. Das Drahtformat überträgt die
+Kennung als Wert ohne Extended-Flag; ob seine Firmware daraus einen 29-Bit-Rahmen
+macht, zeigt nur ein Fahrzeug, das auf 29 Bit antwortet. Antwortet es nicht, ist
+das **kein** Beweis gegen die App — dann mit der Adresse aus der
+Diagnosebeschreibung wiederholen und das Ergebnis hier eintragen („offen“ ist
+eine gültige Antwort).
+
+### 10.2 Status lesen und die Rohantwort
+
+1. „SFD-Status prüfen“ drücken. Erwartet **in dieser Reihenfolge**:
+   1. Wartezeile „Sende 22 01 74 an Motor (01) · 0x7E0 → 0x7E8 (11 Bit) und warte
+      auf den Status — Frist 5,0 s“
+   2. Karte mit dem Zustand als Wort: `GESPERRT`, `ENTSPERRT` oder `UNBEKANNT`
+   3. darin die Zeile „Rohantwort (N Byte): 620174…“ und darunter „Statusbytes: …“
+   4. die Erfolgszeile „Status gelesen (N Byte Antwort)“
+2. **Der Kernpunkt dieser Prüfung:** die Zeile „Rohantwort“ muss **immer** da sein
+   — auch wenn die Deutung `UNBEKANNT` sagt. Den Hex-Wert wörtlich notieren: er ist
+   der einzige Beleg dafür, was das Steuergerät wirklich geantwortet hat.
+3. Vergleichen: beginnt der Rohwert mit `62 01 74`? Ein anderer Kopf (etwa `62 01
+   75`) heißt, dass die DID beim Fahrzeug eine andere ist — notieren, nicht deuten.
+4. **Abweichung wäre:** die Karte fehlt ganz, „Rohantwort“ fehlt, oder es steht
+   eine geratene Deutung statt „Zustand unbekannt: Byte 0 ist 0x…“.
+
+### 10.3 Extended Session (10 03)
+
+Der Schalter „Extended Session vorab senden (10 03)“ steht standardmäßig auf
+**an**.
+
+1. **Mit Schalter:** „Challenge anfordern“ drücken. Erwartet als Wartezeile
+   „Sende Extended Session (10 03) → Challenge (31 01 C0 04) mit Rolle 0x01
+   (Extended) — Frist 5,0 s“; danach die Karte „N Byte Challenge“ oder eine
+   Fehlerkarte.
+2. **Ohne Schalter:** Schalter aus, erneut drücken. Erwartet als Wartezeile nur
+   „Sende Challenge (31 01 C0 04) mit Rolle 0x01 (Extended) — Frist 5,0 s“.
+3. **Die eigentliche Probe:** lehnt das Steuergerät mit NRC `0x7E` oder `0x7F` ab,
+   muss die Fehlerkarte den Schalter nennen — „… in der aktiven Sitzung nicht
+   unterstützt — „Extended Session“ (10 03) einschalten und erneut versuchen“.
+   Tritt genau das auf, ist der Befund: dieses Steuergerät braucht `10 03`.
+4. Beim Token und beim Sperren erscheint dieselbe Vorstufe, sichtbar in der
+   Wartezeile: „Sende Extended Session (10 03) → Token senden (31 01 C0 08) mit N
+   Byte Token als Multi-Frame — Frist 20,0 s, danach Status lesen“ bzw. „Sende
+   Extended Session (10 03) → Sperren (31 01 C0 09) und lese den Status danach —
+   Frist 5,0 s“.
+5. **Abweichung wäre:** `10 03` wird gesendet, obwohl der Schalter aus ist; oder
+   die Wartezeile verschweigt die Session, obwohl sie gesendet wird — dann wartet
+   der Techniker auf einen Schritt, der nicht in der Anzeige steht.
+6. **Nicht prüfbar ohne passendes Fahrzeug:** ob `10 03` hier überhaupt nötig ist.
+   Antwortet das Steuergerät auch ohne, ist der Schalter harmlos — er kostet eine
+   Nachricht. Beides ist ein Befund, keiner davon ein Fehler.
+
+---
+
+## 11. Abhaken
 
 | # | Schritt | erwartet | gesehen | Abweichung |
 | --- | --- | --- | --- | --- |
@@ -170,14 +257,18 @@ notieren, wie lange die Zeile stand, und die App schließen.
 | 7 | Bericht | „Zuletzt gewartet auf“ = letzter Schritt | | |
 | 8 | Fehlerfälle | Karten statt Hänger | | |
 | 9 | 0x78-Aufschub | „0x78“ in der Wartezeile, danach echte Antwort; kein „NRC 78“ als Ergebnis | | |
+| 10 | SFD Adressierung | Chips Gateway/Motor/frei; gemischtes Kennungspaar wird rot abgelehnt | | |
+| 11 | SFD Status | Karte mit Rohantwort **auch** bei `UNBEKANNT`; Rohwert beginnt mit `62 01 74` | | |
+| 12 | SFD Extended Session | Wartezeile nennt „(10 03)“; NRC 0x7E nennt den Schalter | | |
+| 13 | SFD 29 Bit (optional) | Kennung kommt als Extended Frame an — oder als offen notiert | | |
 
 ---
 
-## 11. Wenn etwas abweicht
+## 12. Wenn etwas abweicht
 
 Notieren und mitschicken:
 
-1. welcher Schritt aus Abschnitt 10,
+1. welcher Schritt aus Abschnitt 11,
 2. der **genaue Text** der Zeile oder Karte (Foto ist erlaubt, wenn es lesbar ist),
 3. Tablet-Modell und Android-Version (steht im Kopf des Selbsttest-Berichts),
 4. Dongle (VID/PID oder Name),
@@ -188,6 +279,6 @@ weder beim Wartezeit-Bug noch beim Dongle.
 
 ---
 
-**Stand dieses Plans:** 14.11.2026. Er beschreibt den Code, wie er committet ist,
-und ist selbst **nicht** am Gerät erprobt — er ist die Anleitung für diese
-Prüfung, nicht ihr Ergebnis.
+**Stand dieses Plans:** 15.11.2026 (Abschnitt 10 für SFD ergänzt). Er beschreibt
+den Code, wie er committet ist, und ist selbst **nicht** am Gerät erprobt — er
+ist die Anleitung für diese Prüfung, nicht ihr Ergebnis.
