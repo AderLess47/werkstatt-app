@@ -1,0 +1,32 @@
+# DPF-Regeneration / Aschestand — Katalogentwurf (§10.2).
+#
+# R2: eine angestoßene Regeneration läuft heiß ab und lässt sich nicht
+# zurücknehmen. Deshalb Bestätigung plus Spannungsfenster: eine Regeneration,
+# die bei 10,5 V abbricht, hinterlässt einen halb freigebrannten Filter.
+id: dpf-regeneration
+titel: DPF-Regeneration anstoßen
+risk: R2
+match:
+  steuergeraete:
+    - 0x7E0
+preconditions:
+  - klemme15
+  - motor_aus
+  - bordspannung:
+      min_mv: 12000
+      max_mv: 14500
+steps:
+  - anfrage: "10 03"
+    erwartet: "50 03"
+    timeout_ms: 2000
+    recovery:
+      - anfrage: "10 01"
+        erwartet: "50 01"
+        timeout_ms: 1000
+  - anfrage: "31 01 02 06"
+    erwartet: "71 01 02 06"
+    timeout_ms: 10000
+provenance:
+  quelle: "Katalogentwurf nach Plan §10.2 — Requests nicht am Fahrzeug belegt"
+  freigabe: unbelegt
+  evidence_hash: ""

@@ -1,0 +1,39 @@
+# Ölservice zurückstellen — Katalogentwurf aus dem Plan (§10.2).
+#
+# Die Requests sind NICHT am Fahrzeug belegt. Was hier steht, ist der Ablauf,
+# nicht der Nachweis: solange `freigabe: unbelegt` gilt, ist das ein Entwurf.
+# R1 läuft ohne Bestätigung — genau deshalb muss vor dem ersten Einsatz ein
+# Nachweis (Log) hin und `freigabe` sowie `evidence_hash` ergänzt werden.
+id: oelservice-rueckstellung
+titel: Ölservice zurückstellen
+risk: R1
+match:
+  steuergeraete:
+    - 0x7E0
+preconditions:
+  - klemme15
+  - motor_aus
+  - bordspannung:
+      min_mv: 11000
+      max_mv: 15000
+backup:
+  dids:
+    - 0xF190
+steps:
+  - anfrage: "10 03"
+    erwartet: "50 03"
+    timeout_ms: 2000
+    recovery:
+      - anfrage: "10 01"
+        erwartet: "50 01"
+        timeout_ms: 1000
+  - anfrage: "31 01 02 03"
+    erwartet: "71 01 02 03"
+    timeout_ms: 5000
+  - anfrage: "3E 00"
+    erwartet: "7E 00"
+    timeout_ms: 1000
+provenance:
+  quelle: "Katalogentwurf nach Plan §10.2 — Requests nicht am Fahrzeug belegt"
+  freigabe: unbelegt
+  evidence_hash: ""

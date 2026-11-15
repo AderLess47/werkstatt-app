@@ -1,0 +1,32 @@
+# Lenkwinkelsensor kalibrieren — Katalogentwurf (§10.2).
+#
+# R2: eine falsche Nullage wirkt direkt in ESP und Lenkassistenz. Deshalb
+# Bestätigung, Motor aus und ein enges Spannungsfenster — bei niedriger
+# Spannung bricht die Kalibrierung mitten im Lernvorgang ab.
+id: lenkwinkel-kalibrierung
+titel: Lenkwinkelsensor kalibrieren
+risk: R2
+match:
+  steuergeraete:
+    - 0x7E0
+preconditions:
+  - klemme15
+  - motor_aus
+  - bordspannung:
+      min_mv: 12000
+      max_mv: 14000
+steps:
+  - anfrage: "10 03"
+    erwartet: "50 03"
+    timeout_ms: 2000
+    recovery:
+      - anfrage: "10 01"
+        erwartet: "50 01"
+        timeout_ms: 1000
+  - anfrage: "31 01 02 07"
+    erwartet: "71 01 02 07"
+    timeout_ms: 5000
+provenance:
+  quelle: "Katalogentwurf nach Plan §10.2 — Requests nicht am Fahrzeug belegt"
+  freigabe: unbelegt
+  evidence_hash: ""

@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://werkstatt.local/schema/funktion.schema.json",
+  "title": "Werkstattfunktion (Schema v0.1)",
+  "description": "Beschreibt eine Werkstattfunktion als Daten. Gelesen von core/src/content.rs — dort ist die Teilmenge von YAML festgelegt, die dieses Schema braucht (zwei Leerzeichen je Ebene, Listen als '- wert', keine [a, b]-Schreibweise). Unbekannte Schlüssel sind Fehler, keine Warnung.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "titel", "risk", "match", "preconditions", "steps", "provenance"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "description": "Eindeutige Kennung, durchgehend klein (a–z, 0–9, -)."
+    },
+    "titel": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Was in der Werkstatt auf dem Knopf steht."
+    },
+    "risk": {
+      "enum": ["R0", "R1", "R2", "R3", "R4"],
+      "description": "R0 liest nur, R1 schreibt reversibel, R2–R4 verlangen eine Bestätigung des Bedieners."
+    },
+    "match": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Wann die Funktion zu einem Fahrzeug passt. Alle gesetzten Felder müssen passen; leer ist unzulässig, weil die Funktion sonst auf jedes Fahrzeug zuträfe.",
+      "properties": {
+        "vin_praefix": { "type": "string", "minLength": 1 },
+        "hsn": { "type": "string", "minLength": 1 },
+        "tsn": { "type": "string", "minLength": 1 },
+        "steuergeraete": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+          "description": "Adressen (z. B. 0x7E0) der Steuergeräte, die vorhanden sein müssen."
+        }
+      }
+    },
+    "preconditions": {
+      "type": "array",
+      "description": "Bedingungen vor dem ersten Rahmen. Die Bordspannung wird gemessen, nicht behauptet; ein Gerät, das sie nicht messen kann, lässt die Funktion nicht laufen.",
+      "items": {
+        "oneOf": [
+          { "const": "klemme15" },
+          { "const": "motor_aus" },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["bordspannung"],
+            "properties": {
+              "bordspannung": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["min_mv", "max_mv"],
+                "properties": {
+                  "min_mv": { "type": "integer", "minimum": 1 },
+                  "max_mv": { "type": "integer", "minimum": 1 }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "backup": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Kennungen, die vor dem ersten Schreibzugriff gelesen werden. Nur bei R1–R4 wirksam; ein Backup nach dem Schreiben wäre keins.",
+      "properties": {
+        "dids": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0, "maximum": 65535 }
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["anfrage", "erwartet", "timeout_ms"],
+        "properties": {
+          "anfrage": {
+            "type": "string",
+            "description": "UDS-Anfrage als Hex, z. B. \"31 01 02 03\"."
+          },
+          "erwartet": {
+            "type": "string",
+            "minLength": 2,
+            "description": "Erwarteter Anfang der Antwort als Hex. Leer ist unzulässig — es würde jede Antwort durchwinken."
+          },
+          "timeout_ms": { "type": "integer", "minimum": 1 },
+          "recovery": {
+            "type": "array",
+            "description": "Notausstieg: Rahmen, die bei einem Fehlschlag noch gesendet werden. Darf selbst keinen Notausstieg haben.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["anfrage", "erwartet", "timeout_ms"],
+              "properties": {
+                "anfrage": { "type": "string", "minLength": 2 },
+                "erwartet": { "type": "string", "minLength": 2 },
+                "timeout_ms": { "type": "integer", "minimum": 1 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["quelle", "freigabe"],
+      "description": "Herkunft und Freigabe. Ab R2 ist 'unbelegt' unzulässig; jede Freigabe über 'unbelegt' braucht einen evidence_hash.",
+      "properties": {
+        "quelle": { "type": "string", "minLength": 1 },
+        "freigabe": { "enum": ["unbelegt", "geprüft", "freigegeben"] },
+        "evidence_hash": {
+          "type": "string",
+          "pattern": "^([0-9a-fA-F]{2})*$",
+          "description": "Hex über den Nachweis (Log, Messprotokoll). Leer nur bei freigabe 'unbelegt'."
+        }
+      }
+    }
+  }
+}
