@@ -29,6 +29,11 @@ Gemessen am 15.11.2026 über die GitHub-API:
 | Repository | **privat** (`private: true`) |
 | Actions im Repository | `enabled: true`, `allowed_actions: all` |
 | Actions-Minuten im Monat (Konto) | 978 Linux + 388 macOS, brutto rund 30 $, im Nutzungsbericht mit 0 $ netto ausgewiesen |
+| Lauf des Commits, der diese Seite hinzufügte (#126) | `created_at` 13:44:10, `updated_at` 13:44:14, `conclusion: failure` |
+
+Die Zahl der Läufe wächst mit jedem Push; erfolgreich war bisher keiner — auch
+der Lauf, der diese Seite ins Repository brachte, endete nach vier Sekunden
+ohne Runner.
 
 Ein Job **ohne Schritte und ohne Runner** ist nicht an einer Prüfung gescheitert
 — er wurde nicht gestartet. Die Meldung, die GitHub dazu anzeigt, lautet:
