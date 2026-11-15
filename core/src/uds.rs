@@ -43,6 +43,16 @@ pub const ANTWORT_NEGATIV: u8 = 0x7F;
 pub const NRC_RESPONSE_PENDING: u8 = 0x78;
 /// Subfunktion `extendedDiagnosticSession`.
 pub const SITZUNG_EXTENDED: u8 = 0x03;
+/// Dienst „ReadDTCInformation“.
+pub const DIENST_READ_DTC: u8 = 0x19;
+/// Positive Antwort auf ReadDTCInformation.
+pub const ANTWORT_READ_DTC: u8 = 0x59;
+/// Unterfunktion `reportDTCByStatusMask`.
+pub const READ_DTC_BY_STATUS_MASK: u8 = 0x02;
+/// Statusmaske „alle unterstützten Fehler“.
+pub const DTC_MASKE_ALLE: u8 = 0xFF;
+/// Bit 7 einer Unterfunktion: positive Antwort unterdrücken.
+pub const UNTERDRUECKUNGS_BIT: u8 = 0x80;
 
 /// Höchstzahl an Aufschüben (`NRC 0x78`), die ein Aufruf abwartet.
 pub const MAX_AUFSCHUB: usize = 3;
@@ -78,6 +88,12 @@ pub enum UdsFehler {
     FalscheDid { erwartet: [u8; 2], gesehen: [u8; 2] },
     /// Antwort ist kürzer als ihr eigener Kopf.
     ZuKurz { gelesen: usize, mindestens: usize },
+    /// Die DTC-Liste endet mitten im Eintrag.
+    ///
+    /// Ein Eintrag ist vier Byte lang; bleibt ein Rest, hat das Steuergerät
+    /// aufgehört zu senden. Den halben Fehler zu raten wäre schlimmer, als ihn
+    /// zu melden — ein falscher DTC führt in der Werkstatt zur falschen Reparatur.
+    DtcRest { uebrig: usize },
 }
 
 impl fmt::Display for UdsFehler {
@@ -108,6 +124,10 @@ impl fmt::Display for UdsFehler {
             } => write!(
                 f,
                 "Antwort zu kurz: {gelesen} Byte, mindestens {mindestens} erwartet"
+            ),
+            UdsFehler::DtcRest { uebrig } => write!(
+                f,
+                "DTC-Liste endet mitten im Eintrag: {uebrig} Byte übrig (je Eintrag 4)"
             ),
         }
     }
@@ -237,6 +257,85 @@ pub fn parse_read_did(antwort: &[u8], did: u16) -> std::result::Result<Vec<u8>, 
     Ok(antwort[KOPF..].to_vec())
 }
 
+/// Ein Fehlereintrag, so wie das Steuergerät ihn schickt.
+///
+/// `dtc` ist die Dreiergruppe aus ISO 14229-1 (zwei Byte Fehlercode, ein Byte
+/// Fehlerart), `status` das Statusbyte. Beides bleibt roh: welche Bits ein
+/// Hersteller belegt, steht in keiner Norm, die hier belegbar wäre — die
+/// Auswertung nach `P0301` und Klartext gehört nach `j1979` (P2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DtcEintrag {
+    /// Der Fehlercode, drei Byte, unverändert.
+    pub dtc: [u8; 3],
+    /// Das Statusbyte (`DTCStatus`), unverändert.
+    pub status: u8,
+}
+
+/// Antwort auf `19 02`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DtcListe {
+    /// Welche Statusbits dieses Steuergerät überhaupt führt.
+    ///
+    /// Nicht jede Steuergerätegeneration belegt alle acht Bits; wer die Maske
+    /// ignoriert, hält ein nicht belegtes Bit für „nicht gesetzt“.
+    pub status_verfuegbarkeit: u8,
+    /// Die Einträge in der Reihenfolge, in der sie kamen.
+    pub eintraege: Vec<DtcEintrag>,
+}
+
+/// `19 02 <Maske>` — Fehlerspeicher nach Statusmaske lesen.
+pub fn read_dtc_anfrage(maske: u8) -> Vec<u8> {
+    vec![DIENST_READ_DTC, READ_DTC_BY_STATUS_MASK, maske]
+}
+
+/// Wertet `59 02 <Verfügbarkeit> [<DTC:3> <Status:1>]…` aus.
+pub fn parse_dtc_liste(antwort: &[u8]) -> std::result::Result<DtcListe, UdsFehler> {
+    const KOPF: usize = 3;
+    const EINTRAG: usize = 4;
+    if let Some((dienst, code)) = pruefe_nrc(antwort) {
+        return Err(UdsFehler::Nrc { dienst, code });
+    }
+    if antwort.len() < KOPF {
+        return Err(UdsFehler::ZuKurz {
+            gelesen: antwort.len(),
+            mindestens: KOPF,
+        });
+    }
+    if antwort[0] != ANTWORT_READ_DTC {
+        return Err(UdsFehler::FalscherDienst {
+            erwartet: ANTWORT_READ_DTC,
+            gesehen: antwort[0],
+        });
+    }
+    // Bit 7 ist das Unterdrückungsbit der Anfrage und wird nicht
+    // zurückgespiegelt. Ein Steuergerät, das es doch tut, ist kein Grund, die
+    // Antwort zu verwerfen — deshalb auf beiden Seiten maskiert.
+    let gesehen = antwort[1] & !UNTERDRUECKUNGS_BIT;
+    if gesehen != READ_DTC_BY_STATUS_MASK {
+        return Err(UdsFehler::FalscheSubfunktion {
+            erwartet: READ_DTC_BY_STATUS_MASK,
+            gesehen,
+        });
+    }
+    let rest = &antwort[KOPF..];
+    if rest.len() % EINTRAG != 0 {
+        return Err(UdsFehler::DtcRest {
+            uebrig: rest.len() % EINTRAG,
+        });
+    }
+    let eintraege = rest
+        .chunks_exact(EINTRAG)
+        .map(|c| DtcEintrag {
+            dtc: [c[0], c[1], c[2]],
+            status: c[3],
+        })
+        .collect();
+    Ok(DtcListe {
+        status_verfuegbarkeit: antwort[2],
+        eintraege,
+    })
+}
+
 /// UDS-Client über einen ISO-TP-Kanal.
 ///
 /// Zustandslos wie [`IsotpChannel`]: Sitzung und Sicherheitszugriff sind
@@ -328,6 +427,20 @@ impl UdsClient {
     ) -> std::result::Result<Vec<u8>, UdsFehler> {
         let antwort = self.runde(t, &read_did_anfrage(did), timeout_ms)?;
         parse_read_did(&antwort, did)
+    }
+
+    /// `19 02 <Maske>` — Fehlerspeicher lesen, Einträge roh.
+    ///
+    /// Kein Fehler gespeichert ist ein leeres Ergebnis, kein Fehlerfall: die
+    /// Werkstatt will wissen „nichts drin“ und nicht „Abruf fehlgeschlagen“.
+    pub fn read_dtc<T: Transport>(
+        &self,
+        t: &mut T,
+        maske: u8,
+        timeout_ms: u32,
+    ) -> std::result::Result<DtcListe, UdsFehler> {
+        let antwort = self.runde(t, &read_dtc_anfrage(maske), timeout_ms)?;
+        parse_dtc_liste(&antwort)
     }
 
     pub fn iso(&self) -> &IsotpChannel {
@@ -613,5 +726,161 @@ mod tests {
 
         assert_eq!(client.iso().req_id(), 0x710);
         assert_eq!(t.sent()[0].id, 0x710);
+    }
+
+    // --- Fehlerspeicher ---------------------------------------------------
+
+    #[test]
+    fn read_dtc_anfrage_ist_19_02_mit_maske() {
+        assert_eq!(read_dtc_anfrage(DTC_MASKE_ALLE), vec![0x19, 0x02, 0xFF]);
+        assert_eq!(read_dtc_anfrage(0x08), vec![0x19, 0x02, 0x08]);
+    }
+
+    #[test]
+    fn leere_dtc_liste_ist_gueltig() {
+        // „Nichts gespeichert“ ist ein Befund, kein Fehlerfall.
+        let liste = parse_dtc_liste(&[0x59, 0x02, 0xFF]).unwrap();
+        assert_eq!(liste.status_verfuegbarkeit, 0xFF);
+        assert!(liste.eintraege.is_empty());
+    }
+
+    #[test]
+    fn dtc_liste_wird_roh_gelesen() {
+        let liste = parse_dtc_liste(&[
+            0x59, 0x02, 0xFF, 0x03, 0x01, 0x00, 0x2F, 0xC1, 0x23, 0x45, 0x08,
+        ])
+        .unwrap();
+
+        assert_eq!(liste.eintraege.len(), 2);
+        assert_eq!(
+            liste.eintraege[0],
+            DtcEintrag {
+                dtc: [0x03, 0x01, 0x00],
+                status: 0x2F
+            }
+        );
+        assert_eq!(
+            liste.eintraege[1],
+            DtcEintrag {
+                dtc: [0xC1, 0x23, 0x45],
+                status: 0x08
+            }
+        );
+        // Kein Bit wird wegmaskiert: der Rohwert bleibt nachprüfbar, auch wo
+        // die Bedeutung eines Bits unbekannt ist.
+        assert_eq!(liste.status_verfuegbarkeit, 0xFF);
+    }
+
+    #[test]
+    fn unterdrueckungsbit_in_der_antwort_stoert_nicht() {
+        // 0x82 = 0x02 mit gesetztem Bit 7.
+        let liste = parse_dtc_liste(&[0x59, 0x82, 0xFF, 0x03, 0x01, 0x00, 0x2F]).unwrap();
+        assert_eq!(liste.eintraege.len(), 1);
+    }
+
+    #[test]
+    fn abgeschnittener_dtc_eintrag_wird_abgelehnt() {
+        assert_eq!(
+            parse_dtc_liste(&[0x59, 0x02, 0xFF, 0x03, 0x01, 0x00]).unwrap_err(),
+            UdsFehler::DtcRest { uebrig: 3 }
+        );
+    }
+
+    #[test]
+    fn dtc_liste_zu_kurz_wird_abgelehnt() {
+        assert_eq!(
+            parse_dtc_liste(&[0x59, 0x02]).unwrap_err(),
+            UdsFehler::ZuKurz {
+                gelesen: 2,
+                mindestens: 3
+            }
+        );
+    }
+
+    #[test]
+    fn dtc_liste_mit_falschem_dienst_wird_abgelehnt() {
+        assert_eq!(
+            parse_dtc_liste(&[0x5A, 0x02, 0xFF]).unwrap_err(),
+            UdsFehler::FalscherDienst {
+                erwartet: 0x59,
+                gesehen: 0x5A
+            }
+        );
+    }
+
+    #[test]
+    fn dtc_liste_mit_falscher_subfunktion_wird_abgelehnt() {
+        // 19 04 (Freeze Frame) auf eine 19-02-Anfrage gehört nicht hierher.
+        assert_eq!(
+            parse_dtc_liste(&[0x59, 0x04, 0xFF]).unwrap_err(),
+            UdsFehler::FalscheSubfunktion {
+                erwartet: 0x02,
+                gesehen: 0x04
+            }
+        );
+    }
+
+    #[test]
+    fn dtc_mit_nrc_wird_abgelehnt() {
+        let err = parse_dtc_liste(&[0x7F, 0x19, 0x11]).unwrap_err();
+        assert_eq!(
+            err,
+            UdsFehler::Nrc {
+                dienst: 0x19,
+                code: 0x11
+            }
+        );
+        assert!(err.to_string().contains("serviceNotSupported"), "{err}");
+    }
+
+    #[test]
+    fn read_dtc_am_simulator() {
+        let mut t = Loopback::new(vec![antwort(&[
+            0x59, 0x02, 0xFF, 0x03, 0x01, 0x00, 0x2F,
+        ])]);
+        let liste = UdsClient::new().read_dtc(&mut t, DTC_MASKE_ALLE, 100).unwrap();
+
+        assert_eq!(liste.eintraege.len(), 1);
+        assert_eq!(&t.sent()[0].data[..4], &[0x03, 0x19, 0x02, 0xFF]);
+    }
+
+    #[test]
+    fn read_dtc_wartet_aufschuebe_ab() {
+        // Ein Steuergerät, das den Fehlerspeicher erst nach 0x78 liefert.
+        let mut t = Loopback::new(vec![
+            aufschub(0x19),
+            antwort(&[0x59, 0x02, 0xFF, 0xC1, 0x00, 0x1F, 0x2F]),
+        ]);
+        let liste = UdsClient::new().read_dtc(&mut t, DTC_MASKE_ALLE, 100).unwrap();
+
+        assert_eq!(liste.eintraege.len(), 1);
+        assert_eq!(liste.eintraege[0].dtc, [0xC1, 0x00, 0x1F]);
+        assert_eq!(t.sent().len(), 1);
+    }
+
+    #[test]
+    fn lange_dtc_liste_kommt_als_multi_frame() {
+        // Fünf Einträge sind 3 + 20 Byte und passen nicht in einen Rahmen:
+        // First Frame, Flow Control, drei Consecutive Frames.
+        let mut nutzlast = vec![0x59, 0x02, 0xFF];
+        for nummer in 0u8..5 {
+            nutzlast.extend_from_slice(&[nummer, 0x01, 0x00, 0x2F]);
+        }
+
+        let mut ff = vec![0x10u8, nutzlast.len() as u8];
+        ff.extend_from_slice(&nutzlast[..6]);
+        let mut rahmen = vec![CanFrame::new(RSP_ID, &ff)];
+        for (nummer, stueck) in nutzlast[6..].chunks(7).enumerate() {
+            let mut cf = vec![0x21 + nummer as u8];
+            cf.extend_from_slice(stueck);
+            rahmen.push(CanFrame::new(RSP_ID, &cf));
+        }
+
+        let mut t = Loopback::new(rahmen);
+        let liste = UdsClient::new().read_dtc(&mut t, DTC_MASKE_ALLE, 100).unwrap();
+
+        assert_eq!(liste.eintraege.len(), 5);
+        assert_eq!(liste.eintraege[4].dtc, [0x04, 0x01, 0x00]);
+        assert_eq!(liste.eintraege[4].status, 0x2F);
     }
 }
