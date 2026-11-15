@@ -200,4 +200,142 @@ class SfdBedienungTest {
         assertNull(sperre.aktiv)
         assertTrue(sperre.belegen("Challenge anfordern"))
     }
+
+    // --- Rohantwort -------------------------------------------------------
+
+    @Test
+    fun `Rohantwort wird unveraendert durchgereicht`() {
+        // So, wie sie aus dem FFI kommt: ganze Antwort inklusive Kopf.
+        val d = SfdStatusDeutung.deute(
+            daten = byteArrayOf(0x01, 0x02, 0x00, 0x1E),
+            rohAntwort = "6201740102001E",
+        )
+        assertEquals("6201740102001E", d.rohAntwort)
+        assertEquals("0102001E", d.roh)
+        assertEquals(7, d.rohAntwort.length / 2)
+    }
+
+    @Test
+    fun `abweichendes Layout scheitert nicht und behaelt die Rohbytes`() {
+        // SFD2 könnte mehr Bytes liefern: gedeutet wird der bekannte Teil,
+        // der Rest bleibt im Rohwert sichtbar.
+        val daten = byteArrayOf(0x01, 0x01, 0x00, 0x0A, 0x55, 0x66, 0x77)
+        val d = SfdStatusDeutung.deute(daten, "6201740101000A556677")
+        assertEquals(false, d.gesperrt)
+        assertEquals(10, d.restMinuten)
+        assertEquals("0101000A556677", d.roh)
+        assertEquals(10, d.rohAntwort.length / 2)
+    }
+
+    // --- Ziel-Steuergerät -------------------------------------------------
+
+    @Test
+    fun `Voreinstellungen haben die ueblichen Kennungen`() {
+        assertEquals(0x710, SfdZiele.GATEWAY.anfrageId)
+        assertEquals(0x718, SfdZiele.GATEWAY.antwortId)
+        assertEquals(11, SfdZiele.GATEWAY.bits)
+
+        assertEquals(0x7E0, SfdZiele.MOTOR.anfrageId)
+        assertEquals(0x7E8, SfdZiele.MOTOR.antwortId)
+        assertEquals(11, SfdZiele.MOTOR.bits)
+
+        // Voreinstellung ist die Motorsteuergerät-Adressierung.
+        assertEquals(SfdZiele.MOTOR, SfdZiele.STANDARD)
+        assertEquals(2, SfdZiele.presets.size)
+    }
+
+    @Test
+    fun `Kennungen werden hexadezimal gelesen, mit und ohne 0x`() {
+        val ohne = SfdZiele.idPruefen("7E0")
+        val mit = SfdZiele.idPruefen("0x7E0")
+        val klein = SfdZiele.idPruefen("7e0")
+        val leerzeichen = SfdZiele.idPruefen(" 0x7E0 ")
+
+        assertEquals(0x7E0, ohne.wert)
+        assertEquals(11, ohne.bits)
+        assertTrue(ohne.ok)
+        assertEquals(ohne.wert, mit.wert)
+        assertEquals(ohne.wert, klein.wert)
+        assertEquals(ohne.wert, leerzeichen.wert)
+    }
+
+    @Test
+    fun `29-Bit-Kennung wird als solche erkannt`() {
+        val p = SfdZiele.idPruefen("18DA10F1")
+        assertTrue(p.ok)
+        assertEquals(29, p.bits)
+        assertEquals(0x18DA10F1, p.wert)
+
+        val grenze = SfdZiele.idPruefen("1FFFFFFF")
+        assertEquals(29, grenze.bits)
+    }
+
+    @Test
+    fun `ungueltige Kennungen werden mit Grund abgelehnt`() {
+        assertTrue(SfdZiele.idPruefen("").fehler!!.contains("leer"))
+        assertTrue(SfdZiele.idPruefen("7E0Z").fehler!!.contains("Hexziffer"))
+        assertTrue(SfdZiele.idPruefen("0x20000000").fehler!!.contains("29 Bit"))
+        assertTrue(SfdZiele.idPruefen("123456789").fehler!!.contains("länger"))
+        assertTrue(SfdZiele.idPruefen("000").fehler!!.contains("keine Adresse"))
+    }
+
+    @Test
+    fun `freies Paar wird zusammengesetzt`() {
+        val ergebnis = SfdZiele.frei("7E1", "7E9")
+        assertTrue(ergebnis is SfdZiele.Ergebnis.Bereit)
+        val ziel = (ergebnis as SfdZiele.Ergebnis.Bereit).ziel
+        assertEquals(0x7E1, ziel.anfrageId)
+        assertEquals(0x7E9, ziel.antwortId)
+        assertEquals(11, ziel.bits)
+        assertTrue(ziel.name.startsWith("frei"))
+    }
+
+    @Test
+    fun `gemischte Bitbreiten werden abgelehnt`() {
+        val ergebnis = SfdZiele.frei("7E0", "18DAF110")
+        assertTrue(ergebnis is SfdZiele.Ergebnis.Ungueltig)
+        val text = (ergebnis as SfdZiele.Ergebnis.Ungueltig).fehler
+        assertTrue("nennt beide Breiten: $text", text.contains("11 Bit"))
+        assertTrue("nennt beide Breiten: $text", text.contains("29 Bit"))
+    }
+
+    // --- Sitzung und Reihenfolge -----------------------------------------
+
+    @Test
+    fun `Extended Session geht vor Challenge und Token`() {
+        assertEquals(
+            listOf(SfdSchritt.EXTENDED, SfdSchritt.CHALLENGE),
+            SfdAblauf.vorChallenge(true),
+        )
+        assertEquals(
+            listOf(SfdSchritt.EXTENDED, SfdSchritt.ENTSPERREN),
+            SfdAblauf.vorEntsperren(true),
+        )
+        assertEquals(
+            listOf(SfdSchritt.EXTENDED, SfdSchritt.SPERREN),
+            SfdAblauf.vorSperren(true),
+        )
+    }
+
+    @Test
+    fun `ohne Extended Session wird sie auch nicht gesendet`() {
+        assertEquals(listOf(SfdSchritt.CHALLENGE), SfdAblauf.vorChallenge(false))
+        assertEquals(listOf(SfdSchritt.ENTSPERREN), SfdAblauf.vorEntsperren(false))
+        assertEquals(listOf(SfdSchritt.SPERREN), SfdAblauf.vorSperren(false))
+    }
+
+    @Test
+    fun `NRC 7E und 7F gelten als Sitzungsproblem`() {
+        assertTrue(SfdAblauf.sitzungFehlt(0x7E))
+        assertTrue(SfdAblauf.sitzungFehlt(0x7F))
+        assertFalse(SfdAblauf.sitzungFehlt(0x78))
+        assertFalse(SfdAblauf.sitzungFehlt(0x35))
+    }
+
+    @Test
+    fun `Sitzungs-NRC nennt den Schalter`() {
+        val m = SfdFehler.aus(VciException.Nrc(0x31u, 0x7Eu))
+        assertTrue("nennt die Sitzung: ${m.hinweis}", m.hinweis!!.contains("Extended Session"))
+        assertTrue(m.hinweis!!.contains("10 03"))
+    }
 }
