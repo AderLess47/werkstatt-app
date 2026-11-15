@@ -57,6 +57,10 @@ Prüfungen laufen würden.
 - Compiler und Jars für die JVM-Tests: aus dem Gradle-Cache, sonst von Maven
   Central.
 
+Nach einem Sandbox-Restore (JDK und `target/` weg) stellt
+`sh scripts/vorbereiten.sh` beides wieder her: Temurin 17 von Adoptium, danach
+die Host-Bibliothek per `cargo build --release`.
+
 Fehlt eines davon, bricht der Hook mit einer Anleitung ab, statt den Teil still
 zu überspringen.
 
