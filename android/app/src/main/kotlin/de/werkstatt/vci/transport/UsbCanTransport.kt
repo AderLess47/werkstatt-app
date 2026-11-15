@@ -22,6 +22,8 @@ import uniffi.vci_ffi.VciException
  * die nächste Fehlerquelle.
  */
 class UsbCanTransport private constructor(
+    private val usb: UsbManager,
+    private val geraet: UsbDevice,
     private val verbindung: UsbDeviceConnection,
     private val schnittstelle: UsbInterface,
     private val epIn: UsbEndpoint,
@@ -31,17 +33,44 @@ class UsbCanTransport private constructor(
     private val leser = RahmenLeser()
     private val schreibSperre = Any()
     private val puffer = ByteArray(4096)
+    private val geschlossen = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /**
+     * Ein Bulk-Transfer, der nie eine unbehandelte Ausnahme nach oben lässt.
+     *
+     * `bulkTransfer` liefert -1 sowohl bei Zeitüberschreitung als auch bei
+     * gezogenem Kabel — ohne die Geräteprüfung darunter meldet die App in der
+     * Werkstatt „Zeitüberschreitung“, obwohl der Dongle weg ist. Und nach dem
+     * Abziehen wirft `UsbDeviceConnection` gern `IllegalStateException`; die
+     * ginge als „unerwarteter Fehler“ durch die Callback-Grenze und würde den
+     * Prozess beenden. Beides wird hier zu dem, was es ist.
+     */
+    private fun bulk(endpunkt: UsbEndpoint, daten: ByteArray, laenge: Int, timeoutMs: Int): Int {
+        val n = try {
+            verbindung.bulkTransfer(endpunkt, daten, laenge, timeoutMs)
+        } catch (e: RuntimeException) {
+            throw VciException.Disconnected()
+        }
+        if (n < 0 && !nochVerbunden()) throw VciException.Disconnected()
+        return n
+    }
+
+    /** Steckt das Gerät noch? Nach dem Abziehen fehlt es in der Geräteliste. */
+    private fun nochVerbunden(): Boolean =
+        runCatching { usb.deviceList.containsKey(geraet.deviceName) }.getOrDefault(false)
 
     override fun send(frame: CanFrameFfi) {
+        if (geschlossen.get()) throw VciException.Disconnected()
         val nutzlast = Wire.canNutzlast(frame.id, frame.data, frame.dlc.toInt())
         val bytes = Wire.rahmen(Wire.T_CAN, nutzlast)
         val n = synchronized(schreibSperre) {
-            verbindung.bulkTransfer(epOut, bytes, bytes.size, SCHREIB_TIMEOUT_MS)
+            bulk(epOut, bytes, bytes.size, SCHREIB_TIMEOUT_MS)
         }
         if (n < 0) throw VciException.Io()
     }
 
     override fun recv(timeoutMs: UInt): CanFrameFfi? {
+        if (geschlossen.get()) throw VciException.Disconnected()
         val frist = System.nanoTime() + timeoutMs.toLong() * 1_000_000L
         while (true) {
             val rahmen = leser.naechster()
@@ -58,16 +87,17 @@ class UsbCanTransport private constructor(
 
             val restMs = ((frist - System.nanoTime()) / 1_000_000L).toInt()
             if (restMs <= 0) return null
-            val n = verbindung.bulkTransfer(epIn, puffer, puffer.size, restMs)
+            val n = bulk(epIn, puffer, puffer.size, restMs)
             if (n < 0) return null
             if (n > 0) leser.schiebe(puffer, n)
         }
     }
 
     override fun vbatMv(): UInt? {
+        if (geschlossen.get()) throw VciException.Disconnected()
         val anfrage = Wire.rahmen(Wire.T_VBATT, ByteArray(0))
         val n = synchronized(schreibSperre) {
-            verbindung.bulkTransfer(epOut, anfrage, anfrage.size, SCHREIB_TIMEOUT_MS)
+            bulk(epOut, anfrage, anfrage.size, SCHREIB_TIMEOUT_MS)
         }
         if (n < 0) throw VciException.Io()
 
@@ -83,15 +113,18 @@ class UsbCanTransport private constructor(
             }
             val restMs = ((frist - System.nanoTime()) / 1_000_000L).toInt()
             if (restMs <= 0) return null
-            val gelesen = verbindung.bulkTransfer(epIn, puffer, puffer.size, restMs)
+            val gelesen = bulk(epIn, puffer, puffer.size, restMs)
             if (gelesen < 0) return null
             if (gelesen > 0) leser.schiebe(puffer, gelesen)
         }
     }
 
     override fun close() {
-        verbindung.releaseInterface(schnittstelle)
-        verbindung.close()
+        // Zweimal schließen ist harmlos: `UsbDongleVerbindung.close()` und der
+        // Bildschirm räumen beide auf.
+        if (!geschlossen.compareAndSet(false, true)) return
+        runCatching { verbindung.releaseInterface(schnittstelle) }
+        runCatching { verbindung.close() }
     }
 
     companion object {
@@ -122,7 +155,14 @@ class UsbCanTransport private constructor(
                 verbindung.close()
                 return null
             }
-            return UsbCanTransport(verbindung, paare.schnittstelle, paare.eingang, paare.ausgang)
+            return UsbCanTransport(
+                usb = usb,
+                geraet = device,
+                verbindung = verbindung,
+                schnittstelle = paare.schnittstelle,
+                epIn = paare.eingang,
+                epOut = paare.ausgang,
+            )
         }
 
         private class Endpunkte(
