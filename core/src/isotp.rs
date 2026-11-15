@@ -178,16 +178,27 @@ impl IsotpChannel {
     /// Empfängt eine vollständige Nachricht und setzt sie zusammen.
     pub fn recv<T: Transport>(&self, t: &mut T, timeout_ms: u32) -> Result<Vec<u8>> {
         let f = t.recv(timeout_ms)?;
-        match f.data[0] & 0xF0 {
+        // `dlc` kommt vom Gerät (über die FFI sogar aus der Plattform): ein
+        // Rahmen mit 0 Byte oder mit einer Länge über 8 darf hier nicht zum
+        // Indexfehler führen — `payload()` begrenzt auf die belegten Bytes,
+        // und die Prüfungen unten rechnen damit, nicht mit `data`.
+        let nutz = f.payload();
+        if nutz.is_empty() {
+            return Err(TransportError::Protocol("leerer Rahmen"));
+        }
+        match nutz[0] & 0xF0 {
             0x00 => {
-                let n = (f.data[0] & 0x0F) as usize;
-                if n > f.dlc as usize {
+                let n = (nutz[0] & 0x0F) as usize;
+                if 1 + n > nutz.len() {
                     return Err(TransportError::Protocol("Single Frame länger als Rahmen"));
                 }
-                Ok(f.data[1..1 + n].to_vec())
+                Ok(nutz[1..1 + n].to_vec())
             }
             0x10 => {
-                let total = (((f.data[0] & 0x0F) as usize) << 8) | f.data[1] as usize;
+                if nutz.len() < 2 {
+                    return Err(TransportError::Protocol("First Frame ohne Längenfeld"));
+                }
+                let total = (((nutz[0] & 0x0F) as usize) << 8) | nutz[1] as usize;
                 if total < 8 {
                     return Err(TransportError::Protocol("First Frame mit ungültiger Länge"));
                 }
@@ -205,14 +216,20 @@ impl IsotpChannel {
                 let mut expect_seq: u8 = 1;
                 while got < total {
                     let cf = t.recv(timeout_ms)?;
-                    if cf.data[0] & 0xF0 != 0x20 {
+                    let cf_nutz = cf.payload();
+                    if cf_nutz.is_empty() || cf_nutz[0] & 0xF0 != 0x20 {
                         return Err(TransportError::Protocol("erwarte Consecutive Frame"));
                     }
-                    if cf.data[0] & 0x0F != expect_seq & 0x0F {
+                    if cf_nutz[0] & 0x0F != expect_seq & 0x0F {
                         return Err(TransportError::Protocol("ISO-TP Sequenzfehler"));
                     }
                     let chunk = (total - got).min(7);
-                    out[got..got + chunk].copy_from_slice(&cf.data[1..1 + chunk]);
+                    // Ein zu kurzer Rahmen würde sonst still mit Padding
+                    // aufgefüllt — die Antwort wäre falsch statt gemeldet.
+                    if cf_nutz.len() < 1 + chunk {
+                        return Err(TransportError::Protocol("Consecutive Frame zu kurz"));
+                    }
+                    out[got..got + chunk].copy_from_slice(&cf_nutz[1..1 + chunk]);
                     got += chunk;
                     expect_seq = (expect_seq + 1) & 0x0F;
                 }
@@ -345,6 +362,66 @@ mod tests {
         // Reservierte Werte: nach ISO 15765-2 wie 0x7F behandeln.
         assert_eq!(stmin_ms(0x80), 127);
         assert_eq!(stmin_ms(0xFF), 127);
+    }
+
+    // --- Fremde Rahmen, die nicht passen (DoD 5) -------------------------
+
+    #[test]
+    fn leerer_rahmen_wird_abgelehnt() {
+        let mut t = Loopback::new(vec![CanFrame::new(RSP_ID, &[])]);
+        assert_eq!(
+            IsotpChannel::new().recv(&mut t, 10).unwrap_err(),
+            TransportError::Protocol("leerer Rahmen")
+        );
+    }
+
+    #[test]
+    fn single_frame_laenger_als_der_rahmen_wird_abgelehnt() {
+        // Kündigt 15 Byte an, liefert aber vier.
+        let mut t = Loopback::new(vec![CanFrame::new(RSP_ID, &[0x0F, 0x62, 0xF1, 0x90])]);
+        assert_eq!(
+            IsotpChannel::new().recv(&mut t, 10).unwrap_err(),
+            TransportError::Protocol("Single Frame länger als Rahmen")
+        );
+    }
+
+    #[test]
+    fn first_frame_ohne_laengenfeld_wird_abgelehnt() {
+        let mut t = Loopback::new(vec![CanFrame::new(RSP_ID, &[0x10])]);
+        assert_eq!(
+            IsotpChannel::new().recv(&mut t, 10).unwrap_err(),
+            TransportError::Protocol("First Frame ohne Längenfeld")
+        );
+    }
+
+    #[test]
+    fn zu_kurzer_consecutive_frame_wird_abgelehnt() {
+        // First Frame kündigt 10 Byte an, der Consecutive Frame trägt nur das
+        // Sequenzbyte — der Rest wäre Padding und die Antwort falsch.
+        let mut t = Loopback::new(vec![
+            CanFrame::new(RSP_ID, &[0x10, 0x0A, 0x62, 0xF1, 0x90, 0x01, 0x02, 0x03]),
+            CanFrame::new(RSP_ID, &[0x21]),
+        ]);
+        assert_eq!(
+            IsotpChannel::new().recv(&mut t, 10).unwrap_err(),
+            TransportError::Protocol("Consecutive Frame zu kurz")
+        );
+    }
+
+    #[test]
+    fn dlc_ueber_acht_wird_auf_acht_begrenzt() {
+        // Über die FFI kann eine Plattform `dlc` falsch melden; das darf nicht
+        // in einen Indexfehler laufen.
+        let data = [0x02u8, 0x50, 0x03, PAD, PAD, PAD, PAD, PAD];
+        let mut t = Loopback::new(vec![CanFrame {
+            id: RSP_ID,
+            data,
+            dlc: 12,
+        }]);
+        assert_eq!(
+            IsotpChannel::new().recv(&mut t, 10).unwrap(),
+            vec![0x50, 0x03]
+        );
     }
 
     #[test]
