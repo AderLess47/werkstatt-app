@@ -12,6 +12,9 @@ use std::cell::RefCell;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
+use vci_core::audit::{AuditFehler, AuditKette, Ergebnis};
+use vci_core::content::InhaltsFehler;
+use vci_core::function::{AusfuehrungsFehler, FunctionDef, Kontext};
 use vci_core::sfd::{SfdError, SfdFehler};
 use vci_core::transport::{Capabilities, PAD};
 use vci_core::{CanFrame, IsotpChannel, Loopback, SfdClient, Transport, TransportError};
@@ -128,6 +131,49 @@ impl From<SfdFehler> for VciError {
     }
 }
 
+impl From<vci_core::uds::UdsFehler> for VciError {
+    fn from(e: vci_core::uds::UdsFehler) -> Self {
+        match e {
+            vci_core::uds::UdsFehler::Nrc { dienst, code } => VciError::Nrc {
+                dienst: dienst as u32,
+                code: code as u32,
+            },
+            vci_core::uds::UdsFehler::Transport(t) => VciError::from(t),
+            other => VciError::Protocol {
+                detail: other.to_string(),
+            },
+        }
+    }
+}
+
+impl From<InhaltsFehler> for VciError {
+    fn from(e: InhaltsFehler) -> Self {
+        VciError::Protocol {
+            detail: e.to_string(),
+        }
+    }
+}
+
+impl From<AuditFehler> for VciError {
+    fn from(e: AuditFehler) -> Self {
+        VciError::Protocol {
+            detail: e.to_string(),
+        }
+    }
+}
+
+impl From<AusfuehrungsFehler> for VciError {
+    fn from(e: AusfuehrungsFehler) -> Self {
+        match e {
+            AusfuehrungsFehler::Transport(t) => VciError::from(t),
+            AusfuehrungsFehler::Uds(u) => VciError::from(u),
+            other => VciError::Protocol {
+                detail: other.to_string(),
+            },
+        }
+    }
+}
+
 /// Der Transport, den die Plattform bereitstellt.
 ///
 /// In Kotlin implementiert man dieses Interface mit dem BLE- oder USB-Stack,
@@ -174,6 +220,20 @@ impl<'a> ForeignTransport<'a> {
 
     /// Dasselbe für SFD-Abläufe, deren Fehlerart `SfdFehler` ist.
     fn finish_sfd<T>(&self, result: std::result::Result<T, SfdFehler>) -> Result<T, VciError> {
+        match result {
+            Ok(v) => Ok(v),
+            Err(e) => match self.last.borrow_mut().take() {
+                Some(original) => Err(original),
+                None => Err(VciError::from(e)),
+            },
+        }
+    }
+
+    /// Und für Funktionsabläufe (`AusfuehrungsFehler`).
+    fn finish_funktion<T>(
+        &self,
+        result: std::result::Result<T, AusfuehrungsFehler>,
+    ) -> Result<T, VciError> {
         match result {
             Ok(v) => Ok(v),
             Err(e) => match self.last.borrow_mut().take() {
@@ -509,140 +569,223 @@ pub fn sfd_hex(daten: Vec<u8>) -> String {
     vci_core::sfd::hex(&daten)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Ein Eintrag der Audit-Kette, wie ihn die App anzeigt.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AuditEintragFfi {
+    pub laufnummer: u32,
+    pub zeit_ms: u64,
+    pub vin: String,
+    pub steuergeraet: u32,
+    pub dienst: String,
+    /// „Erfolg" oder „Fehler: …" — als Text, damit die Liste ohne Tabelle
+    /// lesbar bleibt.
+    pub ergebnis: String,
+    pub hash: String,
+    pub vorheriger_hash: String,
+}
 
-    #[test]
-    fn roundtrip_ueber_den_callback() {
-        let lb = LoopbackTransport::new();
-        // Antwort des Steuergeräts einreihen: Single Frame 02 7E 00.
-        lb.push(CanFrameFfi {
-            id: 0x7E8,
-            data: vec![0x02, 0x7E, 0x00],
-            dlc: 8,
-        });
+/// Die Audit-Kette als Objekt über die Sprachgrenze.
+///
+/// Die Kette gehört in die App, nicht in jede Funktion: sie überlebt mehrere
+/// Abläufe und muss am Ende exportierbar sein. `Mutex`, weil UniFFI-Objekte
+/// von mehreren Threads aufgerufen werden dürfen.
+#[derive(uniffi::Object)]
+pub struct Audit {
+    inner: Mutex<AuditKette>,
+}
 
-        let iso = IsoTp::new();
-        let payload = vec![0x3E, 0x00];
-        iso.send(Box::new(lb.clone()), payload.clone()).unwrap();
-
-        // Der Kern hat die Anfrage als Single Frame gesendet.
-        let sent = lb.sent();
-        assert_eq!(sent.len(), 1);
-        assert_eq!(sent[0].id, 0x7E0);
-        assert_eq!(&sent[0].data[..3], &[0x02, 0x3E, 0x00]);
-
-        let reply = iso.recv(Box::new(lb.clone()), 100).unwrap();
-        assert_eq!(reply, vec![0x7E, 0x00]);
+#[uniffi::export]
+impl Audit {
+    #[uniffi::constructor]
+    pub fn new() -> Arc<Self> {
+        Arc::new(Audit {
+            inner: Mutex::new(AuditKette::neu()),
+        })
     }
 
-    #[test]
-    fn zeitueberschreitung_kommt_als_fehler_an() {
-        let lb = LoopbackTransport::new();
-        let iso = IsoTp::new();
-        let err = iso.recv(Box::new(lb), 10).unwrap_err();
-        assert_eq!(err, VciError::Timeout);
+    /// Hängt einen Eintrag an und gibt seine Laufnummer zurück.
+    ///
+    /// `grund` wird nur bei `erfolg == false` verwendet — ein Erfolg mit
+    /// Begründung wäre im Export irreführend.
+    #[allow(clippy::too_many_arguments)]
+    pub fn anhaengen(
+        &self,
+        zeit_ms: u64,
+        vin: String,
+        steuergeraet: u32,
+        dienst: String,
+        erfolg: bool,
+        grund: String,
+    ) -> Result<u32, VciError> {
+        let mut kette = self.inner.lock().map_err(|_| VciError::Io)?;
+        let ergebnis = if erfolg {
+            Ergebnis::Erfolg
+        } else {
+            Ergebnis::Fehler { grund }
+        };
+        Ok(kette.anhaengen(zeit_ms, &vin, steuergeraet, &dienst, ergebnis))
     }
 
-    fn push_sf(lb: &Arc<LoopbackTransport>, uds: &[u8]) {
-        let mut data = vec![uds.len() as u8];
-        data.extend_from_slice(uds);
-        lb.push(CanFrameFfi {
-            id: 0x7E8,
-            data,
-            dlc: 8,
-        });
+    /// Prüft Laufnummern, Verkettung und jeden Hash.
+    pub fn pruefen(&self) -> Result<(), VciError> {
+        let kette = self.inner.lock().map_err(|_| VciError::Io)?;
+        kette.pruefen().map_err(VciError::from)
     }
 
-    #[test]
-    fn sfd_status_und_challenge_ueber_die_grenze() {
-        let lb = LoopbackTransport::new();
-        push_sf(&lb, &[0x62, 0x01, 0x74, 0x01]);
-        let sfd = Sfd::new();
-
-        let status = sfd.status(Box::new(lb.clone()), 100).unwrap();
-        assert_eq!(status.daten, vec![0x01]);
-        assert_eq!(status.hex, "01");
-        assert_eq!(lb.sent()[0].data[..4], [0x03, 0x22, 0x01, 0x74]);
-
-        lb.clear_sent();
-        push_sf(&lb, &[0x71, 0x01, 0xC0, 0x04, 0xA1, 0xB2]);
-        let challenge = sfd.challenge(Box::new(lb.clone()), 0x01, 100).unwrap();
-        assert_eq!(challenge, "A1B2");
-        assert_eq!(lb.sent()[0].data[..5], [0x05, 0x31, 0x01, 0xC0, 0x04]);
+    pub fn als_json(&self) -> String {
+        match self.inner.lock() {
+            Ok(kette) => kette.als_json(),
+            Err(_) => String::from("{\n  \"eintraege\": [],\n  \"letzter_hash\": \"\"\n}\n"),
+        }
     }
 
-    #[test]
-    fn sfd_extended_session_wird_gesendet_und_ausgewertet() {
-        let lb = LoopbackTransport::new();
-        push_sf(&lb, &[0x50, 0x03, 0x00, 0x32, 0x01, 0xF4]);
-
-        Sfd::new().extended_session(Box::new(lb.clone()), 100).unwrap();
-
-        let sent = lb.sent();
-        assert_eq!(sent.len(), 1);
-        assert_eq!(&sent[0].data[..3], &[0x02, 0x10, 0x03]);
+    pub fn letzter_hash(&self) -> String {
+        match self.inner.lock() {
+            Ok(kette) => vci_core::audit::hex32(&kette.letzter_hash()),
+            Err(_) => String::new(),
+        }
     }
 
-    #[test]
-    fn sfd_status_liefert_die_rohe_antwort_mit() {
-        let lb = LoopbackTransport::new();
-        push_sf(&lb, &[0x62, 0x01, 0x74, 0x01]);
-
-        let status = Sfd::new().status(Box::new(lb), 100).unwrap();
-
-        assert_eq!(status.hex, "01");
-        // Roh: die ganze Antwort, nicht nur die Nutzlast.
-        assert_eq!(status.roh_hex, "62017401");
+    pub fn len(&self) -> u32 {
+        match self.inner.lock() {
+            Ok(kette) => kette.len() as u32,
+            Err(_) => 0,
+        }
     }
 
-    #[test]
-    fn sfd_nrc_kommt_als_eigener_fehlerfall() {
-        let lb = LoopbackTransport::new();
-        push_sf(&lb, &[0x7F, 0x31, 0x35]);
-        let err = Sfd::new()
-            .entsperren(Box::new(lb), "DEAD".to_string(), 100)
-            .unwrap_err();
-        assert_eq!(
-            err,
-            VciError::Nrc {
-                dienst: 0x31,
-                code: 0x35
-            }
-        );
-        assert!(err.to_string().contains("invalidKey"), "{err}");
-    }
-
-    #[test]
-    fn sfd_lehnt_ungueltigen_hex_text_ab() {
-        let lb = LoopbackTransport::new();
-        let err = Sfd::new()
-            .entsperren(Box::new(lb), "A1G2".to_string(), 100)
-            .unwrap_err();
-        assert!(matches!(err, VciError::Sfd { .. }), "{err}");
-    }
-
-    #[test]
-    fn sfd_token_mit_300_byte_geht_ueber_die_grenze() {
-        let lb = LoopbackTransport::new();
-        // Flow Control, danach die positive Antwort — der Sender wartet selbst.
-        lb.push(CanFrameFfi {
-            id: 0x7E8,
-            data: vec![0x30, 0x00, 0x00],
-            dlc: 8,
-        });
-        push_sf(&lb, &[0x71, 0x01, 0xC0, 0x08]);
-
-        let token = vec![0x5Au8; 300];
-        Sfd::new()
-            .entsperren_mit_bytes(Box::new(lb.clone()), token.clone(), 100)
-            .unwrap();
-
-        let sent = lb.sent();
-        assert_eq!(sent[0].data[0] & 0xF0, 0x10, "First Frame");
-        let angekuendigt = (((sent[0].data[0] as usize) & 0x0F) << 8) | sent[0].data[1] as usize;
-        assert_eq!(angekuendigt, 4 + token.len());
-        assert!(sent.len() > 40, "300 Byte brauchen viele Rahmen");
+    pub fn eintraege(&self) -> Vec<AuditEintragFfi> {
+        match self.inner.lock() {
+            Ok(kette) => kette
+                .eintraege()
+                .iter()
+                .map(|e| AuditEintragFfi {
+                    laufnummer: e.laufnummer,
+                    zeit_ms: e.zeit_ms,
+                    vin: e.vin.clone(),
+                    steuergeraet: e.steuergeraet,
+                    dienst: e.dienst.clone(),
+                    ergebnis: match &e.ergebnis {
+                        Ergebnis::Erfolg => "Erfolg".to_string(),
+                        Ergebnis::Fehler { grund } => format!("Fehler: {grund}"),
+                    },
+                    hash: vci_core::audit::hex32(&e.hash),
+                    vorheriger_hash: vci_core::audit::hex32(&e.vorheriger_hash),
+                })
+                .collect(),
+            Err(_) => Vec::new(),
+        }
     }
 }
+
+/// Was die Runtime vom Fahrzeug und vom Bediener braucht.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct FunktionsKontextFfi {
+    pub vin: String,
+    pub klemme15: bool,
+    pub motor_aus: bool,
+    /// Pflicht ab Risiko R2.
+    pub bestaetigung: bool,
+}
+
+/// Ergebnis eines durchgelaufenen Ablaufs.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AusfuehrungFfi {
+    pub funktion: String,
+    pub schritte: u32,
+    pub backup_dids: Vec<u32>,
+    pub backup_hex: Vec<String>,
+    pub audit_laufnummern: Vec<u32>,
+}
+
+/// Eine Werkstattfunktion aus Text — geprüft und ausführbar.
+///
+/// Der Text kommt aus dem Content-Ordner (YAML-Teilmenge, siehe
+/// `core/src/content.rs`). Unbekannte Schlüssel werden abgelehnt, nicht
+/// ignoriert: ein Tippfehler darf keine Vorbedingung stillschweigend
+/// abschalten.
+#[derive(uniffi::Object)]
+pub struct Funktion {
+    inner: FunctionDef,
+}
+
+#[uniffi::export]
+impl Funktion {
+    /// Liest eine Definition; `datei` erscheint in Fehlermeldungen.
+    #[uniffi::constructor]
+    pub fn aus_yaml(datei: String, text: String) -> Result<Arc<Self>, VciError> {
+        let def = vci_core::content::laden(&datei, &text).map_err(VciError::from)?;
+        Ok(Arc::new(Funktion { inner: def }))
+    }
+
+    pub fn id(&self) -> String {
+        self.inner.id.clone()
+    }
+
+    pub fn titel(&self) -> String {
+        self.inner.titel.clone()
+    }
+
+    /// Risikoklasse als Text (`R0`…`R4`).
+    pub fn risk(&self) -> String {
+        self.inner.risk.als_text().to_string()
+    }
+
+    pub fn braucht_bestaetigung(&self) -> bool {
+        self.inner.risk.braucht_bestaetigung()
+    }
+
+    pub fn schritte(&self) -> u32 {
+        self.inner.steps.len() as u32
+    }
+
+    pub fn pruefe_schema(&self) -> Result<(), VciError> {
+        self.inner.pruefe_schema().map_err(|fehler| VciError::Protocol {
+            detail: fehler
+                .iter()
+                .map(|f| f.to_string())
+                .collect::<Vec<_>>()
+                .join("; "),
+        })
+    }
+
+    pub fn pruefe_freigabe(&self) -> Result<(), VciError> {
+        self.inner.pruefe_freigabe().map_err(|fehler| VciError::Protocol {
+            detail: fehler
+                .iter()
+                .map(|f| f.to_string())
+                .collect::<Vec<_>>()
+                .join("; "),
+        })
+    }
+
+    /// Führt den Ablauf aus; jeder Schritt landet in `audit`.
+    pub fn ausfuehren(
+        &self,
+        transport: Box<dyn CanTransport>,
+        kontext: FunktionsKontextFfi,
+        audit: Arc<Audit>,
+        zeit_ms: u64,
+    ) -> Result<AusfuehrungFfi, VciError> {
+        let mut t = ForeignTransport::new(transport.as_ref());
+        let ctx = Kontext {
+            vin: kontext.vin,
+            klemme15: kontext.klemme15,
+            motor_aus: kontext.motor_aus,
+            bestaetigung: kontext.bestaetigung,
+        };
+        let client = vci_core::UdsClient::new();
+        let mut kette = audit.inner.lock().map_err(|_| VciError::Io)?;
+        let ergebnis = self.inner.ausfuehren(&client, &mut t, &ctx, &mut kette, zeit_ms);
+
+        t.finish_funktion(ergebnis).map(|a| AusfuehrungFfi {
+            funktion: a.funktion,
+            schritte: a.schritte as u32,
+            backup_dids: a.backup.iter().map(|(did, _)| *did as u32).collect(),
+            backup_hex: a.backup.iter().map(|(_, daten)| vci_core::sfd::hex(daten)).collect(),
+            audit_laufnummern: a.audit_laufnummern,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests;
