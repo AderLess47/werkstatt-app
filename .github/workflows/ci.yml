@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Tests (159 Prüfungen)
+      - name: Tests (165 Prüfungen)
         run: make -C j2534 test
 
       - name: Korpus ist aktuell
@@ -55,7 +55,7 @@ jobs:
           path: core-ffi/bindings
 
   jvm-tests:
-    name: JVM-Tests ohne Gerät (119)
+    name: JVM-Tests ohne Gerät (125)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

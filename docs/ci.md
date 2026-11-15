@@ -23,9 +23,10 @@ Gemessen am 15.11.2026 über die GitHub-API:
 
 | Frage | Antwort |
 | --- | --- |
-| Läufe insgesamt | 125 |
+| Läufe insgesamt | 136 (Stand vor diesem Commit; jeder Push zählt weiter) |
 | davon erfolgreich | **0** |
-| letzter Lauf (`43720142097`, Commit `d9dc3e0e`) | `conclusion: failure`, 4 Jobs, je `steps: []`, kein Runner (`runner_id: 0`), Laufzeit 2–3 s |
+| die acht Läufe zu den Commits dieser Sitzung (`f5ea5eb`…`41a81222`, Lauf 129–136) | je `conclusion: failure`, Laufzeit 4–5 s |
+| letzter Lauf (`43726214646`, Commit `41a81222`) | 5 Jobs: vier mit `conclusion: failure`, je `runner_id: 0`, `steps: []`, gestartet und beendet in derselben Sekunde; `bindings` `skipped`, weil `rust` nicht gelaufen ist |
 | Repository | **privat** (`private: true`) |
 | Actions im Repository | `enabled: true`, `allowed_actions: all` |
 | Actions-Minuten im Monat (Konto) | 978 Linux + 388 macOS, brutto rund 30 $, im Nutzungsbericht mit 0 $ netto ausgewiesen |
@@ -89,7 +90,7 @@ diesem Repository **kein** CI-Ergebnis belegt.
 
 ## Was das für den Stand der Verifikation heißt
 
-Solange 0 von 125 Läufen erfolgreich sind, stützt sich keine Aussage in der
+Solange 0 von 136 Läufen erfolgreich sind, stützt sich keine Aussage in der
 Dokumentation auf die CI. Belegt ist, was lokal gelaufen ist: `make -C j2534
 test`, `cargo test` für beide Crates, `sh scripts/jvm-tests.sh` (125 Tests) und
 der Android-Build über den Wrapper
