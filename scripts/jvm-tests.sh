@@ -116,7 +116,7 @@ rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 
 MAIN=$(ls android/app/src/main/kotlin/de/werkstatt/vci/*.kt |
-    grep -Ev '/(MainActivity|UsbAbschnitt|ObdLinkAbschnitt|BerichtTeilen)\.kt$')
+    grep -Ev '/(MainActivity|UsbAbschnitt|SfdAbschnitt|ObdLinkAbschnitt|BerichtTeilen)\.kt$')
 TRANSPORT=$(ls android/app/src/main/kotlin/de/werkstatt/vci/transport/*.kt |
     grep -Ev '/(UsbDongleVerbindung|FtdiStnVerbindung|UsbSerialStrecke|BleGattVerbindung|UsbCanTransport)\.kt$')
 TESTS=$(ls android/app/src/test/kotlin/de/werkstatt/vci/*.kt \
