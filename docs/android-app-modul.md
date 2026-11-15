@@ -40,6 +40,32 @@ echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 gradle -p android :app:assembleDebug
 ```
 
+Gebaut wird über den Wrapper: `android/gradle/wrapper/gradle-wrapper.properties`
+ist die einzige Stelle, an der die Gradle-Version steht — `./gradlew`, die CI und
+`scripts/vorbereiten.sh` lesen sie dort.
+
+```sh
+cd android && ./gradlew :app:assembleDebug
+```
+
+Die `gradle-wrapper.jar` selbst liegt **nicht** im Repository (binär, rund 43 kB).
+Fehlt sie, holt `./gradlew` sie beim ersten Lauf von einer festen Quelle und
+prüft sie gegen die dort festgeschriebene SHA-256, bevor Java startet; passt der
+Hash nicht, wird nichts ausgeführt und keine halbe Datei zurückgelassen. Das
+kostet beim allerersten Lauf Netzzugang — ohne Netz und ohne Jar bricht der
+Aufruf mit einer Meldung ab, statt in einen Klassenfehler zu laufen. Liegt eine
+Jar mit anderem Hash vor, warnt der Wrapper nur, damit ein bewusst neu erzeugter
+Wrapper nicht blockiert.
+
+Kommitten lohnt sich, sobald auf Rechnern **ohne** Netzzugang gebaut werden soll
+oder die Herkunft der Datei nicht von GitHub abhängen darf: dann entfällt der
+Download, und die Jar reist mit dem Klon.
+
+```sh
+cd android && ./gradlew --version     # legt gradle/wrapper/gradle-wrapper.jar an
+git add gradle/wrapper/gradle-wrapper.jar
+```
+
 Die Tests von `:app` brauchen weder Gradle noch ein Gerät:
 
 ```sh
