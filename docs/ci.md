@@ -30,10 +30,15 @@ Gemessen am 15.11.2026 über die GitHub-API:
 | Actions im Repository | `enabled: true`, `allowed_actions: all` |
 | Actions-Minuten im Monat (Konto) | 978 Linux + 388 macOS, brutto rund 30 $, im Nutzungsbericht mit 0 $ netto ausgewiesen |
 | Lauf des Commits, der diese Seite hinzufügte (#126) | `created_at` 13:44:10, `updated_at` 13:44:14, `conclusion: failure` |
+| erneuter Lauf, Versuch 2 (#126, „Re-run failed jobs“) | 13:49:00 → 13:49:04, wieder `steps: []`, `runner_id: 0`, `failure` |
 
 Die Zahl der Läufe wächst mit jedem Push; erfolgreich war bisher keiner — auch
 der Lauf, der diese Seite ins Repository brachte, endete nach vier Sekunden
-ohne Runner.
+ohne Runner. Ein erneuter Lauf (Versuch 2) ändert daran nichts: gleiche Dauer,
+gleiches Bild, kein einziger Schritt. Solange das so aussieht, ist die Sperre
+nicht gefallen — unabhängig davon, was in den Abrechnungseinstellungen geändert
+wurde. Nach einer Korrektur kann es dauern, bis sie greift; der nächste Beweis
+ist ein Lauf mit `runner_id ≠ 0`.
 
 Ein Job **ohne Schritte und ohne Runner** ist nicht an einer Prüfung gescheitert
 — er wurde nicht gestartet. Die Meldung, die GitHub dazu anzeigt, lautet:
