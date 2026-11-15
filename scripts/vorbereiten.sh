@@ -16,7 +16,7 @@
 #   ~/.gradle fehlt     → die Jars holt scripts/jvm-tests.sh selbst von Maven
 #   target/ ist weg     → die Host-Bibliothek wird neu gebaut (cargo)
 #   ~/android-sdk weg   → cmdline-tools, Platform, Build-Tools und NDK kommen
-#                         von dl.google.com, Gradle 8.9 von gradle.org
+#                         von dl.google.com, Gradle von gradle.org
 #   jniLibs ist weg     → die beiden Android-Bibliotheken entstehen aus dem
 #                         Quellcode (nicht versioniert, siehe
 #                         docs/android-app-modul.md)
@@ -29,7 +29,7 @@
 #   ANDROID_PLATTFORM  Platform-API (Vorgabe: 34)
 #   BUILD_TOOLS      Build-Tools (Vorgabe: 34.0.0)
 #   NDK_VERSION      NDK (Vorgabe: 26.1.10909125)
-#   GRADLE_VERSION   Gradle (Vorgabe: 8.9, wie in der CI)
+#   GRADLE_VERSION   Gradle (Vorgabe: aus android/gradle/wrapper/gradle-wrapper.properties)
 #   GRADLE_DIR       Ziel von Gradle (Vorgabe: ~/.local/gradle-$GRADLE_VERSION)
 #   OHNE_ANDROID=1   überspringt SDK, NDK, Gradle und jniLibs
 
@@ -44,8 +44,9 @@ SDK_DIR=${SDK_DIR:-$HOME/android-sdk}
 ANDROID_PLATTFORM=${ANDROID_PLATTFORM:-34}
 BUILD_TOOLS=${BUILD_TOOLS:-34.0.0}
 NDK_VERSION=${NDK_VERSION:-26.1.10909125}
-GRADLE_VERSION=${GRADLE_VERSION:-8.9}
-GRADLE_DIR=${GRADLE_DIR:-$HOME/.local/gradle-$GRADLE_VERSION}
+WRAPPER_PROPS=android/gradle/wrapper/gradle-wrapper.properties
+# GRADLE_VERSION und GRADLE_DIR werden weiter unten bestimmt — die Version
+# steht im Wrapper der App, damit es nur eine Zahl im Projekt gibt.
 OHNE_ANDROID=${OHNE_ANDROID:-0}
 LIB=core-ffi/target/release/libvci_ffi.so
 JNI=android/app/src/main/jniLibs
@@ -64,6 +65,17 @@ fehler() {
 wuerde_holen() {
     echo "  fehlt: $*"
 }
+
+# Die Gradle-Version steht im Wrapper (`distributionUrl`), nicht hier: CI und
+# dieses Skript lesen dieselbe Datei. Fehlt sie, ist das ein Fehler und kein
+# stiller Rückfall auf irgendeine Version.
+if [ -z "${GRADLE_VERSION:-}" ]; then
+    GRADLE_VERSION=$(sed -n 's|.*distributions/gradle-\([0-9.]*\)-bin\.zip.*|\1|p' \
+        "$WRAPPER_PROPS" 2>/dev/null | head -1)
+    [ -n "$GRADLE_VERSION" ] ||
+        fehler "keine Gradle-Version in $WRAPPER_PROPS gefunden"
+fi
+GRADLE_DIR=${GRADLE_DIR:-$HOME/.local/gradle-$GRADLE_VERSION}
 
 # --- cargo ------------------------------------------------------------------
 # rustup legt cargo nach ~/.cargo/bin und trägt es nur in Login-Shells in den
@@ -221,7 +233,8 @@ else
         fi
     fi
 
-    # Gradle: das Repository hat keinen Wrapper, die CI pinnt 8.9.
+    # Gradle: die Version kommt aus dem Wrapper, das Repository hat aber keinen
+    # mitgelieferten Wrapper (die .jar ist binär und wird nicht eingecheckt).
     if [ -x "$GRADLE_DIR/bin/gradle" ]; then
         # Gradle braucht selbst ein JDK; ohne JAVA_HOME schweigt `--version`.
         gradle_version=$(JAVA_HOME="$JDK_DIR" "$GRADLE_DIR/bin/gradle" --version 2>/dev/null |
