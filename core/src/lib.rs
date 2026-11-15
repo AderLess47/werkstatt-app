@@ -4,8 +4,8 @@
 //!
 //! 1. [`transport`] — die einzige Stelle, die Hardware kennt (BLE, USB, J2534).
 //! 2. [`isotp`] — ISO 15765-2, Segmentierung über CAN.
-//! 3. [`sfd`] — VAG „Schutz Fahrzeug Diagnose" über UDS (ISO 14229-1).
-//! 4. `uds` — die übrigen Dienste von ISO 14229-1 (folgt).
+//! 3. [`uds`] — ISO 14229-1: Sitzung, Kennungen, NRC-Behandlung.
+//! 4. [`sfd`] — VAG „Schutz Fahrzeug Diagnose“ über UDS.
 //! 5. `function` — Werkstattfunktionen als Daten (folgt).
 //! 6. `audit` — Hash-Kette über jede Schreiboperation (folgt).
 //!
@@ -17,8 +17,10 @@ pub mod isotp;
 pub mod loopback;
 pub mod sfd;
 pub mod transport;
+pub mod uds;
 
 pub use isotp::IsotpChannel;
 pub use loopback::Loopback;
 pub use sfd::{SfdClient, SfdError, SfdFehler};
 pub use transport::{CanFrame, Capabilities, Result, Transport, TransportError};
+pub use uds::{UdsClient, UdsFehler};
