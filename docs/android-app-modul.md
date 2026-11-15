@@ -51,7 +51,7 @@ Gradle-Cache gegen JDK 17 und startet JUnit auf der JVM; die native Bibliothek
 kommt aus dem Host-Build (siehe [Geprüft / nicht geprüft](#geprüft--nicht-geprüft)).
 
 Der erste Gradle-Lauf braucht **Netzzugang**: `:app` hängt an
-`com.github.mik3y:usb-serial-for-android:3.11.0`, das nur über JitPack verteilt
+`com.github.mik3y:usb-serial-for-android:3.10.0`, das nur über JitPack verteilt
 wird. Das Repository steht dafür in `android/settings.gradle.kts`; ohne JitPack
 scheitert die Abhängigkeitsauflösung, nicht der Code. Die Bibliothek (MIT) macht
 Baudrate, Leitungsparameter und die Statusbytes der FTDI-Wandler — eigener
@@ -331,9 +331,11 @@ Dafür brauchte es zwei Handgriffe, die das Skript festhält:
    sich laden. Damit laufen `VciCheck`, `DonglePruefung` und `BleCanTransport`
    gegen den **echten Kern**, nicht gegen eine Attrappe.
 
-Ein Gradle-Lauf bleibt **nicht** möglich — kein Android SDK, kein NDK. Dass
-`:app:testDebugUnitTest` dieselben 119 Tests grün sieht, ist damit weiterhin
-offen; geprüft ist die Testlogik, nicht die Gradle-Verdrahtung.
+Ein Gradle-Lauf ist inzwischen **gelaufen** — JDK 17, Gradle 8.9, SDK 34, NDK
+26.1.10909125: `gradle -p android :app:testDebugUnitTest :app:assembleDebug`
+endet mit `BUILD SUCCESSFUL`, und `:app:testDebugUnitTest` sieht dieselben 119
+Tests grün wie `scripts/jvm-tests.sh`. Geprüft ist damit auch die
+Gradle-Verdrahtung.
 
 Ebenfalls geprüft (früher, mit NDK): `:app:assembleDebug` (Kompilierung,
 Ressourcen, Manifest, Paketierung), APK-Inhalt (startbare Activity
@@ -343,12 +345,12 @@ kein glibc), 29 exportierte `uniffi_vci_ffi_*`-Symbole darunter
 `fn_constructor_isotp_new`, und dass `libvci_ffi.so` für `arm64-v8a` und
 `x86_64` in der APK liegt.
 
-**Nicht mit echtem Compose kompiliert:** `transport/UsbSerialStrecke.kt` und
-`transport/FtdiStnVerbindung.kt`. Beide brauchen das Android SDK und
-`usb-serial-for-android`; ein Probelauf mit dem Kotlin-Compiler dieser Umgebung
-endet an unaufgelösten Symbolen (`android.*`, `com.hoho.*`, `Context`). Sie sind
-geschrieben, aber kein Compiler hat sie bisher gesehen — der erste
-`assembleDebug` auf einer Maschine mit SDK ist ihr erster echter Test.
+**Mit echtem Compose kompiliert, nicht erprobt:** `transport/UsbSerialStrecke.kt`
+und `transport/FtdiStnVerbindung.kt` brauchen das Android SDK und
+`usb-serial-for-android`. Vor dem ersten gelungenen `assembleDebug` endete ein
+Probelauf an unaufgelösten Symbolen (`android.*`, `com.hoho.*`, `Context`); seit
+SDK, NDK und Gradle da sind, gehen beide durch den echten Compiler. Ein Compiler
+sagt nichts über das Verhalten am Dongle.
 
 Für `UsbAbschnitt.kt` und `ObdLinkAbschnitt.kt` gibt es inzwischen mehr als eine
 Syntaxprobe: `UsbAbschnitt.kt` wurde gegen **Attrappen der Compose-API**
