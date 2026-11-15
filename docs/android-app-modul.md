@@ -37,7 +37,7 @@ cargo build --release --manifest-path core-ffi/Cargo.toml
 echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 
 # 3. APK
-gradle -p android :app:assembleDebug
+./android/gradlew -p android :app:assembleDebug
 ```
 
 Gebaut wird über den Wrapper: `android/gradle/wrapper/gradle-wrapper.properties`
@@ -45,7 +45,7 @@ ist die einzige Stelle, an der die Gradle-Version steht — `./gradlew`, die CI 
 `scripts/vorbereiten.sh` lesen sie dort.
 
 ```sh
-cd android && ./gradlew :app:assembleDebug
+./android/gradlew -p android :app:assembleDebug
 ```
 
 Die `gradle-wrapper.jar` selbst liegt **nicht** im Repository (binär, rund 43 kB).
@@ -62,7 +62,7 @@ oder die Herkunft der Datei nicht von GitHub abhängen darf: dann entfällt der
 Download, und die Jar reist mit dem Klon.
 
 ```sh
-cd android && ./gradlew --version     # legt gradle/wrapper/gradle-wrapper.jar an
+./android/gradlew --version           # legt gradle/wrapper/gradle-wrapper.jar an
 git add gradle/wrapper/gradle-wrapper.jar
 ```
 
@@ -94,7 +94,7 @@ cargo ndk --platform 29 -t arm64-v8a -t x86_64 -o ../dist/androidJniLibs build -
 cd ..
 mkdir -p android/app/src/main/jniLibs
 cp -r dist/androidJniLibs/* android/app/src/main/jniLibs/
-gradle -p android :app:assembleDebug
+./android/gradlew -p android :app:assembleDebug
 ```
 
 `--platform 29` muss zu `minSdk` passen, sonst bindet der Linker gegen eine
@@ -358,7 +358,7 @@ Dafür brauchte es zwei Handgriffe, die das Skript festhält:
    gegen den **echten Kern**, nicht gegen eine Attrappe.
 
 Ein Gradle-Lauf ist inzwischen **gelaufen** — JDK 17, Gradle 8.9, SDK 34, NDK
-26.1.10909125: `gradle -p android :app:testDebugUnitTest :app:assembleDebug`
+26.1.10909125: `./android/gradlew -p android :app:testDebugUnitTest :app:assembleDebug`
 endet mit `BUILD SUCCESSFUL`, und `:app:testDebugUnitTest` sieht dieselben 119
 Tests grün wie `scripts/jvm-tests.sh`. Geprüft ist damit auch die
 Gradle-Verdrahtung.
