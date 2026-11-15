@@ -19,6 +19,9 @@ extern void sim_inject_garbage(int bytes);
 extern void sim_corrupt_next_frame(void);
 extern void sim_force_timeout(void);
 extern void sim_set_disconnected(int on);
+extern void sim_set_flow_control(int bs, int stmin);
+extern void sim_flow_wait_once(void);
+extern void sim_force_bad_single_frame(void);
 
 static int g_failures = 0;
 
@@ -125,6 +128,50 @@ int main(void)
               tp_send(CAN, big, 9, 100) == TP_E_TOOBIG);
         check("leere Nachricht abgelehnt", tp_send(ISO15765, big, 0, 100) == TP_E_ARG);
         check("unbekanntes Protokoll abgelehnt", tp_send(0x99, big, 2, 100) == TP_E_ARG);
+    }
+
+    /* --- Lange Nutzlast: SFD-Token (324 Byte) ---------------------------- */
+    {
+        static uint8_t req[324];
+        static uint8_t echo[512];
+        uint32_t i;
+
+        req[0] = 0x2E; /* WriteDataByIdentifier — das SG spiegelt die Nutzlast */
+        for (i = 1; i < sizeof(req); i++) {
+            req[i] = (uint8_t)(i & 0xFF);
+        }
+
+        sim_set_flow_control(2, 1); /* BS=2, STmin=1 ms: 23 Blöcke */
+        check("324 Byte mit BS=2 und STmin gehen raus",
+              tp_send(ISO15765, req, sizeof(req), 100) == TP_OK);
+        /* Die positive Antwort auf 0x2E ist 0x6E mit derselben Nutzlast. */
+        check("Echo der 324 Byte kommt vollständig zurück",
+              tp_recv(ISO15765, echo, sizeof(echo), &n, 500) == TP_OK &&
+              n == sizeof(req) && echo[0] == 0x6E &&
+              memcmp(echo + 1, req + 1, sizeof(req) - 1) == 0);
+
+        sim_set_flow_control(0, 0);
+        sim_flow_wait_once();
+        check("Vertröstung (FC 0x31) wird hingenommen",
+              tp_send(ISO15765, req, sizeof(req), 100) == TP_OK);
+        (void)tp_recv(ISO15765, echo, sizeof(echo), &n, 500);
+    }
+
+    /* --- Unzulässige Längenfelder ---------------------------------------- */
+    {
+        const uint8_t req[2] = {0x3E, 0x00};
+        static uint8_t too_long[4096];
+
+        sim_force_bad_single_frame();
+        tp_send(ISO15765, req, 2, 100);
+        check("Single Frame mit Längenfeld 15 wird abgelehnt",
+              tp_recv(ISO15765, buf, sizeof(buf), &n, 100) == TP_E_PROTO);
+        tp_send(ISO15765, req, 2, 100);
+        check("nach unzulässigem Rahmen wieder sauber",
+              tp_recv(ISO15765, buf, sizeof(buf), &n, 100) == TP_OK && n == 2);
+
+        check("Nachricht über 4095 Byte abgelehnt",
+              tp_send(ISO15765, too_long, sizeof(too_long), 100) == TP_E_TOOBIG);
     }
 
     /* --- Kabelziehen ------------------------------------------------------ */
