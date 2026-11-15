@@ -130,25 +130,17 @@ jobs:
           readelf -h dist/androidJniLibs/x86_64/libvci_ffi.so | grep -q X86-64
           echo "arm64-v8a und x86_64 gebaut"
 
-      # Die Gradle-Version steht in android/gradle/wrapper/gradle-wrapper.properties
-      # — dieselbe Datei liest scripts/vorbereiten.sh. Kein zweiter Pin hier.
-      - name: Gradle-Version aus dem Wrapper lesen
-        id: gradle
-        run: |
-          version=$(sed -n 's|.*distributions/gradle-\([0-9.]*\)-bin\.zip.*|\1|p' \
-            android/gradle/wrapper/gradle-wrapper.properties)
-          test -n "$version" || { echo "keine Gradle-Version im Wrapper"; exit 1; }
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
+      # Ohne `gradle-version`: die Aktion nimmt dann den Wrapper des Projekts an
+      # und richtet nur den Cache ein. Die Version steht allein in
+      # android/gradle/wrapper/gradle-wrapper.properties — kein zweiter Pin,
+      # und keine zweite Gradle-Distribution, die niemand benutzt.
       - uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: ${{ steps.gradle.outputs.version }}
 
       # Der eigentliche Beweis: Kotlin kompiliert die Bindings und ruft in die
       # Rust-Bibliothek. Ohne diesen Test wäre „die Bindings entstehen" nur
       # eine Behauptung.
       - name: Kotlin bindet gegen den Kern
-        run: gradle -p android :bindings:test --console=plain
+        run: ./android/gradlew -p android :bindings:test --console=plain
 
       # Die App bekommt die gebauten .so-Dateien nach jniLibs; erst damit findet
       # sie den Kern zur Laufzeit. Der Build beweist Paketierung, Manifest und
@@ -162,7 +154,7 @@ jobs:
         run: |
           mkdir -p android/app/src/main/jniLibs
           cp -r dist/androidJniLibs/* android/app/src/main/jniLibs/
-          gradle -p android :app:testDebugUnitTest :app:assembleDebug --console=plain
+          ./android/gradlew -p android :app:testDebugUnitTest :app:assembleDebug --console=plain
           # Beide ABIs müssen drin sein: sonst läuft die App auf dem einen
           # Tablet und auf dem anderen nicht (arm64-Gerät, x86-Emulator).
           unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep 'lib/arm64-v8a/libvci_ffi.so'
