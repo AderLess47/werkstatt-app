@@ -14,6 +14,7 @@
 //! | Challenge | `31 01 C0 04 <Rolle>` | `71 01 C0 04 <Challenge>` |
 //! | Token senden | `31 01 C0 08 <Token>` | `71 01 C0 08` |
 //! | sperren | `31 01 C0 09` | `71 01 C0 09` |
+//! | Sitzung | `10 03` | `50 03` |
 //!
 //! `31` ist RoutineControl mit `startRoutine` (Subfunktion `01`), `C0` die
 //! Routine-Kennung und das vierte Byte der Schritt: `04` Challenge lesen,
@@ -46,6 +47,12 @@ pub const DIENST_READ_DATA: u8 = 0x22;
 pub const DIENST_ROUTINE: u8 = 0x31;
 /// Subfunktion `startRoutine`.
 pub const SUB_START: u8 = 0x01;
+/// Dienst „DiagnosticSessionControl".
+pub const DIENST_SITZUNG: u8 = 0x10;
+/// Subfunktion `extendedDiagnosticSession`.
+pub const SITZUNG_EXTENDED: u8 = 0x03;
+/// Positive Antwort auf DiagnosticSessionControl.
+pub const ANTWORT_SITZUNG: u8 = 0x50;
 
 /// DID der SFD-Statusabfrage (`22 01 74`).
 pub const STATUS_DID: [u8; 2] = [0x01, 0x74];
@@ -250,11 +257,59 @@ pub fn sperren_anfrage() -> Vec<u8> {
     vec![DIENST_ROUTINE, SUB_START, ROUTINE_KENNUNG, MODUS_SPERREN]
 }
 
+/// `10 03` — in die Extended Session wechseln.
+///
+/// Viele Steuergeräte beantworten `31 01 C0 04` und `31 01 C0 08` nur in dieser
+/// Sitzung; in der Default-Session kommt `7F 31 7E` oder `7F 31 7F`. Der
+/// Sitzungswechsel ist deshalb ein eigener Schritt und keine stille Annahme:
+/// ob er nötig war, sagt das Steuergerät im NRC.
+pub fn extended_anfrage() -> Vec<u8> {
+    sitzung_anfrage(SITZUNG_EXTENDED)
+}
+
+/// `10 <Sitzung>` — Sitzungswechsel mit beliebiger Subfunktion.
+pub fn sitzung_anfrage(sitzung: u8) -> Vec<u8> {
+    vec![DIENST_SITZUNG, sitzung]
+}
+
+/// Wertet `50 <Sitzung>` aus.
+pub fn parse_sitzung(antwort: &[u8], sitzung: u8) -> std::result::Result<(), SfdError> {
+    if let Some((dienst, code)) = pruefe_nrc(antwort) {
+        return Err(SfdError::Nrc { dienst, code });
+    }
+    if antwort.len() < 2 {
+        return Err(SfdError::ZuKurz {
+            gelesen: antwort.len(),
+            mindestens: 2,
+        });
+    }
+    if antwort[0] != ANTWORT_SITZUNG {
+        return Err(SfdError::FalscherDienst {
+            erwartet: ANTWORT_SITZUNG,
+            gesehen: antwort[0],
+        });
+    }
+    if antwort[1] != sitzung {
+        return Err(SfdError::FalscherModus {
+            erwartet: sitzung,
+            gesehen: antwort[1],
+        });
+    }
+    Ok(())
+}
+
 /// Rohe Statusantwort (`62 01 74 …`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SfdStatus {
     /// Bytes hinter dem Echo — die Statusinformation des Steuergeräts.
     pub daten: Vec<u8>,
+    /// Die **ganze** Antwort, `62 01 74 …` eingeschlossen.
+    ///
+    /// Der Grund ist die Werkstatt: SFD1- und SFD2-Steuergeräte liefern auf
+    /// `22 01 74` unterschiedlich lange Antworten, und eine Deutung, die davon
+    /// ausgeht, kann falsch liegen. Die Rohantwort geht deshalb immer mit —
+    /// auch dann, wenn das Layout nicht gedeutet werden kann.
+    pub roh: Vec<u8>,
 }
 
 /// Wertet `62 01 74 …` aus.
@@ -283,6 +338,7 @@ pub fn parse_status(antwort: &[u8]) -> std::result::Result<SfdStatus, SfdError> 
     }
     Ok(SfdStatus {
         daten: antwort[KOPF..].to_vec(),
+        roh: antwort.to_vec(),
     })
 }
 
@@ -515,6 +571,26 @@ impl SfdClient {
         Ok(parse_gesperrt(&antwort)?)
     }
 
+    /// `10 03` — Extended Session starten.
+    pub fn extended<T: Transport>(
+        &self,
+        t: &mut T,
+        timeout_ms: u32,
+    ) -> std::result::Result<(), SfdFehler> {
+        self.sitzung(t, SITZUNG_EXTENDED, timeout_ms)
+    }
+
+    /// Sitzungswechsel mit beliebiger Subfunktion (`10 xx`).
+    pub fn sitzung<T: Transport>(
+        &self,
+        t: &mut T,
+        sitzung: u8,
+        timeout_ms: u32,
+    ) -> std::result::Result<(), SfdFehler> {
+        let antwort = self.runde(t, &sitzung_anfrage(sitzung), timeout_ms)?;
+        Ok(parse_sitzung(&antwort, sitzung)?)
+    }
+
     pub fn iso(&self) -> &IsotpChannel {
         &self.iso
     }
@@ -638,7 +714,88 @@ mod tests {
     fn status_ohne_daten_ist_gueltig() {
         assert_eq!(
             parse_status(&[0x62, 0x01, 0x74]).unwrap(),
-            SfdStatus { daten: vec![] }
+            SfdStatus {
+                daten: vec![],
+                roh: vec![0x62, 0x01, 0x74]
+            }
+        );
+    }
+
+    #[test]
+    fn status_roh_enthaelt_die_ganze_antwort() {
+        let status = parse_status(&[0x62, 0x01, 0x74, 0x01, 0x02]).unwrap();
+        assert_eq!(status.daten, vec![0x01, 0x02]);
+        assert_eq!(status.roh, vec![0x62, 0x01, 0x74, 0x01, 0x02]);
+    }
+
+    #[test]
+    fn status_mit_abweichendem_layout_wird_nicht_abgelehnt() {
+        // SFD1 und SFD2 antworten unterschiedlich lang. Ein anderes Layout ist
+        // kein Grund aufzugeben: gedeutet wird, was passt, sonst bleiben die
+        // Rohbytes — beides entscheidet die App, nicht der Parser.
+        let lang = parse_status(&[0x62, 0x01, 0x74, 0x01, 0x02, 0x00, 0x1E, 0xAA]).unwrap();
+        assert_eq!(lang.daten.len(), 5);
+        let kurz = parse_status(&[0x62, 0x01, 0x74, 0x01]).unwrap();
+        assert_eq!(kurz.daten, vec![0x01]);
+    }
+
+    #[test]
+    fn extended_anfrage_ist_10_03() {
+        assert_eq!(extended_anfrage(), vec![0x10, 0x03]);
+        assert_eq!(sitzung_anfrage(0x02), vec![0x10, 0x02]);
+    }
+
+    #[test]
+    fn sitzungswechsel_wird_ausgewertet() {
+        assert_eq!(parse_sitzung(&[0x50, 0x03], 0x03), Ok(()));
+        // Zusätzliche Bytes (P2/P2*-Werte) stören nicht.
+        assert_eq!(
+            parse_sitzung(&[0x50, 0x03, 0x00, 0x32, 0x01, 0xF4], 0x03),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn sitzung_nrc_7e_wird_benannt() {
+        assert_eq!(
+            parse_sitzung(&[0x7F, 0x10, 0x7E], 0x03).unwrap_err(),
+            SfdError::Nrc {
+                dienst: 0x10,
+                code: 0x7E
+            }
+        );
+    }
+
+    #[test]
+    fn sitzung_mit_falschem_dienst_wird_abgelehnt() {
+        assert_eq!(
+            parse_sitzung(&[0x51, 0x03], 0x03).unwrap_err(),
+            SfdError::FalscherDienst {
+                erwartet: 0x50,
+                gesehen: 0x51
+            }
+        );
+    }
+
+    #[test]
+    fn sitzung_mit_falscher_subfunktion_wird_abgelehnt() {
+        assert_eq!(
+            parse_sitzung(&[0x50, 0x02], 0x03).unwrap_err(),
+            SfdError::FalscherModus {
+                erwartet: 0x03,
+                gesehen: 0x02
+            }
+        );
+    }
+
+    #[test]
+    fn sitzung_zu_kurz_wird_abgelehnt() {
+        assert_eq!(
+            parse_sitzung(&[0x50], 0x03).unwrap_err(),
+            SfdError::ZuKurz {
+                gelesen: 1,
+                mindestens: 2
+            }
         );
     }
 
