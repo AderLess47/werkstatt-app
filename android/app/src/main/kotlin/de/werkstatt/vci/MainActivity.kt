@@ -244,6 +244,8 @@ private fun WerkstattStatus() {
 
         UsbAbschnitt { letzterSchritt = it }
 
+        SfdAbschnitt { letzterSchritt = it }
+
         ObdLinkAbschnitt { letzterSchritt = it }
 
         Spacer(Modifier.height(8.dp))
