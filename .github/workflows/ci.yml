@@ -143,12 +143,20 @@ jobs:
       # Die App bekommt die gebauten .so-Dateien nach jniLibs; erst damit findet
       # sie den Kern zur Laufzeit. Der Build beweist Paketierung, Manifest und
       # Compose-Übersetzung — nicht, dass die App auf einem Gerät startet.
+      #
+      # Die feste Dongle-Bibliothek (3.10.0, Begründung in
+      # android/app/build.gradle.kts) fällt genau hier auf, wenn jemand sie
+      # hebt, ohne AGP und Kotlin mitzuheben: `checkDebugAarMetadata` bricht
+      # dann mit „requires compile against version 35 or later“ ab.
       - name: App-APK bauen
         run: |
           mkdir -p android/app/src/main/jniLibs
           cp -r dist/androidJniLibs/* android/app/src/main/jniLibs/
           gradle -p android :app:testDebugUnitTest :app:assembleDebug --console=plain
+          # Beide ABIs müssen drin sein: sonst läuft die App auf dem einen
+          # Tablet und auf dem anderen nicht (arm64-Gerät, x86-Emulator).
           unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep 'lib/arm64-v8a/libvci_ffi.so'
+          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep 'lib/x86_64/libvci_ffi.so'
 
       - name: JNI-Bibliotheken hochladen
         uses: actions/upload-artifact@v4

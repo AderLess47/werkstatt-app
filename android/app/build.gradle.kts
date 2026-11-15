@@ -52,7 +52,14 @@ dependencies {
     // Leitungsparameter und Statusbytes macht diese Bibliothek (MIT-Lizenz).
     // Begrenzt wird der Einsatz in FtdiStnVerbindung: nur FTDI-VID und nur
     // Geräte, deren STI-Kennung STN-Firmware bestätigt.
-    implementation("com.github.mik3y:usb-serial-for-android:3.11.0")
+    //
+    // **Feste Version, nicht „latest“:** ab 3.11.0 verlangt das aar
+    // `compileSdk 35` (dieses Projekt: 34, AGP 8.5.2 kann nicht mehr), und es
+    // zieht kotlin-stdlib 2.2 mit, das zu Kotlin 2.0.21 nicht passt — der
+    // Übersetzer bricht mit „metadata is 2.2.0, expected 2.0.0“ ab. Ein
+    // Versionssprung hier ist deshalb ein eigener Schritt: AGP und Kotlin
+    // zusammen heben, nicht nur `compileSdk` hochzählen.
+    implementation("com.github.mik3y:usb-serial-for-android:3.10.0")
 
     implementation(platform("androidx.compose:compose-bom:2024.09.03"))
     implementation("androidx.compose.material3:material3")
