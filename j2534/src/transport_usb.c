@@ -274,14 +274,89 @@ static int can_recv(uint32_t *id, uint8_t *data, uint8_t *dlc, uint32_t timeout_
 
 /* ------------------------------------------------------------------ ISO-TP */
 
+/* Millisekunden warten. STmin und N_Bs brauchen eine echte Pause: ohne sie
+ * verwirft ein Steuergerät, das einen Mindestabstand verlangt, die Rahmen. */
+static void tp_delay_ms(uint32_t ms)
+{
+#if defined(_WIN32)
+    Sleep(ms);
+#else
+    struct timespec ts;
+    ts.tv_sec = (time_t)(ms / 1000u);
+    ts.tv_nsec = (long)((ms % 1000u) * 1000000u);
+    while (nanosleep(&ts, &ts) != 0) {
+        /* von einem Signal unterbrochen: Rest weiterschlafen */
+    }
+#endif
+}
+
+/* STmin-Code eines Flow-Control-Rahmens in Millisekunden (ISO 15765-2).
+ * 0x00..0x7F sind ms, 0xF1..0xF9 µs (aufgerundet), alles andere reserviert
+ * und wie 0x7F zu behandeln — lieber langsamer als Rahmen verlieren. */
+static uint32_t stmin_to_ms(uint8_t code)
+{
+    if (code <= 0x7F) {
+        return (uint32_t)code;
+    }
+    if (code >= 0xF1 && code <= 0xF9) {
+        return 1;
+    }
+    return 0x7F;
+}
+
+/* Höchstzahl an „wait"-Flow-Control-Rahmen (0x31) je Block. */
+#define FC_WAIT_MAX 8
+
+/* Wartet auf ein Flow-Control, das weiterzusenden erlaubt.
+ * 0x31 (wait) ist kein Fehler, sondern eine Vertröstung; 0x32 (overflow)
+ * heißt, dass das Steuergerät die Nachricht nicht aufnehmen kann. */
+static int fc_wait(uint8_t *bs_out, uint8_t *stmin_out, uint32_t timeout_ms)
+{
+    int versuch;
+    for (versuch = 0; versuch < FC_WAIT_MAX; versuch++) {
+        uint32_t id = 0;
+        uint8_t d[8];
+        uint8_t dlc = 0;
+        int rc = can_recv(&id, d, &dlc, timeout_ms);
+        if (rc != TP_OK) {
+            return rc;
+        }
+        if (dlc < 3 || (d[0] & 0xF0) != 0x30) {
+            set_err("kein Flow-Control-Frame");
+            return TP_E_PROTO;
+        }
+        switch (d[0] & 0x0F) {
+        case 0x0:
+            *bs_out = d[1];
+            *stmin_out = d[2];
+            return TP_OK;
+        case 0x1:
+            break; /* weiter warten */
+        case 0x2:
+            set_err("Steuergerät meldet Pufferüberlauf (FC 0x32)");
+            return TP_E_TOOBIG;
+        default:
+            set_err("unbekannter Flow-Control-Status");
+            return TP_E_PROTO;
+        }
+    }
+    set_err("Steuergerät vertröstet zu oft (FC 0x31)");
+    return TP_E_TIMEOUT;
+}
+
 static int isotp_send(const uint8_t *msg, uint32_t n, uint32_t timeout_ms)
 {
     uint8_t f[8];
     uint32_t off, seq = 1;
     uint8_t bs = 0, stmin = 0;
+    uint32_t im_block = 0;
 
     if (n == 0) {
         return TP_E_ARG;
+    }
+    if (n > 0x0FFFu) {
+        set_err("Nachricht zu lang");
+        return TP_E_TOOBIG;
     }
     if (n <= 7) {
         f[0] = (uint8_t)n; /* 0x0L */
@@ -298,25 +373,16 @@ static int isotp_send(const uint8_t *msg, uint32_t n, uint32_t timeout_ms)
         return TP_E_IO;
     }
     {
-        uint32_t id = 0;
-        uint8_t d[8];
-        uint8_t dlc = 0;
-        int rc = can_recv(&id, d, &dlc, timeout_ms);
+        int rc = fc_wait(&bs, &stmin, timeout_ms);
         if (rc != TP_OK) {
-            return TP_E_TIMEOUT;
+            return rc;
         }
-        if ((d[0] & 0xF0) != 0x30) {
-            set_err("kein Flow-Control-Frame");
-            return TP_E_PROTO;
-        }
-        bs = d[1];
-        stmin = d[2];
-        (void)bs;
     }
 
     off = 6;
     while (off < n) {
         uint32_t chunk = n - off;
+        uint32_t pause_ms;
         if (chunk > 7) {
             chunk = 7;
         }
@@ -328,10 +394,22 @@ static int isotp_send(const uint8_t *msg, uint32_t n, uint32_t timeout_ms)
         }
         off += chunk;
         seq++;
-        if (stmin > 0 && stmin <= 127) {
-            /* STmin einhalten: kurze Pause über den Backend-Timeout-Mechanismus */
-            uint32_t dummy = 0;
-            (void)dummy;
+        im_block++;
+
+        /* Kein Abstand nach dem letzten Rahmen: danach wartet der Tester auf
+         * die Antwort, nicht auf das Steuergerät. */
+        pause_ms = stmin_to_ms(stmin);
+        if (pause_ms > 0 && off < n) {
+            tp_delay_ms(pause_ms);
+        }
+
+        /* Block voll: neues Flow Control anfordern (BS=0 heißt: nicht nötig). */
+        if (bs > 0 && im_block >= bs && off < n) {
+            int rc = fc_wait(&bs, &stmin, timeout_ms);
+            if (rc != TP_OK) {
+                return rc;
+            }
+            im_block = 0;
         }
     }
     return TP_OK;
@@ -356,6 +434,13 @@ static int isotp_recv(uint8_t *out, uint32_t cap, uint32_t *out_len, uint32_t ti
     switch (d[0] & 0xF0) {
     case 0x00: { /* Single Frame */
         uint32_t n = d[0] & 0x0F;
+        /* Das Längenfeld hat vier Bit — 15 ist darstellbar, passt aber nicht
+         * in einen 8-Byte-Rahmen. Ohne diese Prüfung läse das memcpy hinter
+         * `d` hinaus (Stack, bis zu 7 Byte Fremddaten). */
+        if (n > 7 || n > (uint32_t)dlc) {
+            set_err("Single Frame länger als Rahmen");
+            return TP_E_PROTO;
+        }
         if (n > cap) {
             return TP_E_TOOBIG;
         }
@@ -368,6 +453,10 @@ static int isotp_recv(uint8_t *out, uint32_t cap, uint32_t *out_len, uint32_t ti
     case 0x10: { /* First Frame: Flow Control senden, dann Consecutive Frames */
         uint8_t f[8];
         total = (uint32_t)(((d[0] & 0x0F) << 8) | d[1]);
+        if (total < 8) {
+            set_err("First Frame mit ungültiger Länge");
+            return TP_E_PROTO;
+        }
         if (total > cap) {
             return TP_E_TOOBIG;
         }
@@ -399,6 +488,10 @@ static int isotp_recv(uint8_t *out, uint32_t cap, uint32_t *out_len, uint32_t ti
                 uint32_t chunk = total - got;
                 if (chunk > 7) {
                     chunk = 7;
+                }
+                if (1 + chunk > (uint32_t)dlc) {
+                    set_err("Consecutive Frame zu kurz");
+                    return TP_E_PROTO;
                 }
                 memcpy(out + got, d + 1, chunk);
                 got += chunk;
