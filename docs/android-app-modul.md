@@ -315,6 +315,30 @@ Zwei Eigenheiten von BLE stecken im Transport:
   App auf diesem Telefon, **nicht** der Bericht von `vci-check --json` —
   zwei Berichte, zwei Wahrheiten, nicht vermischt. Ist die Dongle-Prüfung noch
   nicht gelaufen, steht dort „nicht gelaufen“ statt einer erfundenen Messung.
+- **SFD (Schutz Fahrzeug Diagnose)** — eigener Abschnitt (`SfdAbschnitt.kt`) für
+  Status (`22 01 74`), Challenge (`31 01 C0 04`), Token (`31 01 C0 08`) und
+  Sperren (`31 01 C0 09`), jeweils mit Rohantwort neben der Deutung. Der
+  **Token wird nirgends gespeichert**: er steht ausschließlich im Textfeld
+  dieses Abschnitts (Compose-Zustand im Arbeitsspeicher), geht von dort in die
+  Anfrage und ist danach weg. Kein Pref, keine Datei, kein Selbsttest-Bericht,
+  kein Eintrag in der Audit-Kette — für die Kette prüft das ein Test, der
+  `als_json()` nach dem Token durchsucht.
+
+  Die Entscheidung dahinter: ein Token ist ein Geheimnis mit kurzer Gültigkeit,
+  das aus einem Herstellerportal kopiert kommt. Was die App nicht ablegt, kann
+  sie nicht verlieren, nicht versehentlich in einem Support-Ticket
+  mitschicken und nicht über eine Gerätesicherung auf einen fremden Rechner
+  bringen. Ein „Token-Cache“ würde den nächsten Unlock bequemer machen und
+  genau dafür sorgen, dass ein abgelaufener oder falscher Token irgendwann aus
+  dem Nichts auftaucht — bei einem Vorgang, der ein Steuergerät öffnet, ist
+  Bequemlichkeit der falsche Maßstab.
+
+  Zwei ehrliche Einschränkungen: der Text bleibt im Arbeitsspeicher stehen,
+  solange der Bildschirm existiert (Kotlin-Strings lassen sich nicht
+  überschreiben), und was der Bediener vorher in die Zwischenablage kopiert
+  hat, gehört dem System, nicht der App — sie liest sie nur auf Knopfdruck (in
+  die Zwischenablage schreibt sie ausschließlich die empfangene Challenge,
+  nie den Token).
 - **Service-Funktionen** — eigener Abschnitt (`FunktionenAbschnitt.kt`) mit den
   fünf Kataloginhalten aus `content/funktionen`: Risikoklasse als Wort (`R1`,
   `R2`), die Vorbedingungen mit **gemessener** Bordspannung („12,30 V (Soll
