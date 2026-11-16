@@ -175,6 +175,6 @@ Seed/Key-Anforderung kommt zu spät | Pilotwerkstatt fragt in Woche 2 danach | P
 
 ## 10. Erste drei Aufgaben (diese Woche)
 
-1. `core/`-Skelett mit `Transport`-Trait und Loopback; die 159 C-Tests aus `j2534/` als Konformitätskorpus exportieren, damit der Rust-ISO-TP gegen dieselben Bytes läuft.
+1. `core/`-Skelett mit `Transport`-Trait und Loopback; die 165 C-Tests aus `j2534/` als Konformitätskorpus exportieren, damit der Rust-ISO-TP gegen dieselben Bytes läuft.
 2. Content-Schema v0.1 mit 5 echten Service-Funktionen aus dem Katalog (Ölservice, EPB, DPF, Batterie, Lenkwinkel).
 3. J2534-Port auf WinUSB umstellen und mit einem echten Gerät (Tactrix OpenPort oder CarDAQ) im Loopback gegen den Simulator testen.
