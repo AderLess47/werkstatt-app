@@ -329,7 +329,7 @@ Fertig. Für die nächsten Befehle in dieser Shell:
 
 Tests:
   sh scripts/kern-tests.sh    # C-Kern, Korpus, Rust-Kern, FFI-Schicht
-  sh scripts/jvm-tests.sh     # 119 JVM-Tests der App
+  sh scripts/jvm-tests.sh     # 174 JVM-Tests der App
 HINWEIS
 
 if [ "$OHNE_ANDROID" = "0" ]; then
