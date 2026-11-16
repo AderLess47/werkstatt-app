@@ -1,12 +1,13 @@
 #!/bin/sh
-# Prüft, ob die Testzahlen in den Jobnamen von `.github/workflows/ci.yml` noch
-# stimmen.
+# Prüft, ob die Testzahlen in den Jobnamen von `.github/workflows/ci.yml` und in
+# den beiden READMEs noch stimmen, die Zahlen im Fließtext behaupten.
 #
 # Warum es das gibt: `name: JVM-Tests ohne Gerät (157)` ist eine Behauptung. Sie
 # stimmt genau bis zum nächsten neuen Test — danach sagt der Jobname etwas
 # Falsches, und niemand merkt es, weil keine Prüfung ihn liest. Genau das ist
 # passiert, als der SFD-Ausbau zwölf JVM-Tests dazubrachte und die Namen
-# weiterhin 125 sagten.
+# weiterhin 125 sagten. Dasselbe Muster in `j2534/README.md`: dort stand 159,
+# seit die Transport-Suite von 20 auf 26 Prüfungen gewachsen war.
 #
 #     sh scripts/zahlen-pruefen.sh
 #
@@ -23,6 +24,13 @@
 #   • Korpus      — dasselbe für `tests/*.rs` aus `core`
 #   • FFI         — dasselbe für `core-ffi`
 #   • JVM         — `OK (N tests)` aus der JUnit-Ausgabe
+#
+# Die READMEs werden Stelle für Stelle geprüft, nicht gegen eine Summe:
+#
+#   • `j2534/README.md`     — die vier Zahlen der Testtabelle, die Summe im
+#                             `make`-Beispiel und „alle N Tests“ in dem Absatz,
+#                             der beschreibt, wo echte Hardware eingehängt wird
+#   • `.githooks/README.md` — die C-Summe im Abschnitt `pre-push`
 #
 # Exit 1, sobald eine Zahl abweicht. Dauer: wie die Suiten selbst, etwa zwei
 # Minuten — deshalb steht das Skript nicht im Pre-Push-Hook.
@@ -71,6 +79,20 @@ command -v cc > /dev/null || fehler "kein C-Compiler (cc) gefunden"
 make -C j2534 test > "$TMP/c.log" 2>&1 || abgebrochen "$TMP/c.log" "make -C j2534 test"
 C_IST=$(grep -c '^PASS' "$TMP/c.log" || true)
 [ "$C_IST" -gt 0 ] || fehler "im C-Protokoll steht keine PASS-Zeile"
+
+# Die Aufschlüsselung je Suite für `j2534/README.md`. Ein eigener Lauf statt das
+# Protokoll nach Blockgrenzen zu zerlegen: leichter zu lesen und unabhängig
+# davon, wie `make` seine Schritte trennt.
+zaehle_suite() { # <Suitenname ohne Präfix> → Anzahl PASS-Zeilen
+    ./j2534/build/test_"$1" 2> /dev/null | grep -c '^PASS' || true
+}
+C_SESSION=$(zaehle_suite session)
+C_TRANSPORT=$(zaehle_suite transport)
+C_CHECKER=$(zaehle_suite checker)
+C_ROLLOUT=$(zaehle_suite rollout)
+C_SUITE_SUMME=$((C_SESSION + C_TRANSPORT + C_CHECKER + C_ROLLOUT))
+[ "$C_SUITE_SUMME" = "$C_IST" ] ||
+    fehler "die vier Suiten melden $C_SUITE_SUMME Prüfungen, das Protokoll von make test nennt $C_IST"
 
 # --- 3./4. Rust -------------------------------------------------------------
 # Ein `cargo test` je Crate, und die Ergebnisse nach Ziel getrennt: die
@@ -139,11 +161,33 @@ FFI_SOLL=$(n_te_zahl "$RUST_ZEILE" 3)
 C_SOLL=$(n_te_zahl "$C_ZEILE" 1)
 JVM_SOLL=$(n_te_zahl "$JVM_ZEILE" 1)
 
+# --- Soll-Zahlen aus den READMEs -------------------------------------------
+# Gelesen wird jeweils der Satz, der die Zahl behauptet. Verschwindet der Satz,
+# gilt das als Abweichung statt still durchzugehen — sonst hörte die Prüfung auf
+# zu prüfen, sobald jemand den Satz umformuliert.
+C_README=j2534/README.md
+HOOK_README=.githooks/README.md
+[ -f "$C_README" ] || fehler "$C_README fehlt"
+[ -f "$HOOK_README" ] || fehler "$HOOK_README fehlt"
+
+readme_zahl() { # <datei> <muster> → erste Zahl im Treffer, leer ohne Treffer
+    grep -o "$2" "$1" 2> /dev/null | grep -o '[0-9][0-9]*' | sed -n 1p || true
+}
+
+R_SESSION=$(readme_zahl "$C_README" 'Negativfälle ([0-9][0-9]* Prüfungen)')
+R_TRANSPORT=$(readme_zahl "$C_README" 'Kabelziehen ([0-9][0-9]*)')
+R_TRANSPORT_TEXT=$(readme_zahl "$C_README" 'Teil der [0-9][0-9]* Transport-Tests')
+R_CHECKER=$(readme_zahl "$C_README" 'JSON-Vertrag ([0-9][0-9]*)')
+R_ROLLOUT=$(readme_zahl "$C_README" 'Diagramm ([0-9][0-9]*)')
+R_SUMME=$(readme_zahl "$C_README" 'vier Testsuiten und führt sie aus ([0-9][0-9]* Prüfungen)')
+R_ALLE=$(readme_zahl "$C_README" 'alle [0-9][0-9]* Tests bleiben')
+H_SUMME=$(readme_zahl "$HOOK_README" 'prüft C-Kern ([0-9][0-9]* Prüfungen)')
+
 # --- Vergleich --------------------------------------------------------------
 ABWEICHUNG=0
 pruefe() { # <bezeichnung> <ist> <soll>
     if [ -z "${3:-}" ]; then
-        printf '  %-14s %6s %8s   keine Zahl im Namen\n' "$1" "$2" "—"
+        printf '  %-14s %6s %8s   keine Zahl gefunden\n' "$1" "$2" "—"
         ABWEICHUNG=1
     elif [ "$2" = "$3" ]; then
         printf '  %-14s %6s %8s   gleich\n' "$1" "$2" "$3"
@@ -163,12 +207,25 @@ pruefe "FFI" "$FFI_IST" "$FFI_SOLL"
 pruefe "JVM" "$JVM_IST" "$JVM_SOLL"
 echo
 
+echo "Lokal gezählt gegen die Prüfzahlen in den READMEs:"
+printf '  %-14s %6s %8s   %s\n' "Stelle" "lokal" "Soll" "Ergebnis"
+pruefe "Session" "$C_SESSION" "$R_SESSION"
+pruefe "Transport" "$C_TRANSPORT" "$R_TRANSPORT"
+pruefe "Transport-Text" "$C_TRANSPORT" "$R_TRANSPORT_TEXT"
+pruefe "Checker" "$C_CHECKER" "$R_CHECKER"
+pruefe "Rollout" "$C_ROLLOUT" "$R_ROLLOUT"
+pruefe "j2534-Summe" "$C_IST" "$R_SUMME"
+pruefe "j2534-alle" "$C_IST" "$R_ALLE"
+pruefe "Hooks-C" "$C_IST" "$H_SUMME"
+echo
+
 if [ "$ABWEICHUNG" -ne 0 ]; then
-    echo "Die Jobnamen passen nicht zu den lokal gezählten Tests." >&2
-    echo "Nachziehen: die Zahlen in $WORKFLOW und die Tabelle in docs/ci.md." >&2
+    echo "Mindestens eine Zahl passt nicht zu den lokal gezählten Tests." >&2
+    echo "Nachziehen: $WORKFLOW, die Tabelle in docs/ci.md sowie" >&2
+    echo "$C_README und $HOOK_README." >&2
     echo "Wichtig: die CI läuft derzeit nicht — die lokale Zahl ist der Beleg," >&2
     echo "der Jobname nur die Ankündigung." >&2
     exit 1
 fi
 
-echo "Alle Zahlen stimmen: lokal gezählt und in den Jobnamen genannt."
+echo "Alle Zahlen stimmen: lokal gezählt und in den Jobnamen und READMEs genannt."
