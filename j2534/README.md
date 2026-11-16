@@ -7,7 +7,7 @@ Transport, ISO-TP und simuliertem Gerät. Spezifikation:
 | Baustein | Zustand |
 |---|---|
 | API-Fläche, Zustandsmaschine, Fehlercodes | fertig, 26 Tests |
-| Framing (CRC-16, Resync, Teilstücke) | fertig, Teil der 20 Transport-Tests |
+| Framing (CRC-16, Resync, Teilstücke) | fertig, Teil der 26 Transport-Tests |
 | ISO-TP (SF/FF/CF/FlowControl, beide Richtungen) | fertig |
 | Simuliertes Gerät mit UDS-ECU und Fehlerinjektion | fertig |
 | **VCI-Checker** (Selbsttest + JSON) | fertig, 34 Tests, CLI `vci-check` |
@@ -18,7 +18,7 @@ Transport, ISO-TP und simuliertem Gerät. Spezifikation:
 ## Bauen und testen (Linux/macOS)
 
 ```bash
-make test     # baut libj2534.so + vier Testsuiten und führt sie aus (159 Prüfungen)
+make test     # baut libj2534.so + vier Testsuiten und führt sie aus (165 Prüfungen)
 make corpus   # ISO-TP-Konformitätskorpus für den Rust-Kern erzeugen (core/tests/corpus)
 make lib      # nur die Shared Library
 make syntax   # nur Syntaxprüfung
@@ -92,7 +92,7 @@ HKLM\SOFTWARE\PassThruSupport.04.04\<Vendor> - <Device>
 | `tools/rollout.c` | CLI für Rollout (`run`, `import`, `report`, `chart`) |
 | `tools/golden.c` | erzeugt den ISO-TP-Korpus, gegen den der Rust-Kern geprüft wird |
 | `tests/test_session.c` | ABI-Lebenszyklus + Negativfälle (26 Prüfungen) |
-| `tests/test_transport.c` | Framing, ISO-TP, Müllbytes, CRC-Fehler, Timeout, Kabelziehen (20) |
+| `tests/test_transport.c` | Framing, ISO-TP, Müllbytes, CRC-Fehler, Timeout, Kabelziehen (26) |
 | `tests/test_checker.c` | Schwellwerte, Verdicts, JSON-Vertrag (34) |
 | `tests/test_rollout.c` | Parser, Dedupe, Auswertung, Politik, Wochenverlauf, Diagramm (79) |
 | `win/j2534.def` | Exportliste mit Ordinalen, bindend für `GetProcAddress` |
@@ -101,7 +101,7 @@ HKLM\SOFTWARE\PassThruSupport.04.04\<Vendor> - <Device>
 
 Genau eine Stelle: `usb_backend` in `src/usb_backend.h`. Ein neuer Transport
 (WinUSB, BLE, DoIP) implementiert sechs Funktionen und wird mit
-`tp_set_backend()` gesetzt. API-Schicht, ISO-TP, Checker und alle 159 Tests bleiben
+`tp_set_backend()` gesetzt. API-Schicht, ISO-TP, Checker und alle 165 Tests bleiben
 unverändert — die Tests laufen dann gegen das echte Gerät statt gegen `usb_sim.c`.
 
 ## Was dieser Port nicht ist
