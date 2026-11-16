@@ -58,7 +58,7 @@ jobs:
           path: core-ffi/bindings
 
   jvm-tests:
-    name: JVM-Tests ohne Gerät (173)
+    name: JVM-Tests ohne Gerät (174)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
