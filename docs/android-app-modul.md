@@ -13,8 +13,7 @@ Hardware eine Behauptung.
 Daneben stehen zwei Transportwege: das eigene Drahtformat des C-Kerns über rohe
 CAN-Rahmen (Weg A) und der Textweg zu Klasse-1-Dongles mit STN-Firmware (Weg B,
 Abschnitt [Transport](#transport)). Beide Wege hängen inzwischen am Bildschirm:
-Weg B im Abschnitt „OBDLink (Klasse 1)“, Weg A im Abschnitt „Eigenes
-Drahtformat (Weg A)“.
+Weg B im Abschnitt „OBDLink (Klasse 1)“.
 
 ## Aufbau
 
@@ -316,6 +315,23 @@ Zwei Eigenheiten von BLE stecken im Transport:
   App auf diesem Telefon, **nicht** der Bericht von `vci-check --json` —
   zwei Berichte, zwei Wahrheiten, nicht vermischt. Ist die Dongle-Prüfung noch
   nicht gelaufen, steht dort „nicht gelaufen“ statt einer erfundenen Messung.
+- **Service-Funktionen** — eigener Abschnitt (`FunktionenAbschnitt.kt`) mit den
+  fünf Kataloginhalten aus `content/funktionen`: Risikoklasse als Wort (`R1`,
+  `R2`), die Vorbedingungen mit **gemessener** Bordspannung („12,30 V (Soll
+  11,0–15,0 V)“ bzw. „nicht messbar“), die geplanten Schritte und nach dem Lauf
+  eine Zeile je Schritt („1. 10 03 → Erfolg“ / „… → nicht gesendet“).
+  Die Schritte entstehen aus der Audit-Kette statt aus einem Fortschritts-Rückruf
+  — der Kern meldet jeden Schritt genau einmal, und eine zweite Meldung wäre
+  eine zweite Wahrheit. Während des Laufs steht deshalb „läuft …“ da.
+  Gesperrte Inhalte (`freigabe: unbelegt`) zeigt die App mit dem Grund aus
+  `pruefe_freigabe`; sie sendet dann keinen Rahmen. Die YAML-Dateien liegen
+  **einmal** im Repo und werden beim Bauen in die Assets kopiert (Gradle-Task
+  `katalogKopieren`), damit im APK derselbe Stand steckt, den der Kern prüft.
+- **Audit-Kette** — eigener Abschnitt (`AuditAbschnitt.kt`) über derselben
+  `Audit`-Kette wie die Funktionsabläufe: Prüfbefund aus `pruefen()` („Kette in
+  Ordnung: 3 Einträge, letzter Hash…“ / „Kette gebrochen: …“), eine Zeile je
+  Eintrag mit Vorgängerhash, „Als Text kopieren“ und „Kette als Datei teilen“
+  (Kopf mit Gerät, Zeitpunkt, Prüfbefund, darunter die Kette als JSON).
 
 Während des Wartens nennt jeder Abschnitt den Schritt (`schritt`-Zustand im
 Composable, kein blosses „Läuft …“) — etwa „Warte auf die Antwort auf 22 F190 —
@@ -335,14 +351,15 @@ gefunden“ bzw. „kein Dongle gefunden“.
 ## Geprüft / nicht geprüft
 
 Geprüft: `:bindings:test` (drei Linktests gegen die echte Rust-Bibliothek).
-`:app` enthält **160 `@Test`** in siebzehn Dateien — `VciCheck` 3,
+`:app` enthält **171 `@Test`** in neunzehn Dateien — `VciCheck` 3,
 `DonglePruefung` 3, `Wire` 9, `BleCanTransport` 7, `BleSerielleStrecke` 9,
 `UsbSerielleStrecke` 8, `StnKanal` 18, `StnKennung` 10, `Zeilenpuffer` 11,
 `VciBericht` 13, `BerichtDatei` 6, `AppBericht` 9, `DienstAntwort` 8, `Frist` 5,
-`SfdBedienung` 32, `SfdFfi` 6, `FunktionFfi` 3.
+`SfdBedienung` 32, `SfdFfi` 6, `FunktionFfi` 3, `ServiceFunktionen` 7,
+`AuditAnzeige` 3.
 
-Alle **160 sind in dieser Umgebung gelaufen** — `sh scripts/jvm-tests.sh` endet
-mit `OK (160 tests)`. Die letzten drei Klassen sind Linktests gegen die echte
+Alle **171 sind in dieser Umgebung gelaufen** — `sh scripts/jvm-tests.sh` endet
+mit `OK (171 tests)`. Die letzten fünf Klassen sind Linktests gegen die echte
 Rust-Bibliothek: sie prüfen die erzeugten Bindings, nicht nur Kotlin-Code. Übersetzt wird mit `kotlinc 2.0.21` gegen JDK 17,
 gestartet über `org.junit.runner.JUnitCore`.
 
@@ -361,7 +378,7 @@ Dafür brauchte es zwei Handgriffe, die das Skript festhält:
 
 Ein Gradle-Lauf ist inzwischen **gelaufen** — JDK 17, Gradle 8.9, SDK 34, NDK
 26.1.10909125: `./android/gradlew -p android :app:testDebugUnitTest :app:assembleDebug`
-endet mit `BUILD SUCCESSFUL`, und `:app:testDebugUnitTest` sieht dieselben 160
+endet mit `BUILD SUCCESSFUL`, und `:app:testDebugUnitTest` sieht dieselben 171
 Tests grün wie `scripts/jvm-tests.sh`. Geprüft ist damit auch die
 Gradle-Verdrahtung.
 
