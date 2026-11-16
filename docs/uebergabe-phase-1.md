@@ -2,8 +2,8 @@
 
 **Für:** den nächsten Agenten („Gemini Argon 4“), der ohne den vorherigen Chat
 weiterarbeiten soll.
-**Stand:** 15.11.2026 · **Repo:** `AderLess47/werkstatt-app` (privat), Branch
-`main`, letzter Commit `db9d9f1`.
+**Stand:** 16.11.2026 · **Repo:** `AderLess47/werkstatt-app` (privat), Branch
+`main`, letzter Commit `c2dedf1`.
 **Aufbau:** Teil A sagt, wo das Projekt steht — belegt und unbelegt getrennt.
 Teil B ist der Plan für Phase 1 = **Meilenstein M1 („Diagnose-Basis“)** aus
 [werkstatt-app-plan.md](werkstatt-app-plan.md) §8, zerlegt in Arbeitspakete, die
@@ -18,7 +18,7 @@ ausdrücklich als ungeprüft markiert sind.
 
 ## A.1 Was existiert
 
-Gemessen am 15.11.2026 im Arbeitsbaum (Zeilen und Dateien gezählt, nicht
+Gemessen am 16.11.2026 im Arbeitsbaum (Zeilen und Dateien gezählt, nicht
 geschätzt):
 
 | Baustein | Stand | Umfang |
@@ -31,7 +31,7 @@ geschätzt):
 | `core-ffi/src/lib.rs` | UniFFI-Grenze: `CanTransport`, `IsoTp`, `Sfd`, `LoopbackTransport`, `SfdStatusFfi` | 648 Zeilen |
 | `core-ffi/src/bin/uniffi_bindgen.rs` | Bindings erzeugen (Kotlin, Swift) | — |
 | `j2534/` (C) | PassThru-Port, USB-Backend (WinUSB + Simulator), VCI-Checker, Rollout-Auswertung | 165 C-Prüfungen |
-| `android/` | Compose-App: 13 Dateien im Wurzelpaket, 13 unter `transport/` — USB-Weg, OBDLink-Weg, BLE-Weg, SFD-Bildschirm, Berichte | 157 JVM-Tests |
+| `android/` | Compose-App: 13 Dateien im Wurzelpaket, 13 unter `transport/` — USB-Weg, OBDLink-Weg, BLE-Weg, SFD-Bildschirm, Berichte | 174 JVM-Tests |
 | `model/` | Wirtschaftlichkeitsmodell (Python) | — |
 | `docs/` | 14 Planungs- und Prüfdokumente | — |
 
@@ -46,14 +46,14 @@ Dienst im SFD-Zusammenhang gelesen, nicht als VIN ausgewertet.
 
 ## A.2 Was belegt ist
 
-Alles hier ist am 15.11.2026 in dieser VM gelaufen, nicht abgeleitet:
+Alles hier ist am 16.11.2026 in dieser VM gelaufen, nicht abgeleitet:
 
 | Prüfung | Befehl | Ergebnis |
 | --- | --- | --- |
 | C-Kern | `make -C j2534 test` | 165 `PASS`-Zeilen, „Alle Rollout-Prüfungen bestanden“ |
-| Rust-Kern | `cargo test --locked --manifest-path core/Cargo.toml` | 48 Tests + 4 Korpus-Tests |
-| FFI | `cargo test --locked --manifest-path core-ffi/Cargo.toml` | 8 Tests |
-| App ohne Gerät | `JAVA_HOME=/tmp/jdk sh scripts/jvm-tests.sh` | `OK (157 tests)` |
+| Rust-Kern | `cargo test --locked --manifest-path core/Cargo.toml` | 143 Tests + 4 Korpus-Tests |
+| FFI | `cargo test --locked --manifest-path core-ffi/Cargo.toml` | 15 Tests |
+| App ohne Gerät | `JAVA_HOME=/tmp/jdk sh scripts/jvm-tests.sh` | `OK (174 tests)` |
 | Android-Build | `./android/gradlew -p android :app:assembleDebug` | `BUILD SUCCESSFUL` |
 | Zahlen gegen Jobnamen | `sh scripts/zahlen-pruefen.sh` | alle fünf gleich, Exit 0 |
 
@@ -87,8 +87,8 @@ Alles hier ist am 15.11.2026 in dieser VM gelaufen, nicht abgeleitet:
 3. **Kein allgemeiner UDS-Client.** `sfd.rs` kann SFD und sonst nichts. M1
    braucht `0x10/0x11/0x14/0x19/0x22/0x27/0x2E/0x31/0x3E` — heute ist das eine
    Teilmenge davon, direkt im SFD-Modul.
-4. **`docs/android-app-modul.md` nennt 119 `@Test`** — veraltet, es sind 157
-   (SFD kam dazu). Beim nächsten Anfassen nachziehen.
+4. ~~**`docs/android-app-modul.md` nennt 119 `@Test`**~~ — nachgezogen: 174 in
+   neunzehn Dateien (SFD, Funktions-Runtime und Audit-Kette kamen dazu).
 5. **`docs/geraetepruefung.md` Abschnitt 10 (SFD)** ist geschrieben und nie
    gelaufen.
 6. **Der lokale Git-Index ist unzuverlässig.** `git status` zeigt Dateien als
@@ -173,8 +173,8 @@ Seed/Key-Algorithmen im Repo), `0x2E` (Write), `0x31` (RoutineControl), `0x3E`
 
 **Wichtig:** der 0x78- und NRC-Pfad existiert zweimal, wenn P1 nichts
 konsolidiert. Ziel ist **ein** `runde()` in `uds.rs`; `sfd.rs` ruft ihn auf und
-behält seine Tests als Regressionsnetz (48 Tests müssen grün bleiben, ohne
-Änderung an den Erwartungen).
+behält seine Tests als Regressionsnetz (seinerzeit 48 Tests, heute 143 — sie
+mussten beim Umbau unverändert grün bleiben, ohne Änderung an den Erwartungen).
 
 **Tests ohne Gerät:** je Dienst positiv / NRC / zu kurz / falscher Echo / 0x78
 mit Folgeantwort / 0x78-Kette über drei Aufschübe hinaus. Zielgröße: ≥ 60 neue
@@ -312,14 +312,14 @@ Damit die Arbeit nicht stillsteht und trotzdem messbar bleibt:
 
 1. `core/src/uds.rs` anlegen: `runde()`, `session()`, `read_did()` — mit Tests
    für positiv, NRC, zu kurz, 0x78.
-2. `sfd.rs` auf `uds::runde()` umstellen; die 48 Kern-Tests müssen unverändert
-   grün bleiben (sie sind das Regressionsnetz für den Umbau).
+2. `sfd.rs` auf `uds::runde()` umstellen; die damals 48 Kern-Tests mussten
+   unverändert grün bleiben (sie waren das Regressionsnetz für den Umbau).
 3. `core/src/j1979.rs` mit der DTC-Dekodierung beginnen — reiner Parser, kein
    Bus, sofort testbar.
 4. `content/schema/funktion.schema.json` mit den Pflichtfeldern aus P4
    schreiben und eine Beispielfunktion validieren.
-5. `docs/android-app-modul.md` auf 157 Tests ziehen (offener Punkt A.4.4) —
-   kleine, sofort abschließbare Aufgabe mit Beleg.
+5. ~~`docs/android-app-modul.md` auf 157 Tests ziehen (offener Punkt A.4.4)~~ —
+   erledigt: 174 in neunzehn Dateien.
 
 ## B.6 Prüfbefehle (unverändert gültig)
 
@@ -344,8 +344,8 @@ Fallen, die schon Zeit gekostet haben:
 
 ---
 
-**Zum Schluss, in einem Satz:** der Kern trägt (ISO-TP, SFD, 165 + 48 + 4 + 8
-Prüfungen), die App ist gebaut und übersetzt (157 Tests), aber **nichts davon ist
+**Zum Schluss, in einem Satz:** der Kern trägt (ISO-TP, SFD, 165 + 143 + 4 + 15
+Prüfungen), die App ist gebaut und übersetzt (174 Tests), aber **nichts davon ist
 an einem Fahrzeug gelaufen** und die CI startet seit 147 Läufen keinen Runner.
 Phase 1 beginnt deshalb nicht mit Hardware, sondern mit dem allgemeinen
 UDS-Client — und jede Aussage über Verhalten am Fahrzeug bleibt offen, bis
