@@ -26,7 +26,7 @@ wenn einer rot ist:
 | neuer Branch oder unbekannte Vergleichsbasis | beide |
 
 `scripts/kern-tests.sh` prüft C-Kern (165 Prüfungen), Korpus-Aktualität,
-Rust-Kern und FFI-Schicht; `scripts/jvm-tests.sh` die 119 JVM-Tests der App.
+Rust-Kern und FFI-Schicht; `scripts/jvm-tests.sh` die 174 JVM-Tests der App.
 
 Die Einordnung ist bewusst grob: ein Pfad, den die Tabelle nicht kennt, lässt
 beide Läufe starten. Im Zweifel wird geprüft, nicht geraten. Beide Läufe werden
@@ -61,11 +61,11 @@ Nach einem Sandbox-Restore (JDK und `target/` weg) stellt
 `sh scripts/vorbereiten.sh` beides wieder her: Temurin 17 von Adoptium, danach
 die Host-Bibliothek per `cargo build --release`. Dasselbe Skript holt auch
 Android SDK, NDK und Gradle 8.9 und baut die Bibliotheken für `jniLibs` — also
-alles, was den APK-Build braucht; `--probe` zeigt nur, was fehlen würde,
+alle, was den APK-Build braucht; `--probe` zeigt nur, was fehlen würde,
 `OHNE_ANDROID=1` lässt den Android-Teil aus.
 
 Fehlt eines davon, bricht der Hook mit einer Anleitung ab, statt den Teil still
-zu überspringen.
+zu übergehen.
 
 ## Überspringen
 

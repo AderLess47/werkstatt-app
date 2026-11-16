@@ -30,7 +30,8 @@
 #   • `j2534/README.md`     — die vier Zahlen der Testtabelle, die Summe im
 #                             `make`-Beispiel und „alle N Tests“ in dem Absatz,
 #                             der beschreibt, wo echte Hardware eingehängt wird
-#   • `.githooks/README.md` — die C-Summe im Abschnitt `pre-push`
+#   • `.githooks/README.md` — die C-Summe und die JVM-Zahl im Abschnitt
+#                             `pre-push`
 #
 # Exit 1, sobald eine Zahl abweicht. Dauer: wie die Suiten selbst, etwa zwei
 # Minuten — deshalb steht das Skript nicht im Pre-Push-Hook.
@@ -182,6 +183,7 @@ R_ROLLOUT=$(readme_zahl "$C_README" 'Diagramm ([0-9][0-9]*)')
 R_SUMME=$(readme_zahl "$C_README" 'vier Testsuiten und führt sie aus ([0-9][0-9]* Prüfungen)')
 R_ALLE=$(readme_zahl "$C_README" 'alle [0-9][0-9]* Tests bleiben')
 H_SUMME=$(readme_zahl "$HOOK_README" 'prüft C-Kern ([0-9][0-9]* Prüfungen)')
+H_JVM=$(readme_zahl "$HOOK_README" 'die [0-9][0-9]* JVM-Tests der App')
 
 # --- Vergleich --------------------------------------------------------------
 ABWEICHUNG=0
@@ -217,6 +219,7 @@ pruefe "Rollout" "$C_ROLLOUT" "$R_ROLLOUT"
 pruefe "j2534-Summe" "$C_IST" "$R_SUMME"
 pruefe "j2534-alle" "$C_IST" "$R_ALLE"
 pruefe "Hooks-C" "$C_IST" "$H_SUMME"
+pruefe "Hooks-JVM" "$JVM_IST" "$H_JVM"
 echo
 
 if [ "$ABWEICHUNG" -ne 0 ]; then
