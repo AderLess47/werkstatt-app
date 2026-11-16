@@ -697,6 +697,40 @@ pub struct AusfuehrungFfi {
     pub audit_laufnummern: Vec<u32>,
 }
 
+/// Eine Vorbedingung als Daten, damit die App sie **vorab** anzeigen kann.
+///
+/// Nur so kann der Bildschirm „Klemme 15 fehlt“ schreiben, bevor ein Rahmen
+/// hinausgeht — eine Prüfung erst im Kern wäre für den Bediener zu spät.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct VorbedingungFfi {
+    /// `klemme15`, `motor_aus` oder `bordspannung`.
+    pub art: String,
+    /// Nur bei `bordspannung` gesetzt, sonst 0.
+    pub min_mv: u32,
+    pub max_mv: u32,
+}
+
+/// Ein Schritt als Daten — für die Liste „was wird gesendet“.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SchrittFfi {
+    /// Ab 1 gezählt, wie in der Anzeige.
+    pub nummer: u32,
+    pub anfrage_hex: String,
+    pub erwartet_hex: String,
+    pub timeout_ms: u32,
+}
+
+/// Hex mit Leerzeichen zwischen den Bytes (`10 03`) — so, wie es im
+/// Prüfbericht steht. `sfd::hex` liefert `1003`; das ist für ein Protokoll
+/// richtig, für eine Liste am Bildschirm schlecht lesbar.
+fn hex_paare(bytes: &[u8]) -> String {
+    bytes
+        .iter()
+        .map(|b| format!("{b:02X}"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Eine Werkstattfunktion aus Text — geprüft und ausführbar.
 ///
 /// Der Text kommt aus dem Content-Ordner (YAML-Teilmenge, siehe
@@ -736,6 +770,48 @@ impl Funktion {
 
     pub fn schritte(&self) -> u32 {
         self.inner.steps.len() as u32
+    }
+
+    /// Vorbedingungen als Daten — die App prüft sie vorab an.
+    pub fn vorbedingungen(&self) -> Vec<VorbedingungFfi> {
+        self.inner
+            .preconditions
+            .iter()
+            .map(|p| match p {
+                vci_core::function::Precondition::Klemme15 => VorbedingungFfi {
+                    art: "klemme15".to_string(),
+                    min_mv: 0,
+                    max_mv: 0,
+                },
+                vci_core::function::Precondition::MotorAus => VorbedingungFfi {
+                    art: "motor_aus".to_string(),
+                    min_mv: 0,
+                    max_mv: 0,
+                },
+                vci_core::function::Precondition::Bordspannung { min_mv, max_mv } => {
+                    VorbedingungFfi {
+                        art: "bordspannung".to_string(),
+                        min_mv: *min_mv,
+                        max_mv: *max_mv,
+                    }
+                }
+            })
+            .collect()
+    }
+
+    /// Die Schritte, die der Ablauf senden wird (ohne Notausstieg).
+    pub fn schrittliste(&self) -> Vec<SchrittFfi> {
+        self.inner
+            .steps
+            .iter()
+            .enumerate()
+            .map(|(i, s)| SchrittFfi {
+                nummer: i as u32 + 1,
+                anfrage_hex: hex_paare(&s.anfrage),
+                erwartet_hex: hex_paare(&s.erwartet),
+                timeout_ms: s.timeout_ms,
+            })
+            .collect()
     }
 
     pub fn pruefe_schema(&self) -> Result<(), VciError> {
