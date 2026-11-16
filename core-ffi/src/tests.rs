@@ -224,3 +224,28 @@
         assert_eq!(angekuendigt, 4 + token.len());
         assert!(sent.len() > 40, "300 Byte brauchen viele Rahmen");
     }
+
+    #[test]
+    fn vorbedingungen_und_schrittliste_kommen_als_daten_an() {
+        // Dieselbe Form wie im Katalog: Spannungsgrenzen als min_mv/max_mv.
+        let text = "id: spannung\ntitel: Spannung\nrisk: R1\nmatch:\n  vin_praefix: WVW\npreconditions:\n  - klemme15\n  - motor_aus\n  - bordspannung:\n      min_mv: 11800\n      max_mv: 14400\nsteps:\n  - anfrage: \"10 03\"\n    erwartet: \"50 03\"\n    timeout_ms: 2000\nprovenance:\n  quelle: Test\n  freigabe: geprüft\n  evidence_hash: \"a1b2\"\n";
+        let funktion =
+            Funktion::aus_yaml("spannung.yaml".to_string(), text.to_string()).unwrap();
+
+        let bedingungen = funktion.vorbedingungen();
+        assert_eq!(bedingungen.len(), 3);
+        assert_eq!(bedingungen[0].art, "klemme15");
+        assert_eq!(bedingungen[1].art, "motor_aus");
+        assert_eq!(bedingungen[2].art, "bordspannung");
+        assert_eq!(
+            (bedingungen[2].min_mv, bedingungen[2].max_mv),
+            (11800, 14400)
+        );
+
+        let schritte = funktion.schrittliste();
+        assert_eq!(schritte.len(), 1);
+        assert_eq!(schritte[0].nummer, 1, "Schritte zählen ab 1");
+        assert_eq!(schritte[0].anfrage_hex, "10 03");
+        assert_eq!(schritte[0].erwartet_hex, "50 03");
+        assert_eq!(schritte[0].timeout_ms, 2000);
+    }

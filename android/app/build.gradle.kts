@@ -4,6 +4,15 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Die Kataloginhalte liegen einmal im Repo (`content/funktionen`); die App
+// liest sie aus den Assets. Eine zweite Abschrift in `android/app/src/main/
+// assets` wäre der Anfang von zwei Wahrheiten — was der Kern prüft, muss das
+// sein, was im Katalog steht. Deshalb kopiert der Bau sie zur Bauzeit.
+val katalogKopieren by tasks.registering(Copy::class) {
+    from(rootProject.file("../content/funktionen")) { include("*.yaml") }
+    into(layout.buildDirectory.dir("generated/katalog/funktionen"))
+}
+
 android {
     namespace = "de.werkstatt.vci"
     compileSdk = 34
@@ -29,6 +38,8 @@ android {
         compose = true
     }
 
+    sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/katalog"))
+
     packaging {
         // JNA bringt eigene native Bibliotheken mit; ohne diese Regel kollidieren
         // sie beim Zusammenpacken mit den jniLibs.
@@ -37,6 +48,10 @@ android {
         }
     }
 }
+
+// Ohne diese Abhängigkeit fehlen die YAML-Dateien beim ersten Lauf, weil
+// `mergeDebugAssets` sie sonst nicht kennt.
+tasks.named("preBuild") { dependsOn(katalogKopieren) }
 
 dependencies {
     implementation(project(":bindings")) {

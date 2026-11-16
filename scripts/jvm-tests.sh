@@ -18,7 +18,9 @@
 #     cargo build --release --manifest-path core-ffi/Cargo.toml
 #     # → core-ffi/target/release/libvci_ffi.so  (glibc, ladbar)
 #
-# Übersetzt wird nur, was ohne Android auskommt: die Bildschirme (Compose) und
+# Übersetzt wird nur, was ohne Android auskommt: die Bildschirme (Compose:
+# MainActivity, UsbAbschnitt, SfdAbschnitt, ObdLinkAbschnitt, FunktionenAbschnitt,
+# AuditAbschnitt) und
 # `UsbCanTransport`/`UsbDongleVerbindung`/`UsbSerialStrecke`/`FtdiStnVerbindung`
 # brauchen `android.*` bzw. `usb-serial-for-android`. Keine Testklasse fasst sie
 # an — sie sind am Gerät zu prüfen (docs/geraetepruefung.md), nicht hier.
@@ -116,7 +118,7 @@ rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 
 MAIN=$(ls android/app/src/main/kotlin/de/werkstatt/vci/*.kt |
-    grep -Ev '/(MainActivity|UsbAbschnitt|SfdAbschnitt|ObdLinkAbschnitt|BerichtTeilen)\.kt$')
+    grep -Ev '/(MainActivity|UsbAbschnitt|SfdAbschnitt|ObdLinkAbschnitt|FunktionenAbschnitt|AuditAbschnitt|BerichtTeilen)\.kt$')
 TRANSPORT=$(ls android/app/src/main/kotlin/de/werkstatt/vci/transport/*.kt |
     grep -Ev '/(UsbDongleVerbindung|FtdiStnVerbindung|UsbSerialStrecke|BleGattVerbindung|UsbCanTransport)\.kt$')
 TESTS=$(ls android/app/src/test/kotlin/de/werkstatt/vci/*.kt \
