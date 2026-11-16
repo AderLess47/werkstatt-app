@@ -38,6 +38,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import uniffi.vci_ffi.Audit
 import uniffi.vci_ffi.Sfd
 
 /**
@@ -60,6 +61,14 @@ private const val SFD_FRIST_MS = 5_000u
 private const val TOKEN_FRIST_MS = 20_000u
 
 /**
+ * Was im Audit-Eintrag als Fahrzeug steht, solange die App keine VIN hat.
+ *
+ * Eine erfundene VIN wäre schlimmer als ein ehrliches „unbekannt“: der
+ * Nachweis soll später zuzuordnen sein, nicht gut aussehen.
+ */
+private const val VIN_UNBEKANNT = "unbekannt"
+
+/**
  * SFD-Ablauf am Bildschirm: Ziel, Status, Challenge, Token, Sperren.
  *
  * Der Kern macht die Arbeit (Nachrichten bauen, ISO-TP, NRC auswerten), dieser
@@ -71,9 +80,17 @@ private const val TOKEN_FRIST_MS = 20_000u
  *
  * [onSchritt] meldet jeden angekündigten Schritt nach oben — er landet im
  * Selbsttest-Bericht, damit der Support sieht, wobei gewartet wurde.
+ *
+ * [audit] ist die Kette des Bildschirms: Entsperren und Sperren schreiben dort
+ * hinein (der Kern tut das, hier wird nur durchgereicht). [onNeu] sagt dem
+ * Audit-Abschnitt, dass es etwas Neues zu zeigen gibt.
  */
 @Composable
-internal fun SfdAbschnitt(onSchritt: (String) -> Unit = {}) {
+internal fun SfdAbschnitt(
+    audit: Audit,
+    onSchritt: (String) -> Unit = {},
+    onNeu: () -> Unit = {},
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val zwischenablage = LocalClipboardManager.current
@@ -188,7 +205,7 @@ internal fun SfdAbschnitt(onSchritt: (String) -> Unit = {}) {
         was = "Sende 22 01 74 an ${ziel?.anzeige ?: "?"} und warte auf den Status — Frist " +
             fristText(SFD_FRIST_MS.toLong()),
         block = { offen, adresse ->
-            mitSfd(adresse) { sfd -> sfd.status(offen, SFD_FRIST_MS) }
+            mitSfd(adresse, audit) { sfd -> sfd.status(offen, SFD_FRIST_MS) }
         },
         erfolgMit = { st ->
             // Rohantwort mitgeben: passt das Layout nicht, bleibt sie sichtbar.
@@ -202,7 +219,7 @@ internal fun SfdAbschnitt(onSchritt: (String) -> Unit = {}) {
             "mit Rolle 0x%02X (%s) — Frist %s"
                 .format(rolle.code, rolle.anzeige, fristText(SFD_FRIST_MS.toLong())),
         block = { offen, adresse ->
-            mitSfd(adresse) { sfd ->
+            mitSfd(adresse, audit) { sfd ->
                 if (extended) sfd.extendedSession(offen, SFD_FRIST_MS)
                 sfd.challenge(offen, rolle.code.toUInt(), SFD_FRIST_MS)
             }
@@ -228,18 +245,21 @@ internal fun SfdAbschnitt(onSchritt: (String) -> Unit = {}) {
                 "mit ${geprueft.bytes} Byte Token als Multi-Frame — " +
                 "Frist ${fristText(TOKEN_FRIST_MS.toLong())}, danach Status lesen",
             block = { offen, adresse ->
-                mitSfd(adresse) { sfd ->
+                mitSfd(adresse, audit) { sfd ->
                     if (extended) sfd.extendedSession(offen, SFD_FRIST_MS)
                     sfd.entsperren(offen, geprueft.normalisiert, TOKEN_FRIST_MS)
                 }
                 // Direkt nachlesen, statt den alten Status stehen zu lassen: ob
                 // das Entsperren gewirkt hat, sagt nur das Steuergerät.
-                mitSfd(adresse) { sfd -> sfd.status(offen, SFD_FRIST_MS) }
+                mitSfd(adresse, audit) { sfd -> sfd.status(offen, SFD_FRIST_MS) }
             },
             erfolgMit = { st ->
                 val deutung = SfdStatusDeutung.deute(st.daten, st.rohHex)
                 status = deutung
                 erfolg = "Token gesendet — Status danach: ${deutung.text}"
+                // Der Eintrag liegt jetzt in der Kette — der Audit-Abschnitt
+                // soll ihn zeigen, ohne dass jemand nachsieht.
+                onNeu()
             },
         )
     }
@@ -248,16 +268,17 @@ internal fun SfdAbschnitt(onSchritt: (String) -> Unit = {}) {
         was = "Sende ${SfdAblauf.vorSperren(extended).joinToString(" → ") { it.anzeige }} " +
             "und lese den Status danach — Frist ${fristText(SFD_FRIST_MS.toLong())}",
         block = { offen, adresse ->
-            mitSfd(adresse) { sfd ->
+            mitSfd(adresse, audit) { sfd ->
                 if (extended) sfd.extendedSession(offen, SFD_FRIST_MS)
                 sfd.sperren(offen, SFD_FRIST_MS)
             }
-            mitSfd(adresse) { sfd -> sfd.status(offen, SFD_FRIST_MS) }
+            mitSfd(adresse, audit) { sfd -> sfd.status(offen, SFD_FRIST_MS) }
         },
         erfolgMit = { st ->
             val deutung = SfdStatusDeutung.deute(st.daten, st.rohHex)
             status = deutung
             erfolg = "SFD gesperrt — Status danach: ${deutung.text}"
+            onNeu()
         },
     )
 
@@ -690,8 +711,14 @@ private fun StatusKarte(deutung: SfdStatusDeutung.Deutung) {
  * `withIds` ist nötig, weil der Kern sonst auf `0x7E0/0x7E8` festgelegt ist —
  * das Gateway antwortet dort nicht.
  */
-private fun <T> mitSfd(ziel: SfdZiel, block: (Sfd) -> T): T {
-    val sfd = Sfd.withIds(ziel.anfrageId.toUInt(), ziel.antwortId.toUInt())
+private fun <T> mitSfd(ziel: SfdZiel, audit: Audit, block: (Sfd) -> T): T {
+    // Die Kette geht beim Bauen mit — es gibt keinen Weg an ihr vorbei.
+    val sfd = Sfd.withIds(
+        audit,
+        VIN_UNBEKANNT,
+        ziel.anfrageId.toUInt(),
+        ziel.antwortId.toUInt(),
+    )
     try {
         return block(sfd)
     } finally {
