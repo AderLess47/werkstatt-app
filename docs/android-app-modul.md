@@ -332,6 +332,28 @@ Zwei Eigenheiten von BLE stecken im Transport:
   Ordnung: 3 Einträge, letzter Hash…“ / „Kette gebrochen: …“), eine Zeile je
   Eintrag mit Vorgängerhash, „Als Text kopieren“ und „Kette als Datei teilen“
   (Kopf mit Gerät, Zeitpunkt, Prüfbefund, darunter die Kette als JSON).
+  In dieselbe Kette schreibt auch der SFD-Pfad: Entsperren (`31 01 C0 08`) und
+  Sperren (`31 01 C0 09`) hängen ihren Ausgang an, sobald der Bus geantwortet
+  hat; der Abschnitt zeichnet danach neu. Der Eintrag enthält den Zeitpunkt,
+  das Fahrzeug, die Anfrage-Kennung des Kanals (`0x7E0` oder die gewählte),
+  den Dienst im Klartext („SFD entsperren 31 01 C0 08“) und das Ergebnis — bei
+  einer Ablehnung den Klartext-NRC, etwa „Fehler: abgelehnt (Dienst 0x31, NRC
+  0x35: invalidKey)“. Auch der Fehlversuch wird protokolliert: genau den will
+  man später erklärt haben.
+
+  Bewusst **nicht** im Eintrag steht der Token. Der Nachweis wird
+  weitergegeben — an den Support, als Datei, in ein Ticket — und ein Token
+  darin wäre ein weitergegebenes Geheimnis. Steht nur der Dienst drin, belegt
+  der Eintrag den Vorgang, ohne den Schlüssel zu verraten; ein Test prüft das
+  (`als_json()` enthält den Token nicht). Aus demselben Grund steht als
+  Fahrzeug „unbekannt“, solange die App keine VIN kennt — eine erfundene
+  Nummer wäre schlimmer als eine ehrliche Lücke.
+
+  Die Kette ist dabei keine Option, die man vergessen kann: sie geht beim
+  Bauen des `Sfd`-Objekts mit (`Sfd.withIds(audit, vin, …)`), es gibt also
+  keinen Aufruf, der entsperrt und nichts protokolliert. Der Zeitstempel
+  entsteht an der Sprachgrenze, weil der Kern die Zeit übergeben bekommt und
+  dadurch ohne Uhr prüfbar bleibt.
 
 Während des Wartens nennt jeder Abschnitt den Schritt (`schritt`-Zustand im
 Composable, kein blosses „Läuft …“) — etwa „Warte auf die Antwort auf 22 F190 —
