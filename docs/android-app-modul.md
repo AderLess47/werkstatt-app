@@ -397,15 +397,15 @@ gefunden“ bzw. „kein Dongle gefunden“.
 ## Geprüft / nicht geprüft
 
 Geprüft: `:bindings:test` (drei Linktests gegen die echte Rust-Bibliothek).
-`:app` enthält **172 `@Test`** in neunzehn Dateien — `VciCheck` 3,
+`:app` enthält **173 `@Test`** in neunzehn Dateien — `VciCheck` 3,
 `DonglePruefung` 3, `Wire` 9, `BleCanTransport` 7, `BleSerielleStrecke` 9,
 `UsbSerielleStrecke` 8, `StnKanal` 18, `StnKennung` 10, `Zeilenpuffer` 11,
-`VciBericht` 13, `BerichtDatei` 6, `AppBericht` 9, `DienstAntwort` 8, `Frist` 5,
+`VciBericht` 13, `BerichtDatei` 6, `AppBericht` 10, `DienstAntwort` 8, `Frist` 5,
 `SfdBedienung` 32, `SfdFfi` 7, `FunktionFfi` 3, `ServiceFunktionen` 7,
 `AuditAnzeige` 3.
 
-Alle **172 sind in dieser Umgebung gelaufen** — `sh scripts/jvm-tests.sh` endet
-mit `OK (172 tests)`. Die letzten fünf Klassen sind Linktests gegen die echte
+Alle **173 sind in dieser Umgebung gelaufen** — `sh scripts/jvm-tests.sh` endet
+mit `OK (173 tests)`. Die letzten fünf Klassen sind Linktests gegen die echte
 Rust-Bibliothek: sie prüfen die erzeugten Bindings, nicht nur Kotlin-Code. Übersetzt wird mit `kotlinc 2.0.21` gegen JDK 17,
 gestartet über `org.junit.runner.JUnitCore`.
 
@@ -424,7 +424,7 @@ Dafür brauchte es zwei Handgriffe, die das Skript festhält:
 
 Ein Gradle-Lauf ist inzwischen **gelaufen** — JDK 17, Gradle 8.9, SDK 34, NDK
 26.1.10909125: `./android/gradlew -p android :app:testDebugUnitTest :app:assembleDebug`
-endet mit `BUILD SUCCESSFUL`, und `:app:testDebugUnitTest` sieht dieselben 172
+endet mit `BUILD SUCCESSFUL`, und `:app:testDebugUnitTest` sieht dieselben 173
 Tests grün wie `scripts/jvm-tests.sh`. Geprüft ist damit auch die
 Gradle-Verdrahtung.
 
