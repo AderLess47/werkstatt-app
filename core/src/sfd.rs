@@ -46,6 +46,7 @@
 
 use std::fmt;
 
+use crate::audit::{AuditKette, Ergebnis};
 use crate::isotp::IsotpChannel;
 use crate::transport::{Result as TransportResult, Transport, TransportError};
 use crate::uds::{UdsClient, UdsFehler};
@@ -77,6 +78,16 @@ pub const MODUS_SPERREN: u8 = 0x09;
 
 /// Positive Antwort auf RoutineControl.
 pub const ANTWORT_ROUTINE: u8 = 0x71;
+
+/// Dienstbezeichnung im Audit-Eintrag für das Entsperren.
+///
+/// Ausgeschrieben statt als Bytefolge: der Eintrag soll ohne Nachschlagen
+/// lesbar sein, wenn er Wochen später in einem Ticket liegt. Der Token steht
+/// bewusst **nicht** darin.
+pub const DIENST_ENTSPERREN: &str = "SFD entsperren 31 01 C0 08";
+
+/// Dienstbezeichnung im Audit-Eintrag für das Sperren.
+pub const DIENST_SPERREN: &str = "SFD sperren 31 01 C0 09";
 /// Positive Antwort auf ReadDataByIdentifier.
 pub const ANTWORT_READ_DATA: u8 = 0x62;
 
@@ -532,6 +543,65 @@ impl SfdClient {
         Ok(parse_gesperrt(&antwort)?)
     }
 
+    /// Entsperren **und** Eintrag in der Audit-Kette.
+    ///
+    /// Der Eintrag enthält den Token nicht: die Kette ist ein Nachweis, den man
+    /// weiterreicht, und ein Token darin wäre ein weitergegebenes Geheimnis.
+    /// Steht nur der Dienst drin, belegt der Eintrag den Vorgang, ohne den
+    /// Schlüssel zu verraten.
+    ///
+    /// Auch der Fehlschlag wird protokolliert — ein abgelehnter Unlock ist
+    /// genau der Vorgang, den man später erklärt haben will.
+    pub fn entsperren_protokolliert<T: Transport>(
+        &self,
+        t: &mut T,
+        token: &[u8],
+        timeout_ms: u32,
+        vin: &str,
+        kette: &mut AuditKette,
+        zeit_ms: u64,
+    ) -> std::result::Result<(), SfdFehler> {
+        let ergebnis = self.entsperren(t, token, timeout_ms);
+        self.protokolliere(kette, zeit_ms, vin, DIENST_ENTSPERREN, &ergebnis);
+        ergebnis
+    }
+
+    /// Sperren **und** Eintrag in der Audit-Kette.
+    pub fn sperren_protokolliert<T: Transport>(
+        &self,
+        t: &mut T,
+        timeout_ms: u32,
+        vin: &str,
+        kette: &mut AuditKette,
+        zeit_ms: u64,
+    ) -> std::result::Result<(), SfdFehler> {
+        let ergebnis = self.sperren(t, timeout_ms);
+        self.protokolliere(kette, zeit_ms, vin, DIENST_SPERREN, &ergebnis);
+        ergebnis
+    }
+
+    /// Hängt den Ausgang eines SFD-Vorgangs an die Kette.
+    ///
+    /// Das Steuergerät ist die Anfrage-Kennung des Kanals — mehr weiß der Kern
+    /// an dieser Stelle nicht, und eine geratene Kennung wäre schlimmer als
+    /// keine.
+    fn protokolliere(
+        &self,
+        kette: &mut AuditKette,
+        zeit_ms: u64,
+        vin: &str,
+        dienst: &str,
+        ergebnis: &std::result::Result<(), SfdFehler>,
+    ) {
+        let eintrag = match ergebnis {
+            Ok(()) => Ergebnis::Erfolg,
+            Err(e) => Ergebnis::Fehler {
+                grund: e.to_string(),
+            },
+        };
+        kette.anhaengen(zeit_ms, vin, self.iso().req_id(), dienst, eintrag);
+    }
+
     /// `10 03` — Extended Session starten.
     pub fn extended<T: Transport>(
         &self,
@@ -971,5 +1041,75 @@ mod tests {
         let mut t = Loopback::empty();
         let err = SfdClient::new().status(&mut t, 10).unwrap_err();
         assert_eq!(err, SfdFehler::Transport(TransportError::Timeout));
+    }
+
+    #[test]
+    fn entsperren_landet_als_eintrag_in_der_kette() {
+        let mut t = Loopback::new(vec![antwort(&[0x71, 0x01, 0xC0, 0x08])]);
+        let mut kette = AuditKette::neu();
+
+        SfdClient::new()
+            .entsperren_protokolliert(
+                &mut t,
+                &[0xDE, 0xAD],
+                100,
+                "WVWZZZ1JZXW000001",
+                &mut kette,
+                1_700_000_000_000,
+            )
+            .unwrap();
+
+        let eintraege = kette.eintraege();
+        assert_eq!(eintraege.len(), 1);
+        assert_eq!(eintraege[0].dienst, DIENST_ENTSPERREN);
+        assert_eq!(eintraege[0].steuergeraet, crate::isotp::REQ_ID);
+        assert_eq!(eintraege[0].zeit_ms, 1_700_000_000_000);
+        assert!(matches!(eintraege[0].ergebnis, Ergebnis::Erfolg));
+        assert!(kette.pruefen().is_ok());
+
+        // Der Nachweis belegt den Vorgang, ohne den Schlüssel zu verraten.
+        let json = kette.als_json();
+        assert!(!json.contains("DEAD"), "Token darf nicht im Nachweis stehen");
+        assert!(json.contains("31 01 C0 08"), "{json}");
+    }
+
+    #[test]
+    fn abgelehntes_entsperren_steht_als_fehler_in_der_kette() {
+        let mut t = Loopback::new(vec![antwort(&[0x7F, 0x31, 0x35])]);
+        let mut kette = AuditKette::neu();
+
+        let fehler = SfdClient::new()
+            .entsperren_protokolliert(
+                &mut t,
+                &[0x01, 0x02],
+                100,
+                "VIN",
+                &mut kette,
+                5,
+            )
+            .unwrap_err();
+        assert!(fehler.to_string().contains("invalidKey"), "{fehler}");
+
+        let eintraege = kette.eintraege();
+        assert_eq!(eintraege.len(), 1, "auch die Ablehnung wird protokolliert");
+        match &eintraege[0].ergebnis {
+            Ergebnis::Fehler { grund } => assert!(grund.contains("invalidKey"), "{grund}"),
+            Ergebnis::Erfolg => panic!("ein abgelehnter Unlock ist kein Erfolg"),
+        }
+    }
+
+    #[test]
+    fn sperren_landet_als_eintrag_in_der_kette() {
+        let mut t = Loopback::new(vec![antwort(&[0x71, 0x01, 0xC0, 0x09])]);
+        let mut kette = AuditKette::neu();
+
+        SfdClient::new()
+            .sperren_protokolliert(&mut t, 100, "VIN", &mut kette, 9)
+            .unwrap();
+
+        let eintraege = kette.eintraege();
+        assert_eq!(eintraege.len(), 1);
+        assert_eq!(eintraege[0].dienst, DIENST_SPERREN);
+        assert!(matches!(eintraege[0].ergebnis, Ergebnis::Erfolg));
     }
 }
