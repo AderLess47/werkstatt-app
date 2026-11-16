@@ -1,0 +1,440 @@
+
+# --- 01 Annahmen ------------------------------------------------------------
+ws = wb.create_sheet("01_Annahmen")
+r = 1
+r = title(ws, r, "Annahmen", 6)
+r = head(ws, r, ["Größe", "Wert", "Einheit", "Quelle / Begründung"], [46, 16, 16, 78])
+
+def a(row, label, value, unit, src, fmt=None):
+    ws.cell(row=row, column=1, value=label).border = BOX
+    c = ws.cell(row=row, column=2, value=value)
+    c.border = BOX
+    if fmt:
+        c.number_format = fmt
+    ws.cell(row=row, column=3, value=unit).border = BOX
+    c4 = ws.cell(row=row, column=4, value=src)
+    c4.border = BOX
+    c4.alignment = Alignment(wrap_text=True, vertical="top")
+    return row + 1
+
+r = a(r, "SAM: freie Mehrmarken-Werkstätten DACH", SAM_DACH, "Betriebe",
+      "Schätzung: ~36.500 Kfz-Betriebe DE, davon ~18.700 freie; AT ~4.400, CH ~4.100; relevante Größe/Diagnosebedarf ~70 % → ~19.000. Vor Investitionsentscheidung gegen ZDK/Statistik validieren.", NUM)
+r = a(r, "Logo-Churn", CHURN_Y, "p.a.", "B2B-Werkstattsoftware mit Jahresvertrag: 8–18 % typisch, 12 % als Basisfall.", PCT)
+r = a(r, "Amortisationsdauer Entwicklung", AMORT_YEARS, "Jahre", "Für Break-even-Rechnung; Cash-Betrachtung separat im Cashflow.", NUM)
+r = a(r, "Rabattquote auf Listenpreise", DISCOUNT, "%", "Jahresvorauszahlung, Kettenrabatt, Einstiegsaktionen.", PCT)
+r = a(r, "Add-ons je Kunde (gemittelt)", ADDONS_BLENDED, "EUR/Monat", "Markenpakete, Wartungspauschale, Zweit-VCI.", EUR)
+r = a(r, "Variable Kosten je Kunde", sum(VAR_COST.values()), "EUR/Jahr", "Cloud 42 + Zahlung 28 + Support 87 + Onboarding 55.", EUR)
+r += 1
+r = head(ws, r, ["Kostenblock (Fixkosten p.a.)", "Wert", "", "Begründung"], [46, 16, 16, 78])
+for k, v in OVERHEAD.items():
+    r = a(r, k, v, "EUR/Jahr", "Overhead, unabhängig von Abdeckung und Kundenzahl.", EUR)
+for k, v in SALES.items():
+    r = a(r, k, v, "EUR/Jahr", "Direktvertrieb mit Demo vor Ort; CAC ≈ 700 EUR je Neukunde bei ~400 Abschlüssen p.a.", EUR)
+r = a(r, "Summe Fixkosten ohne Content", sum(OVERHEAD.values()) + sum(SALES.values()), "EUR/Jahr", "", EUR)
+
+# --- 02 Entwicklung ---------------------------------------------------------
+ws = wb.create_sheet("02_Entwicklung")
+r = 1
+r = title(ws, r, "Entwicklungskosten je Ausbauvariante", 7)
+r = head(ws, r, ["Kostenposition", "V1 Service-Fokus", "V2 Empfohlen", "V3 Herstellerniveau", "Berechnung"],
+         [40, 18, 18, 20, 52])
+r = a(r, "Entwicklungsdauer", "", "", "")
+ws.cell(row=r - 1, column=2, value=VARIANTS["V1"]["months"]).number_format = NUM
+ws.cell(row=r - 1, column=3, value=VARIANTS["V2"]["months"]).number_format = NUM
+ws.cell(row=r - 1, column=4, value=VARIANTS["V3"]["months"]).number_format = NUM
+ws.cell(row=r - 1, column=5, value="Monate bis Markteinführung").alignment = Alignment(wrap_text=True)
+
+roles = list(RATES.keys())
+r = head(ws, r, ["Rolle", "V1", "V2", "V3", "Vollkosten je FTE-Jahr"], [40, 18, 18, 20, 52])
+for role in roles:
+    vals = []
+    for vk in ("V1", "V2", "V3"):
+        f = VARIANTS[vk]["fte"].get(role, 0)
+        vals.append(f * RATES[role] * VARIANTS[vk]["months"] / 12)
+    ws.cell(row=r, column=1, value=role).border = BOX
+    for i, v in enumerate(vals, start=2):
+        c = ws.cell(row=r, column=i, value=v)
+        c.number_format = EUR
+        c.border = BOX
+    c = ws.cell(row=r, column=5, value=RATES[role])
+    c.number_format = EUR
+    c.border = BOX
+    r += 1
+r = line(ws, r, ["Summe Personal", DEV["V1"]["personal_sum"], DEV["V2"]["personal_sum"],
+                 DEV["V3"]["personal_sum"], "FTE × Vollkostensatz × Dauer"], EUR, bold=True, shade=True)
+r = line(ws, r, ["Sachkosten (Lab, Fahrzeuge, Prüfstand, SDK, Cloud, Recht)",
+                 DEV["V1"]["sach"], DEV["V2"]["sach"], DEV["V3"]["sach"],
+                 "22.000 bzw. 24.000 EUR/Monat Entwicklungsphase"], EUR)
+r = line(ws, r, ["Launch-Marketing", DEV["V1"]["marketing"], DEV["V2"]["marketing"],
+                 DEV["V3"]["marketing"], "Messe, Website, Pilotkampagne"], EUR)
+r = line(ws, r, ["Puffer 10 %", DEV["V1"]["puffer"], DEV["V2"]["puffer"], DEV["V3"]["puffer"],
+                 "Risikopuffer für Nachbesserungen"], EUR)
+r = line(ws, r, ["Entwicklung gesamt", DEV["V1"]["total"], DEV["V2"]["total"], DEV["V3"]["total"], ""],
+         EUR, bold=True, shade=True)
+r = line(ws, r, ["FTE (Vollzeitäquivalente)", DEV["V1"]["fte_total"], DEV["V2"]["fte_total"],
+                 DEV["V3"]["fte_total"], "Teamgröße in der Spitze"], '0.0')
+r += 1
+r = note(ws, r, "Nicht enthalten: SERMI-Zertifizierung der Kundenbetriebe (zahlt der Betrieb, nicht der Anbieter), "
+                "Kosten der Rechtsgutachten in voller Höhe (im Sachkostenblock anteilig), Finanzierungskosten.", 5)
+
+# --- 03 Content -------------------------------------------------------------
+ws = wb.create_sheet("03_Content")
+r = 1
+r = title(ws, r, "Content- und Lizenzkosten je Marktabdeckung (p.a.)", 7)
+r = head(ws, r, ["Kostenposition", "Stufe A", "Stufe B", "Stufe C", "Stufe D"],
+         [40, 16, 16, 16, 16])
+keys = []
+for sk in ("A", "B", "C", "D"):
+    for k in STAGES[sk]["items"]:
+        if k not in keys:
+            keys.append(k)
+for k in keys:
+    row_vals = []
+    for sk in ("A", "B", "C", "D"):
+        row_vals.append(STAGES[sk]["items"].get(k, 0))
+    r = line(ws, r, [k] + row_vals, EUR)
+r = line(ws, r, ["Summe Content/Lizenz p.a.", CON["A"]["total"], CON["B"]["total"],
+                 CON["C"]["total"], CON["D"]["total"]], EUR, bold=True, shade=True)
+r = line(ws, r, ["Abdeckung", STAGES["A"]["scope"], STAGES["B"]["scope"],
+                 STAGES["C"]["scope"], STAGES["D"]["scope"]], None)
+for i in range(2, 6):
+    ws.cell(row=r - 1, column=i).alignment = Alignment(wrap_text=True)
+r = line(ws, r, ["Listenpreis-Mix (EUR/Monat je Werkstatt)", STAGES["A"]["arpa"], STAGES["B"]["arpa"],
+                 STAGES["C"]["arpa"], STAGES["D"]["arpa"]], EUR)
+r = line(ws, r, ["Deckungsbeitrag je Kunde und Jahr", PRICE["A"]["db"], PRICE["B"]["db"],
+                 PRICE["C"]["db"], PRICE["D"]["db"]], EUR, bold=True)
+r += 1
+r = title(ws, r, "Inkrementalbetrachtung: Was kostet die nächste Ausbaustufe — und ab wann trägt sie sich?", 7)
+r = head(ws, r, ["Schritt", "Mehrkosten p.a.", "Deckungsbeitrag je Kunde (neu)",
+                 "Zusätzliche Kunden bis Break-even", "Bewertung"], [22, 18, 26, 28, 60])
+steps = [
+    ("A → B", CON["B"]["total"] - CON["A"]["total"], PRICE["B"]["db"],
+     "Tragfähig: 60 Modelle sind die Eintrittskarte für Mehrmarken-Werkstätten (Codierung R2)."),
+    ("B → C", CON["C"]["total"] - CON["B"]["total"], PRICE["C"]["db"],
+     "Sinnvoll ab ~1.200 Bestandskunden; Asien-Abdeckung hebt den Preis und senkt die Abwanderung."),
+    ("C → D", CON["D"]["total"] - CON["C"]["total"], PRICE["D"]["db"],
+     "Erst ab ~1.800 Kunden. Vorher: Content-Breite ohne zahlende Basis = Margenvernichtung."),
+]
+for name, delta, db, comment in steps:
+    r = line(ws, r, [name, delta, db, delta / db, comment], EUR)
+    ws.cell(row=r - 1, column=4).number_format = NUM
+    ws.cell(row=r - 1, column=5).alignment = Alignment(wrap_text=True)
+r += 1
+r = note(ws, r, "Lesart: Die Ausbaustufe ist kein Investitionsprojekt, sondern eine Fixkostenstufe. "
+                "Sprünge erst, wenn die zusätzlich benötigten Kunden in <12 Monaten erreichbar sind.", 5)
+
+# --- 04 Preise --------------------------------------------------------------
+ws = wb.create_sheet("04_Preise")
+r = 1
+r = title(ws, r, "Preismodell und Deckungsbeitrag", 6)
+r = head(ws, r, ["Paket", "EUR/Monat", "EUR/Jahr", "Anteil Kunden", "Inhalt"],
+         [24, 14, 14, 14, 64])
+for name, p, desc, share in PACKAGES:
+    r = line(ws, r, [name, p, p * 12, share, desc], EUR)
+    ws.cell(row=r - 1, column=4).number_format = PCT
+    ws.cell(row=r - 1, column=5).alignment = Alignment(wrap_text=True)
+mix = sum(p * sh for _, p, _, sh in PACKAGES)
+r = line(ws, r, ["Listenpreis-Mix", mix, mix * 12, 1.0, "Gewichteter Durchschnitt der Pakete"], EUR, bold=True, shade=True)
+ws.cell(row=r - 1, column=4).number_format = PCT
+r = line(ws, r, ["nach Rabatt (15 %)", mix * (1 - DISCOUNT), mix * (1 - DISCOUNT) * 12, "",
+                 "Jahresvorauszahlung, Kettenrabatt"], EUR)
+r = line(ws, r, ["+ Add-ons", ADDONS_BLENDED, ADDONS_BLENDED * 12, "", "Markenpakete, Wartung, Zweit-VCI"], EUR)
+arpa_calc = mix * (1 - DISCOUNT) + ADDONS_BLENDED
+r = line(ws, r, ["= ARPA (Basisfall Stufe B)", arpa_calc, arpa_calc * 12, "", "Ausgangspunkt der Rechnung"], EUR, bold=True, shade=True)
+r += 1
+r = head(ws, r, ["Variable Kosten je Kunde und Jahr", "EUR", "", "", "Begründung"], [34, 14, 14, 14, 64])
+for k, v in VAR_COST.items():
+    r = line(ws, r, [k, v, "", "", ""], EUR)
+r = line(ws, r, ["Summe variabel", sum(VAR_COST.values()), "", "", ""], EUR, bold=True)
+r += 1
+r = head(ws, r, ["Kennzahl", "Wert", "", "", "Berechnung"], [34, 14, 14, 14, 64])
+p2 = pricing(arpa_calc)
+r = line(ws, r, ["Umsatz je Kunde und Jahr", p2["revenue"], "", "", "ARPA × 12"], EUR)
+r = line(ws, r, ["Deckungsbeitrag je Kunde und Jahr", p2["db"], "", "", "Umsatz − variable Kosten"], EUR, bold=True)
+r = line(ws, r, ["Deckungsbeitragsmarge", p2["margin"], "", "", "DB ÷ Umsatz"], PCT, bold=True)
+r = line(ws, r, ["LTV (bei 12 % Churn)", p2["ltv"], "", "", "DB ÷ Churn"], EUR)
+r = line(ws, r, ["CAC je Neukunde", 700, "", "", "Vertrieb 160k + Marketing 120k bei ~400 Abschlüssen p.a."], EUR)
+r = line(ws, r, ["LTV/CAC", p2["ltv"] / 700, "", "", "Ziel > 3"], '0.0')
+r = line(ws, r, ["CAC-Payback", 700 / (p2["db"] / 12), "", "", "CAC ÷ monatlicher DB"], '0.0 "Monate"')
+r += 1
+r = note(ws, r, "Marktbenchmark: freie Werkstätten zahlen heute 1.000–2.500 EUR/Jahr für Diagnosesoftware "
+                "(Bosch ESI[tronic], Hella Gutmann, Autel-Abos). 1.440 EUR/Jahr liegt im Mittelfeld — "
+                "die Preissetzung ist damit marktkonform, nicht optimistisch.", 5)
+
+# --- 05 Break-even ----------------------------------------------------------
+ws = wb.create_sheet("05_Breakeven")
+r = 1
+r = title(ws, r, "Break-even-Matrix: Ausbauvariante × Marktabdeckung", 9)
+r = head(ws, r, ["Variante", "Abdeckung", "Content p.a.", "Fixkosten p.a. ges.",
+                 "davon Dev-Amortisation", "Deckungsbeitrag/Kunde",
+                 "Break-even Kunden", "Break-even Umsatz p.a.",
+                 "Break-even Kunden (8-J.-Amortisation)"],
+         [26, 30, 15, 16, 18, 18, 16, 18, 22])
+for vk in ("V1", "V2", "V3"):
+    for sk in ("A", "B", "C", "D"):
+        b = BE[(vk, sk)]
+        r = line(ws, r, [VARIANTS[vk]["label"], f"{sk} — {STAGES[sk]['scope']}",
+                         CON[sk]["total"], b["fix_amort"], b["amort"], PRICE[sk]["db"],
+                         round(b["customers"]), round(b["revenue"]), round(b["customers_8y"])], EUR)
+        ws.cell(row=r - 1, column=1).border = BOX
+r += 1
+r = note(ws, r, "Lesart: Bei gleicher Abdeckung kostet die volle Herstellerniveau-Variante (V3) "
+                "rund 370 Kunden mehr Break-even als V2 — das Flashen bezahlt sich erst mit SERMI-fähigen Betrieben "
+                "und einem höheren Preis für das Plus-Paket.", 9)
+r += 1
+r = head(ws, r, ["Abdeckung", "Break-even-Kunden", "Anteil DACH-SAM", "Break-even-Umsatz p.a.",
+                 "Plausibilität"], [30, 18, 16, 20, 60])
+for sk in ("A", "B", "C", "D"):
+    b = BE[("V2", sk)]
+    txt = {"A": "Sehr erreichbar, aber ARPA niedrig — Differenzierung schwach.",
+           "B": "Zielkorridor: ~7 % des SAM in 4–5 Jahren.",
+           "C": "Ambitioniert: setzt Ketten und Fachhandel voraus.",
+           "D": "Nur mit Investor/Strategischem Partner sinnvoll."}[sk]
+    r = line(ws, r, [f"{sk} — {STAGES[sk]['scope']}", round(b["customers"]), b["sam_share"],
+                     round(b["revenue"]), txt], EUR)
+    ws.cell(row=r - 1, column=3).number_format = PCT
+    ws.cell(row=r - 1, column=5).alignment = Alignment(wrap_text=True)
+
+# --- 06 Cashflow ------------------------------------------------------------
+ws = wb.create_sheet("06_Cashflow")
+r = 1
+r = title(ws, r, "Cashflow 72 Monate — V2 Empfohlen / Stufe B / S2 Direkt + Fachhandel", 9)
+r = note(ws, r, "Entwicklungskosten linear über die Entwicklungsmonate verteilt, Umsatz ab Launch, "
+                "1 % Kundenabwanderung je Monat, ARPA steigt mit Upsell.", 9)
+r = head(ws, r, ["Monat", "Kunden", "Umsatz", "Betriebskosten", "Entwicklungskosten",
+                 "Monatsergebnis", "Kumuliert"], [10, 12, 16, 18, 20, 18, 18])
+cf = CF[("V2", "B", "S2 Direkt + Fachhandel")]
+for row in cf["rows"]:
+    r = line(ws, r, [row["monat"], round(row["kunden"]), row["umsatz"], row["opex"],
+                     row["entwicklung"], row["netto"], row["kumuliert"]], EUR)
+    ws.cell(row=r - 1, column=1).number_format = NUM
+    ws.cell(row=r - 1, column=2).number_format = NUM
+
+# --- 07 Szenarien -----------------------------------------------------------
+ws = wb.create_sheet("07_Szenarien")
+r = 1
+r = title(ws, r, "Vertriebsszenarien und Kapitalbedarf", 8)
+r = head(ws, r, ["Variante / Abdeckung", "Szenario", "Cash-Break-even (Monat)",
+                 "Kapitalbedarf max.", "Kunden nach 72 Monaten", "Umsatz letztes Jahr",
+                 "Kumuliertes Ergebnis nach 72 Monaten"],
+         [30, 32, 20, 18, 20, 20, 26])
+for vk, sk in [("V1", "A"), ("V2", "A"), ("V2", "B"), ("V3", "B"), ("V3", "C"), ("V3", "D")]:
+    for sc in SCENARIOS:
+        c = CF[(vk, sk, sc)]
+        r = line(ws, r, [f"{vk} / {sk}", sc,
+                         c["be_month"] if c["be_month"] else "> 72",
+                         c["max_drawdown"], round(c["customers_72"]),
+                         c["revenue_72_y"], c["cum_72"]], EUR)
+        ws.cell(row=r - 1, column=5).number_format = NUM
+r += 1
+r = note(ws, r, "S1 = reiner Direktvertrieb, 2 FTE, 8 Abschlüsse/Monat (realistisch für Werkstattsoftware mit Demo vor Ort). "
+                "S2 = zusätzlich Fachhandel/Ausrüster ab Monat 13 (+14/Monat). "
+                "S3 = zusätzlich drei Ketten-/Partner-Deals (+250 Kunden in Monat 18, 30, 42). "
+                "S4 = 1 Vertriebs-FTE, dafür früher Fachhandel (+14/Monat ab Monat 10) und drei Ketten-Deals — niedrigere Fixkosten, langsamerer Direktaufbau. "
+                "Alle Szenarien unterstellen dieselbe Produktqualität; nur Vertriebsweg und Vertriebsbudget ändern sich.", 8)
+
+# --- 08 Risiko/Sensitivität -------------------------------------------------
+ws = wb.create_sheet("08_Sensitivitaet")
+r = 1
+r = title(ws, r, "Sensitivität — was den Break-even am stärksten bewegt (Basis: V2 / Stufe B)", 7)
+r = head(ws, r, ["Stellschraube", "Veränderung", "Break-even Kunden", "Veränderung zu Basis", "Kommentar"],
+         [30, 22, 18, 20, 62])
+base = BE[("V2", "B")]["customers"]
+
+def be_with(arpa_delta=0.0, content_factor=1.0, dev_factor=1.0, db_delta=0.0):
+    pr = pricing(STAGES["B"]["arpa"] + arpa_delta)
+    b = breakeven(DEV["V2"]["total"] * dev_factor, CON["B"]["total"] * content_factor, pr)
+    if db_delta:
+        return b["fix_amort"] / (pr["db"] + db_delta)
+    return b["customers"]
+
+rows = [
+    ("Basis", "—", base, "Referenz (V2 / Stufe B / 5 Jahre Amortisation)"),
+    ("Preis −20 %", "ARPA 96 €", be_with(arpa_delta=-24), "Preiskampf ist der teuerste Fehler: hunderte Kunden mehr nötig."),
+    ("Preis +20 %", "ARPA 144 €", be_with(arpa_delta=24), "Setzt Content-Tiefe voraus, die den Aufpreis rechtfertigt."),
+    ("Entwicklung +25 %", "2,8 Mio €", be_with(dev_factor=1.25), "Weniger kritisch als Preisdruck."),
+    ("Content +25 %", "675 k€ p.a.", be_with(content_factor=1.25), "Content-Kosten sind der zweitgrößte Hebel."),
+    ("Support +50 %", "DB −44 €/Jahr", be_with(db_delta=-44), "Schlechte UX zahlt man doppelt: Support und Churn."),
+]
+for label, change, cust, comment in rows:
+    r = line(ws, r, [label, change, round(cust), round(cust - base), comment], EUR)
+    ws.cell(row=r - 1, column=4).number_format = '+#,##0;-#,##0'
+    ws.cell(row=r - 1, column=5).alignment = Alignment(wrap_text=True)
+r += 1
+r = title(ws, r, "Preishebel: Break-even-Kunden bei unterschiedlichem ARPA (V2 / Stufe B)", 7)
+r = head(ws, r, ["ARPA je Werkstatt", "Umsatz p.a.", "Deckungsbeitrag p.a.",
+                 "Break-even Kunden", "Anteil DACH-SAM",
+                 "Kundenzahl erreicht in Monat (S3)", "Bewertung"], [20, 16, 18, 18, 16, 30, 52])
+_cf3 = CF[("V2", "B", "S3 + Ketten-/Partner-Deals")]
+
+
+def month_reaching(target):
+    for row in _cf3["rows"]:
+        if row["kunden"] >= target:
+            return row["monat"]
+    return "> 72"
+
+
+for a in (90, 105, 120, 135, 150, 180, 210):
+    pr = pricing(a)
+    bb = breakeven(DEV["V2"]["total"], CON["B"]["total"], pr)
+    txt = ("Preisniveau nicht marktfähig für den Funktionsumfang." if a < 110 else
+           "Basis-Annahme des Modells." if a == 120 else
+           "Mit Plus-Paket-Fokus und Hardware-Bundle erreichbar." if a <= 150 else
+           "Nur mit Herstellerniveau-Inhalten (SERMI, Codierung, Flashen) vermittelbar.")
+    r = line(ws, r, [a, pr["revenue"], pr["db"], round(bb["customers"]), bb["sam_share"],
+                     month_reaching(bb["customers"]), txt], EUR)
+    ws.cell(row=r - 1, column=5).number_format = PCT
+    ws.cell(row=r - 1, column=6).number_format = NUM
+    ws.cell(row=r - 1, column=7).alignment = Alignment(wrap_text=True)
+r += 1
+r = note(ws, r, "Lesart: Das Abo ist der Preis für die Datenpflege, nicht für die Software. "
+                "Deshalb ist die Frage nicht 'wie viele Funktionen für 49 €', sondern 'welcher Preis trägt 60 Modelle Content'. "
+                "Bei 120 €/Monat braucht das Modell 1.358 Kunden (7,1 % des SAM); bei 180 €/Monat nur ~880.", 7)
+r += 1
+r = note(ws, r, "Churn wirkt nicht auf die Break-even-Kundenzahl (Gleichgewichtsbetrachtung), sondern auf LTV und Akquisebedarf: "
+                "bei 12 % Abwanderung beträgt der LTV 10.233 €, bei 18 % nur 6.822 €. Bei 1.358 Kunden müssen jährlich "
+                "163 (12 %) bzw. 244 (18 %) Neuverträge geschlossen werden, nur um den Bestand zu halten. "
+                "Schlechter Support ist deshalb teurer als fehlende Funktionen.", 7)
+
+# --- 09 Hinweise ------------------------------------------------------------
+ws = wb.create_sheet("09_Hinweise")
+r = 1
+r = title(ws, r, "Prämissen, Grenzen und offene Validierungen", 3)
+ws.column_dimensions["A"].width = 120
+items = [
+    ("Rechtsform der Zahlen", "Alle Beträge EUR netto ohne MwSt. Personalvollkosten inkl. Arbeitgeberanteil, Arbeitsplatz und Tools."),
+    ("Was nicht enthalten ist", "Finanzierungskosten, Steuern, SERMI-Zertifizierung der Kundenbetriebe (zahlt der Betrieb), "
+                                "Rechtsstreit-/Rückstellungsrisiken, Hardware-Lagerbestand, Währungsrisiken."),
+    ("Marktgröße", "SAM 19.000 Betriebe DACH ist eine Schätzung aus Verbandsstatistiken und Analogien. "
+                   "Vor Investitionsfreigabe gegen ZDK (DE), WKO (AT) und AGVS (CH) validieren."),
+    ("Content-Kosten", "Die Stufen A–D sind Szenarien, keine Angebote. Datenanbieter- und ODX-Lizenzen sind verhandelbar "
+                       "und können um ±50 % abweichen; OEM-RMI-Abos sind je Marke unterschiedlich bepreist."),
+    ("Umsatzannahme", "ARPA 106–136 EUR/Monat je Werkstatt. Benchmark: 1.000–2.500 EUR/Jahr für Diagnosesoftware "
+                      "im freien Markt. Kein Upsell über Hardware-Marge eingerechnet (konservativ)."),
+    ("Vertrieb", "24 Neukunden/Monat im Direktvertrieb mit 2 FTE ist sportlich, aber realistisch für "
+                 "Werkstattsoftware mit Demo vor Ort (8–12 Abschlüsse je Vertriebsmitarbeiter und Monat)."),
+    ("Wachstumsgrenze", "Das Modell unterstellt keine Sättigung. Bei >1.900 Kunden (10 % SAM) steigen "
+                        "Support- und Vertriebskosten überproportional — dann Fixkosten nachziehen."),
+    ("Cashflow-Methodik", "Entwicklungskosten linear verteilt; echte Zahlungsströme sind ungleichmäßiger (Personal monatlich, "
+                          "Sachkosten sprunghaft). Der Kapitalbedarf ist damit eine Untergrenze."),
+    ("Auslegung", "Das Modell ist eine Entscheidungshilfe, keine Finanzplanung im Sinne eines Investor-Decks. "
+                  "Für eine Finanzierungsrunde: Monatsplanung mit 13-Wochen-Liquidität, Steuern und Working Capital ergänzen."),
+]
+for k, v in items:
+    c = ws.cell(row=r, column=1, value=f"{k}: {v}")
+    c.alignment = Alignment(wrap_text=True, vertical="top")
+    c.border = BOX
+    ws.row_dimensions[r].height = 46
+    r += 1
+
+# --- 10 Empfehlung ---------------------------------------------------------
+ws = wb.create_sheet("10_Empfehlung")
+r = 1
+r = title(ws, r, "Empfohlene Konstellation: V2 Empfohlen / Stufe B / S3 — mit Preishebel", 8)
+r = note(ws, r, "Gleiche Produkt- und Vertriebskonstellation, drei Preisniveaus. Der Preis wirkt ohne zusätzliche Fixkosten "
+                "und ist damit der einzige Hebel, der den Break-even ohne weiteres Kapital verschiebt.", 8)
+r = head(ws, r, ["ARPA je Werkstatt", "Break-even Kunden", "Anteil DACH-SAM", "Cash-BE Monat",
+                 "Kapitalbedarf max.", "Kunden nach 72 Monaten", "Kumuliert nach 72 Monaten",
+                 "Bewertung"], [20, 17, 15, 15, 19, 21, 23, 48])
+for a, txt in [(120, "Basis: Deckungsbeitrag stimmt, aber die Kundenbasis kommt zu langsam."),
+               (150, "Erreichbar mit Plus-Paket-Fokus, VCI-Bundle und Content-Abos."),
+               (180, "Zielbild: die Werkstatt kauft Kompetenz und Nachweisfähigkeit, nicht Funktionen.")]:
+    c = cashflow(DEV["V2"]["total"], VARIANTS["V2"], CON["B"]["total"], a,
+                 SCENARIOS["S3 + Ketten-/Partner-Deals"])
+    b = breakeven(DEV["V2"]["total"], CON["B"]["total"], pricing(a))
+    r = line(ws, r, [a, round(b["customers"]), b["sam_share"],
+                     c["be_month"] if c["be_month"] else "> 72", c["max_drawdown"],
+                     round(c["customers_72"]), c["cum_72"], txt], EUR)
+    ws.cell(row=r - 1, column=3).number_format = PCT
+    ws.cell(row=r - 1, column=6).number_format = NUM
+    ws.cell(row=r - 1, column=8).alignment = Alignment(wrap_text=True)
+r += 1
+r = note(ws, r, "Empfehlung aus dem Modell: nicht mit 49-€-Paketen in den Markt gehen und auf Masse hoffen. "
+                "Der Content für 60 Modelle kostet unabhängig vom Preis 540 k€ p.a. — er muss von wenigen hundert "
+                "zahlungswilligen Betrieben getragen werden, nicht von zweitausend preissensiblen.", 8)
+r += 1
+r = title(ws, r, "Drei Wege, die den Break-even in realistische Reichweite bringen", 8)
+paths = [
+    ("A — Preis", "ARPA 150–180 €/Monat statt 120 €.", "Break-even bei 856–1.050 Kunden (4,5–5,5 % SAM) statt 1.358.",
+     "Setzt voraus, dass die App Kompetenz und Nachweisbarkeit verkauft (Audit, SERMI-Tauglichkeit, Doku), nicht Funktionslisten."),
+    ("B — Kanal", "Fachhandel/Ausrüster und Ketten-Deals statt eigener Vertriebsmannschaft.",
+     "Cash-BE 42–56 Monate statt >72; Kapitalbedarf sinkt um 0,5–2 Mio €.",
+     "Teilt die Marge (15–25 % Händlerrabatt), aber ersetzt 300–600 k€ Vertriebsfixkosten."),
+    ("C — Partner/White-Label", "Die App im Portfolio eines etablierten Werkstattausrüsters.",
+     "Entwicklung wird fremdfinanziert, Vertrieb und Marke entfallen; Marge je Kunde sinkt.",
+     "Realistischster Weg für ein Team ohne Vertriebsnetz — und der einzige mit Break-even < 4 Jahren."),
+]
+r = head(ws, r, ["Weg", "Was passiert", "Wirkung im Modell", "Voraussetzung / Preis dafür"], [22, 44, 44, 56])
+for name, what, effect, cond in paths:
+    r = line(ws, r, [name, what, effect, cond], None)
+    for col in (2, 3, 4):
+        ws.cell(row=r - 1, column=col).alignment = Alignment(wrap_text=True, vertical="top")
+    ws.row_dimensions[r - 1].height = 48
+
+for sheet in wb.worksheets:
+    sheet.sheet_view.showGridLines = False
+
+wb.save(OUT)
+
+# ----------------------------------------------------------------------------
+# 5. Kontrollausgabe
+# ----------------------------------------------------------------------------
+
+def eur(x):
+    return f"{x:>13,.0f} €".replace(",", ".")
+
+print(f"geschrieben: {OUT}\n")
+print("ENTWICKLUNG")
+for vk, v in VARIANTS.items():
+    print(f"  {v['label']:<24} {eur(DEV[vk]['total'])}   ({v['months']} Mon., {DEV[vk]['fte_total']:.1f} FTE)")
+
+print("\nBREAK-EVEN NACH ARPA (V2/Stufe B)")
+for a in (105, 120, 135, 150, 180, 210):
+    pr = pricing(a)
+    b = breakeven(DEV["V2"]["total"], CON["B"]["total"], pr)
+    print(f"  ARPA {a:>4} €/M → {b['customers']:>6,.0f} Kunden = {b['sam_share']*100:>4.1f} % SAM | "
+          f"Umsatz {b['revenue']:>11,.0f} €".replace(",", "."))
+
+print("\nCONTENT p.a.")
+for sk, s in STAGES.items():
+    print(f"  {s['label']} {s['scope']:<34} {eur(CON[sk]['total'])}   ARPA {s['arpa']:>4} €/M  DB {PRICE[sk]['db']:>7,.0f} €/J")
+
+print("\nPREIS (Stufe B)")
+p = pricing(STAGES["B"]["arpa"])
+print(f"  ARPA {p['arpa']} €/M = {p['revenue']:.0f} €/J | variabel {p['var']:.0f} € | DB {p['db']:.0f} € ({p['margin']*100:.1f} %) | LTV {p['ltv']:.0f} €")
+
+print("\nBREAK-EVEN (Kunden)")
+print("        " + "".join(f"{s:>14}" for s in STAGES))
+for vk in VARIANTS:
+    print(f"  {vk:>4}  " + "".join(f"{BE[(vk,sk)]['customers']:>14,.0f}".replace(",", ".") for sk in STAGES))
+
+print("\nINKREMENTAL (Stufe B→C usw., zusätzliche Kunden bis Break-even)")
+for a, b in [("A", "B"), ("B", "C"), ("C", "D")]:
+    d = CON[b]["total"] - CON[a]["total"]
+    print(f"  {a}→{b}: +{d:,.0f} € p.a. → +{d/PRICE[b]['db']:,.0f} Kunden".replace(",", "."))
+
+print("\nKONTROLLE MONATSREIHE V2/B/S2")
+print(f"  {'M':>3} {'Kunden':>7} {'Umsatz':>11} {'Opex':>11} {'Dev':>11} {'Netto':>10} {'Kum':>12}")
+_cf = CF[("V2", "B", "S2 Direkt + Fachhandel")]
+for _r in _cf["rows"]:
+    if _r["monat"] in (12, 18, 19, 24, 30, 36, 42, 48, 54, 60, 66, 72):
+        print(f"  {_r['monat']:>3} {_r['kunden']:>7,.0f} {_r['umsatz']:>11,.0f} {_r['opex']:>11,.0f} "
+              f"{_r['entwicklung']:>11,.0f} {_r['netto']:>10,.0f} {_r['kumuliert']:>12,.0f}".replace(",", "."))
+print(f"  Summe Umsatz 72M: {sum(x['umsatz'] for x in _cf['rows']):,.0f} | Summe Opex 72M: {sum(x['opex'] for x in _cf['rows']):,.0f}".replace(",", "."))
+
+print("\nCASHFLOW")
+for vk, sk in COMBOS:
+    for sc in SCENARIOS:
+        c = CF[(vk, sk, sc)]
+        be = c["be_month"] if c["be_month"] else ">72"
+        print(f"  {vk}/{sk} {sc:<28} BE-Monat {str(be):>4} | Kapitalbedarf {c['max_drawdown']:>12,.0f} € | "
+              f"Kunden M72 {c['customers_72']:>6,.0f} | kum. M72 {c['cum_72']:>12,.0f} €".replace(",", "."))
+
+print("\nEMPFEHLUNG: V2/B/S3 bei drei Preisniveaus")
+for a in (120, 150, 180):
+    c = cashflow(DEV["V2"]["total"], VARIANTS["V2"], CON["B"]["total"], a, SCENARIOS["S3 + Ketten-/Partner-Deals"])
+    b = breakeven(DEV["V2"]["total"], CON["B"]["total"], pricing(a))
+    be = c["be_month"] if c["be_month"] else ">72"
+    print(f"  ARPA {a} €/M → BE-Kunden {b['customers']:>6,.0f} | Cash-BE M {str(be):>4} | "
+          f"Kapital {c['max_drawdown']:>12,.0f} € | kum. M72 {c['cum_72']:>12,.0f} €".replace(",", "."))
