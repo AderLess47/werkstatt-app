@@ -202,4 +202,19 @@ Support +50 % | DB −44 €/Jahr | 1.408 | +50 |
 [wirtschaftlichkeit.xlsx](../model/wirtschaftlichkeit.xlsx) | 11 Blätter: Ergebnis, Annahmen, Entwicklung, Content, Preise, Break-even, Cashflow, Szenarien, Sensitivität, Hinweise, Empfehlung |
 [wirtschaftlichkeit.py](../model/wirtschaftlichkeit.py) | Rechenmodell, erzeugt die Arbeitsmappe — Annahmen ändern und `python model/wirtschaftlichkeit.py` ausführen |
 
+**Der Modellcode liegt im Repo als zwei Byte-Teile:**
+[`wirtschaftlichkeit.py.part1`](../model/wirtschaftlichkeit.py.part1) und
+[`wirtschaftlichkeit.py.part2`](../model/wirtschaftlichkeit.py.part2). Vor dem ersten
+Lauf einmal zusammensetzen:
+
+```sh
+sh scripts/modell-bauen.sh     # cat part1 part2 > wirtschaftlichkeit.py, prüft den Blob
+```
+
+Die Teile sind exakte Byte-Schnitte an Zeile 450; `cat` ergibt die Originaldatei,
+und das Skript vergleicht das Ergebnis mit dem Soll-Blob `08939e99…` und bricht bei
+Abweichung ab. Grund der Teilung: die GitHub-API nimmt eine Datei nur am Stück
+entgegen, und ein Aufruf mit 44 KB wird abgeschnitten. Die Arbeitsmappe
+`wirtschaftlichkeit.xlsx` entsteht beim Lauf neu und ist deshalb nicht versioniert.
+
 *Die Arbeitsmappe enthält berechnete Werte (keine Excel-Formeln), damit sie überall identisch angezeigt wird. Änderungen an Annahmen gehören in das Skript; die Kontrollausgabe beim Lauf zeigt alle Kennzahlen zur Gegenprüfung.*
