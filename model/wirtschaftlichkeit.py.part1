@@ -1,0 +1,450 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Wirtschaftlichkeitsmodell "Werkstatt-App" (native Android-/Apple-App fuer Werkstaetten)
+Erzeugt: model/wirtschaftlichkeit.xlsx  und druckt alle Kennzahlen zur Kontrolle.
+
+Alle Betraege in EUR, netto (ohne MwSt.).
+Grundlage der Annahmen: docs/werkstatt-app-plan.md (Version 0.1).
+"""
+from __future__ import annotations
+
+import os
+
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
+
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wirtschaftlichkeit.xlsx")
+
+# ----------------------------------------------------------------------------
+# 1. Annahmen
+# ----------------------------------------------------------------------------
+
+# Vollkosten je FTE und Jahr (DE, inkl. Arbeitgeberanteil, Arbeitsplatz, Tools)
+RATES = {
+    "Android-Entwicklung": 105_000,
+    "iOS-Entwicklung": 105_000,
+    "Rust/Protokoll-Entwicklung": 118_000,
+    "Backend/Cloud": 105_000,
+    "Content-Engineering": 88_000,
+    "Kfz-Meister (fachliche Freigabe)": 92_000,
+    "QA / HIL-Test": 85_000,
+    "Security/Compliance": 125_000,
+    "Produkt/Projektleitung": 112_000,
+}
+
+# Drei Ausbauvarianten (siehe Plan §8 Roadmap)
+VARIANTS = {
+    "V1": {
+        "label": "V1 Service-Fokus",
+        "desc": "Diagnose + Service-Rueckstellung, Launch nach 12 Monaten",
+        "months": 12,
+        "launch": 13,
+        "fte": {
+            "Android-Entwicklung": 1.5,
+            "iOS-Entwicklung": 1.5,
+            "Rust/Protokoll-Entwicklung": 1.5,
+            "Backend/Cloud": 0.5,
+            "Content-Engineering": 0.5,
+            "Kfz-Meister (fachliche Freigabe)": 0.4,
+            "QA / HIL-Test": 0.5,
+            "Security/Compliance": 0.1,
+            "Produkt/Projektleitung": 1.0,
+        },
+        "sach_pm": 22_000,
+        "marketing": 150_000,
+        "puffer": 0.10,
+    },
+    "V2": {
+        "label": "V2 Empfohlen",
+        "desc": "Service + Codierung (R2) + Gateway, Launch nach 18 Monaten",
+        "months": 18,
+        "launch": 19,
+        "fte": {
+            "Android-Entwicklung": 1.5,
+            "iOS-Entwicklung": 1.5,
+            "Rust/Protokoll-Entwicklung": 2.0,
+            "Backend/Cloud": 1.0,
+            "Content-Engineering": 1.0,
+            "Kfz-Meister (fachliche Freigabe)": 0.5,
+            "QA / HIL-Test": 0.8,
+            "Security/Compliance": 0.2,
+            "Produkt/Projektleitung": 1.0,
+        },
+        "sach_pm": 22_000,
+        "marketing": 150_000,
+        "puffer": 0.10,
+    },
+    "V3": {
+        "label": "V3 Herstellerniveau",
+        "desc": "inkl. Flashen/Passthru + SERMI-Modul, Launch nach 24 Monaten",
+        "months": 24,
+        "launch": 25,
+        "fte": {
+            "Android-Entwicklung": 1.5,
+            "iOS-Entwicklung": 1.5,
+            "Rust/Protokoll-Entwicklung": 2.0,
+            "Backend/Cloud": 1.0,
+            "Content-Engineering": 1.5,
+            "Kfz-Meister (fachliche Freigabe)": 0.5,
+            "QA / HIL-Test": 1.0,
+            "Security/Compliance": 0.3,
+            "Produkt/Projektleitung": 1.0,
+        },
+        "sach_pm": 24_000,
+        "marketing": 180_000,
+        "puffer": 0.10,
+    },
+}
+
+# Marktabdeckungsstufen (der eigentliche Kostentreiber im Betrieb)
+STAGES = {
+    "A": {
+        "label": "Stufe A",
+        "scope": "20 Modelle / 5 Marken",
+        "models": 20,
+        "brands": 5,
+        "arpa": 106,           # EUR/Monat je Werkstatt (Listenpreis-Mix nach Rabatt, inkl. Add-ons)
+        "items": {
+            "Content-Team (1,5 FTE-Jahre)": 132_000,
+            "Fahrzeugzugang, Mietfahrzeuge, Pruefstand": 60_000,
+            "OEM-RMI-Abos fuer die eigene Redaktion": 8_000,
+            "Fahrzeug-Stammdaten (HSN/TSN)": 25_000,
+            "QA / Feldtests": 20_000,
+        },
+    },
+    "B": {
+        "label": "Stufe B",
+        "scope": "60 Modelle / 12 Marken",
+        "models": 60,
+        "brands": 12,
+        "arpa": 120,
+        "items": {
+            "Content-Team (2,5 FTE-Jahre)": 220_000,
+            "Fahrzeugzugang, Mietfahrzeuge, Pruefstand": 140_000,
+            "OEM-RMI-Abos fuer die eigene Redaktion": 20_000,
+            "Datenanbieter-Lizenz (Stammdaten/Reparaturdaten)": 90_000,
+            "ODX/PDX-Lizenzen": 40_000,
+            "QA / Feldtests": 30_000,
+        },
+    },
+    "C": {
+        "label": "Stufe C",
+        "scope": "150 Modelle / 25 Marken",
+        "models": 150,
+        "brands": 25,
+        "arpa": 130,
+        "items": {
+            "Content-Team (4,0 FTE-Jahre)": 352_000,
+            "Fahrzeugzugang, Mietfahrzeuge, Pruefstand": 280_000,
+            "OEM-RMI-Abos fuer die eigene Redaktion": 45_000,
+            "Datenanbieter-Lizenz (Stammdaten/Reparaturdaten)": 180_000,
+            "ODX/PDX-Lizenzen": 90_000,
+            "QA / Feldtests": 50_000,
+        },
+    },
+    "D": {
+        "label": "Stufe D",
+        "scope": "300+ Modelle / 40 Marken (EU-Vollabdeckung)",
+        "models": 300,
+        "brands": 40,
+        "arpa": 136,
+        "items": {
+            "Content-Team (6,0 FTE-Jahre)": 528_000,
+            "Fahrzeugzugang, Mietfahrzeuge, Pruefstand": 480_000,
+            "OEM-RMI-Abos fuer die eigene Redaktion": 75_000,
+            "Datenanbieter-Lizenz (Stammdaten/Reparaturdaten)": 300_000,
+            "ODX/PDX-Lizenzen": 150_000,
+            "QA / Feldtests": 80_000,
+        },
+    },
+}
+
+# Preismodell
+PACKAGES = [
+    ("Basis", 49, "Diagnose, 20 Service-Funktionen, 1 Nutzer, 1 VCI", 0.30),
+    ("Pro", 129, "voller Service-Katalog, Codierung R2, 3 Nutzer, Doku/Audit", 0.55),
+    ("Werkstatt Plus", 249, "Flashen, SERMI-Modul, Mehrmandant, API, Vorrang-Support", 0.15),
+]
+DISCOUNT = 0.15          # Jahresvorauszahlung / Kettenrabatt
+ADDONS_BLENDED = 16      # EUR/Monat: Markenpakete, Wartung, Zusatz-VCI
+
+# Variable Kosten je Kunde und Jahr
+VAR_COST = {
+    "Cloud/Infrastruktur/Datenvolumen": 42,
+    "Zahlung, Rechnung, Mahnwesen": 28,
+    "Support (1 FTE je 900 Kunden)": 87,
+    "Onboarding/Schulung (auf 3 Jahre verteilt)": 55,
+}
+
+# Fixkostenbloecke im Betrieb (unabhaengig von der Abdeckung)
+OVERHEAD = {
+    "Verwaltung, Finance, HR (1,5 FTE)": 135_000,
+    "Produktmanagement (1 FTE)": 115_000,
+    "Security/Compliance (0,4 FTE)": 50_000,
+    "Cloud-Basis, Monitoring, Staging": 36_000,
+    "Versicherung, Audit, laufende Rechtsberatung": 45_000,
+    "Werkzeuge, Dev-Accounts, Reporting": 18_000,
+}
+SALES = {
+    "Vertrieb (2 FTE)": 160_000,
+    "Marketing, Messen, Content-Marketing": 120_000,
+}
+
+# Markt
+SAM_DACH = 19_000     # freie Mehrmarken-Werkstaetten DACH, zahlungsfaehig und diagnose-relevant
+CHURN_Y = 0.12        # Logo-Churn p.a.
+AMORT_YEARS = 5       # Amortisationsdauer der Entwicklungskosten
+
+# Vertriebsszenarien: Neukunden je Monat nach Launch
+# "sales" = Vertriebs-/Marketingbudget p.a. (Szenario-spezifisch),
+# "chains" = einmalige Kundenbuendel aus Ketten-/Partner-Deals (Monat, Anzahl)
+SCENARIOS = {
+    "S1 Direktvertrieb": {"ramp": 1, "start": 3, "cap": 8, "channel_from": 10**6, "channel_pm": 0,
+                          "chains": [], "sales": 280_000},
+    "S2 Direkt + Fachhandel": {"ramp": 1, "start": 3, "cap": 8, "channel_from": 13, "channel_pm": 14,
+                               "chains": [], "sales": 280_000},
+    "S3 + Ketten-/Partner-Deals": {"ramp": 1, "start": 3, "cap": 8, "channel_from": 13, "channel_pm": 14,
+                                   "chains": [(18, 250), (30, 250), (42, 250)], "sales": 300_000},
+    "S4 Lean + Fachhandel": {"ramp": 1, "start": 3, "cap": 5, "channel_from": 10, "channel_pm": 14,
+                             "chains": [(16, 200), (28, 200), (40, 200)], "sales": 156_000},
+}
+
+# ----------------------------------------------------------------------------
+# 2. Rechenkern
+# ----------------------------------------------------------------------------
+
+def dev_cost(v: dict) -> dict:
+    years = v["months"] / 12
+    pers = {k: f * RATES[k] * years for k, f in v["fte"].items()}
+    pers_sum = sum(pers.values())
+    sach = v["sach_pm"] * v["months"]
+    mkt = v["marketing"]
+    sub = pers_sum + sach + mkt
+    puf = sub * v["puffer"]
+    return {
+        "personal": pers,
+        "personal_sum": pers_sum,
+        "sach": sach,
+        "marketing": mkt,
+        "puffer": puf,
+        "total": sub + puf,
+        "fte_total": sum(v["fte"].values()),
+    }
+
+
+def content_cost(s: dict) -> dict:
+    return {"items": s["items"], "total": sum(s["items"].values())}
+
+
+def pricing(arpa: float) -> dict:
+    var = sum(VAR_COST.values())
+    revenue = arpa * 12
+    db = revenue - var
+    return {
+        "arpa": arpa,
+        "revenue": revenue,
+        "var": var,
+        "db": db,
+        "margin": db / revenue,
+        "ltv": db / CHURN_Y,
+    }
+
+
+def breakeven(dev_total: float, content_total: float, price: dict) -> dict:
+    fix = content_total + sum(OVERHEAD.values()) + sum(SALES.values())
+    amort = dev_total / AMORT_YEARS
+    fix_amort = fix + amort
+    cust = fix_amort / price["db"]
+    return {
+        "fix": fix,
+        "amort": amort,
+        "fix_amort": fix_amort,
+        "customers": cust,
+        "revenue": cust * price["revenue"],
+        "sam_share": cust / SAM_DACH,
+        "customers_8y": (fix + dev_total / 8) / price["db"],
+    }
+
+
+def new_customers(month_after_launch: int, sc: dict) -> float:
+    t = month_after_launch
+    n = min(sc["cap"], sc["start"] + sc["ramp"] * (t - 1))
+    if t >= sc["channel_from"]:
+        n += sc["channel_pm"]
+    for (tm, add) in sc.get("chains", []):
+        if t == tm:
+            n += add
+    return n
+
+
+def cashflow(dev_total: float, v: dict, content_total: float, arpa: float, sc: dict,
+             horizon: int = 72) -> dict:
+    """Monatlicher Cashflow. Entwicklungskosten linear ueber die Entwicklungsmonate."""
+    churn_m = 1 - (1 - CHURN_Y) ** (1 / 12)
+    var_m = sum(VAR_COST.values()) / 12
+    fix_m = (content_total + sum(OVERHEAD.values()) + sc.get("sales", sum(SALES.values()))) / 12
+    dev_m = dev_total / v["months"] if v["months"] else 0
+
+    arpa_ramp = {1: arpa * 0.92, 2: arpa, 3: arpa * 1.03, 4: arpa * 1.05, 5: arpa * 1.07, 6: arpa * 1.07}
+
+    customers = 0.0
+    cum = 0.0
+    rows = []
+    min_cum, min_month = 0.0, 0
+    be_month = None
+    for m in range(1, horizon + 1):
+        spend_dev = dev_m if m <= v["months"] else 0.0
+        t = m - v["launch"] + 1
+        rev = 0.0
+        if t >= 1:
+            customers = customers * (1 - churn_m) + new_customers(t, sc)
+            year_idx = min(6, max(1, (t - 1) // 12 + 1))
+            rev = customers * arpa_ramp[year_idx]
+        opex = fix_m + customers * var_m
+        net = rev - opex - spend_dev
+        cum += net
+        if cum < min_cum:
+            min_cum, min_month = cum, m
+        if be_month is None and t >= 1 and net > 0:
+            be_month = m
+        rows.append({
+            "monat": m, "kunden": customers, "umsatz": rev, "opex": opex,
+            "entwicklung": spend_dev, "netto": net, "kumuliert": cum,
+        })
+    final = rows[-1]
+    return {
+        "rows": rows,
+        "be_month": be_month,
+        "max_drawdown": min_cum,
+        "max_drawdown_month": min_month,
+        "cum_72": final["kumuliert"],
+        "customers_72": final["kunden"],
+        "revenue_72_y": sum(r["umsatz"] for r in rows[-12:]),
+    }
+
+
+# ----------------------------------------------------------------------------
+# 3. Berechnung
+# ----------------------------------------------------------------------------
+
+DEV = {k: dev_cost(v) for k, v in VARIANTS.items()}
+CON = {k: content_cost(s) for k, s in STAGES.items()}
+PRICE = {k: pricing(s["arpa"]) for k, s in STAGES.items()}
+BE = {(vk, sk): breakeven(DEV[vk]["total"], CON[sk]["total"], PRICE[sk])
+      for vk in VARIANTS for sk in STAGES}
+
+COMBOS = [("V1", "A"), ("V2", "A"), ("V2", "B"), ("V3", "B"), ("V3", "C"), ("V3", "D")]
+CF = {}
+for vk, sk in COMBOS:
+    for sc_name, sc in SCENARIOS.items():
+        CF[(vk, sk, sc_name)] = cashflow(DEV[vk]["total"], VARIANTS[vk], CON[sk]["total"],
+                                         STAGES[sk]["arpa"], sc)
+
+# ----------------------------------------------------------------------------
+# 4. Excel
+# ----------------------------------------------------------------------------
+
+EUR = '#,##0 "€"'
+EUR2 = '#,##0.00 "€"'
+PCT = '0.0 %'
+NUM = '#,##0'
+
+H1 = Font(bold=True, size=14, color="FFFFFF")
+H2 = Font(bold=True, size=11, color="FFFFFF")
+BOLD = Font(bold=True)
+SMALL = Font(italic=True, size=9, color="666666")
+FILL_T = PatternFill("solid", fgColor="1F3864")
+FILL_H = PatternFill("solid", fgColor="2E5C8A")
+FILL_S = PatternFill("solid", fgColor="DCE6F1")
+FILL_R = PatternFill("solid", fgColor="F2F2F2")
+THIN = Side(style="thin", color="BFBFBF")
+BOX = Border(top=THIN, bottom=THIN, left=THIN, right=THIN)
+
+
+def title(ws, row: int, text: str, span: int = 8):
+    c = ws.cell(row=row, column=1, value=text)
+    c.font = H1
+    c.fill = FILL_T
+    c.alignment = Alignment(vertical="center")
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=span)
+    ws.row_dimensions[row].height = 24
+    return row + 1
+
+
+def head(ws, row: int, labels, widths=None):
+    for i, t in enumerate(labels, start=1):
+        c = ws.cell(row=row, column=i, value=t)
+        c.font = H2
+        c.fill = FILL_H
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        c.border = BOX
+    ws.row_dimensions[row].height = 30
+    if widths:
+        for i, w in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+    return row + 1
+
+
+def line(ws, row: int, values, fmt=None, bold=False, shade=False):
+    for i, v in enumerate(values, start=1):
+        c = ws.cell(row=row, column=i, value=v)
+        c.border = BOX
+        if bold:
+            c.font = BOLD
+        if shade:
+            c.fill = FILL_R
+        if fmt and isinstance(v, (int, float)) and i > 1:
+            c.number_format = fmt
+            c.alignment = Alignment(horizontal="right")
+    return row + 1
+
+
+def note(ws, row: int, text: str, span: int = 8):
+    c = ws.cell(row=row, column=1, value=text)
+    c.font = SMALL
+    c.alignment = Alignment(wrap_text=True, vertical="top")
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=span)
+    return row + 1
+
+
+wb = Workbook()
+
+# --- 00 Ergebnis -------------------------------------------------------------
+ws = wb.active
+ws.title = "00_Ergebnis"
+r = 1
+r = title(ws, r, "Wirtschaftlichkeit Werkstatt-App — Ergebnisübersicht", 9)
+r = note(ws, r, "Alle Beträge EUR netto, ohne MwSt. Annahmen im Blatt 01_Annahmen. "
+                "Modell: model/wirtschaftlichkeit.py — Werte dort ändern und Skript neu ausführen.", 9)
+r += 1
+r = head(ws, r, ["Variante / Abdeckung", "Entwicklung (einmalig)", "Content + Lizenz p.a.",
+                 "Fixkosten p.a. (ohne Dev)", "Break-even Kunden",
+                 "Break-even Umsatz p.a.", "Anteil am DACH-SAM",
+                 "Kapitalbedarf max. (S3)", "Cash-BE Monat (S3)"],
+         [34, 18, 18, 18, 16, 18, 14, 20, 18])
+
+for vk, sk in COMBOS:
+    b = BE[(vk, sk)]
+    c1 = CF[(vk, sk, "S3 + Ketten-/Partner-Deals")]
+    r = line(ws, r, [f"{VARIANTS[vk]['label']} / {STAGES[sk]['label']} ({STAGES[sk]['scope']})",
+                     DEV[vk]["total"], CON[sk]["total"], b["fix"], round(b["customers"]),
+                     round(b["revenue"]), b["sam_share"], c1["max_drawdown"],
+                     c1["be_month"] if c1["be_month"] else "> 72"],
+             EUR)
+r += 1
+r = note(ws, r, "Break-even Kunden = (Content/Lizenz + Fixkosten + Entwicklung/5 Jahre) ÷ Deckungsbeitrag je Kunde. "
+                "Kapitalbedarf = tiefster Punkt der kumulierten Liquidität im 72-Monats-Modell (Szenario S3: Direktvertrieb + Fachhandel + drei Ketten-Deals). "
+                "Cash-Break-even = erster Monat mit positivem Monatsergebnis.", 9)
+r += 1
+r = title(ws, r, "Kernaussagen", 9)
+for t in [
+    "1. Die Marktabdeckung ist der Kostentreiber im Betrieb, nicht die App: Stufe D kostet 1,61 Mio € p.a. Content, Stufe A nur 0,25 Mio €.",
+    "2. Jede Ausbaustufe rechnet sich ab einer überschaubaren Zahl zusätzlicher Kunden: A→B +240, B→C +339, C→D +434 Kunden.",
+    "3. Der Sprung auf Herstellerniveau (V3) kostet ~0,94 Mio € mehr Entwicklung und ~153 Kunden mehr Break-even — bei gleichem Preisniveau.",
+    "4. Der Engpass ist der Vertrieb, nicht das Produkt: Reiner Direktvertrieb erreicht innerhalb von 72 Monaten keinen Break-even. Erst Fachhandel + Ketten-Deals bringen die nötige Kundenzahl.",
+    "5. Kapitalbedarf 3,3 Mio € (V1/A, lean) bis 13 Mio € (V3/D) — das ist die Zahl, die vor dem Start finanziert sein muss, nicht die Entwicklungssumme.",
+    "6. Der stärkste Hebel ist der Preis, nicht die Funktion: bei 180 statt 120 EUR/Monat sinkt der Break-even von 1.358 auf ~880 Kunden.",
+]:
+    r = note(ws, r, t, 9)
