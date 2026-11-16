@@ -45,6 +45,7 @@ import java.time.LocalDateTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import uniffi.vci_ffi.Audit
 
 /**
  * Erster Bildschirm der App: Ist der Kern arbeitsfähig, und ist ein Dongle da?
@@ -98,6 +99,12 @@ private fun WerkstattStatus() {
     var berichtAblage by remember { mutableStateOf<String?>(null) }
     var berichtTeilenOk by remember { mutableStateOf(true) }
     var berichtTeilenLaeuft by remember { mutableStateOf(false) }
+
+    // Eine Kette für den ganzen Bildschirm: Service-Funktionen und der
+    // Audit-Abschnitt müssen denselben Stand sehen. `auditZaehler` ist der
+    // Anlass zum Neuzeichnen — die Kette meldet ihre Änderungen nicht selbst.
+    val audit = remember { Audit() }
+    var auditZaehler by remember { mutableStateOf(0) }
 
     // Selbsttest-Bericht: entsteht aus den Prüfungen, die hier schon gelaufen sind.
     var selbsttestAblage by remember { mutableStateOf<String?>(null) }
@@ -247,6 +254,14 @@ private fun WerkstattStatus() {
         SfdAbschnitt { letzterSchritt = it }
 
         ObdLinkAbschnitt { letzterSchritt = it }
+
+        FunktionenAbschnitt(
+            audit = audit,
+            onSchritt = { letzterSchritt = it },
+            onNeu = { auditZaehler++ },
+        )
+
+        AuditAbschnitt(audit = audit, zaehler = auditZaehler)
 
         Spacer(Modifier.height(8.dp))
         Button(
