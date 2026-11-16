@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
+import uniffi.vci_ffi.Audit
 import uniffi.vci_ffi.CanFrameFfi
 import uniffi.vci_ffi.CanTransport
 import uniffi.vci_ffi.Sfd
@@ -57,7 +58,7 @@ class SfdFfiTest {
         val t = Speicher()
         t.push(antwort(0x62, 0x01, 0x74, 0x01))
 
-        val status = Sfd().status(t, 200u)
+        val status = Sfd(Audit(), "VIN").status(t, 200u)
 
         assertEquals("01", status.hex)
         assertEquals(1, status.daten.size)
@@ -75,7 +76,7 @@ class SfdFfiTest {
         val t = Speicher()
         t.push(antwort(0x71, 0x01, 0xC0, 0x04, 0xA1, 0xB2))
 
-        val challenge = Sfd().challenge(t, 0x01u, 200u)
+        val challenge = Sfd(Audit(), "VIN").challenge(t, 0x01u, 200u)
 
         assertEquals("A1B2", challenge)
         // Rolle steht als fünftes Byte der Anfrage.
@@ -90,7 +91,7 @@ class SfdFfiTest {
         t.push(antwort(0x7F, 0x31, 0x35)) // invalidKey
 
         try {
-            Sfd().entsperren(t, "DEAD", 200u)
+            Sfd(Audit(), "VIN").entsperren(t, "DEAD", 200u)
             fail("erwartet: VciException.Nrc")
         } catch (e: VciException.Nrc) {
             assertEquals(0x31u, e.dienst)
@@ -102,7 +103,7 @@ class SfdFfiTest {
     fun `ungueltiger Hex-Text wird abgelehnt`() {
         val t = Speicher()
         try {
-            Sfd().entsperren(t, "A1G2", 200u)
+            Sfd(Audit(), "VIN").entsperren(t, "A1G2", 200u)
             fail("erwartet: VciException.Sfd")
         } catch (e: VciException.Sfd) {
             assertTrue("nennt die Stelle: ${e.detail}", e.detail.contains("Stelle"))
@@ -116,7 +117,7 @@ class SfdFfiTest {
         t.push(flowControl())
         t.push(antwort(0x71, 0x01, 0xC0, 0x08))
 
-        Sfd().entsperrenMitBytes(t, ByteArray(300) { 0x5A }, 200u)
+        Sfd(Audit(), "VIN").entsperrenMitBytes(t, ByteArray(300) { 0x5A }, 200u)
 
         assertEquals(0x10, t.gesendet[0].data[0].toInt() and 0xF0)
         val angekuendigt = ((t.gesendet[0].data[0].toInt() and 0x0F) shl 8) or
@@ -130,7 +131,7 @@ class SfdFfiTest {
         val t = Speicher()
         t.push(antwort(0x71, 0x01, 0xC0, 0x09))
 
-        Sfd().sperren(t, 200u)
+        Sfd(Audit(), "VIN").sperren(t, 200u)
 
         val daten = t.gesendet[0].data
         assertEquals(0x04.toByte(), daten[0])
@@ -138,5 +139,29 @@ class SfdFfiTest {
         assertEquals(0x01.toByte(), daten[2])
         assertEquals(0xC0.toByte(), daten[3])
         assertEquals(0x09.toByte(), daten[4])
+    }
+
+    @Test
+    fun `Entsperren und Sperren schreiben in die Audit-Kette`() {
+        val audit = Audit()
+        val t = Speicher()
+        t.push(antwort(0x71, 0x01, 0xC0, 0x08))
+        t.push(antwort(0x71, 0x01, 0xC0, 0x09))
+        val sfd = Sfd(audit, "WVWZZZ1JZXW000001")
+
+        sfd.entsperren(t, "DEAD", 200u)
+        sfd.sperren(t, 200u)
+
+        assertEquals(2u, audit.len())
+        val eintraege = audit.eintraege()
+        assertEquals("SFD entsperren 31 01 C0 08", eintraege[0].dienst)
+        assertEquals("Erfolg", eintraege[0].ergebnis)
+        assertEquals("WVWZZZ1JZXW000001", eintraege[0].vin)
+        assertEquals("SFD sperren 31 01 C0 09", eintraege[1].dienst)
+        // Jeder Eintrag hängt am vorigen.
+        assertEquals(eintraege[0].hash, eintraege[1].vorherigerHash)
+        audit.pruefen()
+        // Der Nachweis belegt den Vorgang, ohne den Schlüssel zu verraten.
+        assertTrue("Token steht nicht im Nachweis", !audit.alsJson().contains("DEAD"))
     }
 }

@@ -251,7 +251,11 @@ private fun WerkstattStatus() {
 
         UsbAbschnitt { letzterSchritt = it }
 
-        SfdAbschnitt { letzterSchritt = it }
+        SfdAbschnitt(
+            audit = audit,
+            onSchritt = { letzterSchritt = it },
+            onNeu = { auditZaehler++ },
+        )
 
         ObdLinkAbschnitt { letzterSchritt = it }
 
