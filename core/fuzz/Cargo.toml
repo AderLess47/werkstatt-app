@@ -1,0 +1,33 @@
+[package]
+name = "vci-core-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+# Fuzz-Ziele für den Kern. Aufruf über `sh scripts/fuzz.sh` (setzt nightly und
+# cargo-fuzz voraus). Die Ziele sind bewusst klein: sie fahren die Parser mit
+# fremden Bytes, nicht die halbe Anwendung — ein Absturz soll auf eine Stelle
+# zeigen, nicht auf einen Aufrufpfad.
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+vci-core = { path = ".." }
+
+[[bin]]
+name = "isotp"
+path = "fuzz_targets/isotp.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "uds"
+path = "fuzz_targets/uds.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+members = ["."]

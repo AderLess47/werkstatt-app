@@ -4,6 +4,10 @@ target/
 dist/
 __pycache__/
 
+# Fuzzing: Korpus und Absturz-Eingänge entstehen beim Laufen (scripts/fuzz.sh)
+core/fuzz/corpus/
+core/fuzz/artifacts/
+
 # Toolchain / Umgebung
 .venv/
 
