@@ -25,7 +25,7 @@ wenn einer rot ist:
 | alles andere: Workflows, `.githooks/`, andere Skripte | beide |
 | neuer Branch oder unbekannte Vergleichsbasis | beide |
 
-`scripts/kern-tests.sh` prüft C-Kern (159 Prüfungen), Korpus-Aktualität,
+`scripts/kern-tests.sh` prüft C-Kern (165 Prüfungen), Korpus-Aktualität,
 Rust-Kern und FFI-Schicht; `scripts/jvm-tests.sh` die 119 JVM-Tests der App.
 
 Die Einordnung ist bewusst grob: ein Pfad, den die Tabelle nicht kennt, lässt
