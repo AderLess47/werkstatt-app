@@ -9,7 +9,7 @@ import uniffi.vci_ffi.Audit
 /**
  * Prüft die Anzeige der Audit-Kette: Zeilen, Integritätsbefund, Exporttext.
  *
- * Die Kette selbst kommt aus dem Kern; hier wird nur geprüft, dass die App sie
+ * Die Kette selbst kommt vom Kern; hier wird nur geprüft, dass die App sie
  * vollständig und ohne Beschönigung wiedergibt — auch den Fehlerfall eines
  * Eintrags („Fehler: …“) und den Vorgängerhash.
  */
@@ -73,7 +73,7 @@ class AuditAnzeigeTest {
      *    Blockgruppierung gesucht.
      *
      * Was der Test **nicht** kann: `AuditAbschnitt` übersetzen — der Abschnitt
-     * ist Compose-Code und wird auf der JVM nicht gebaut. Dass die datei nur
+     * ist Compose-Code und wird auf der JVM nicht gebaut. Dass die Datei nur
      * diesen Text enthält, ist am Aufruf abgelesen (nichts weiter wird
      * übergeben), nicht durch diesen Test bewiesen.
      */
