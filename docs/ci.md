@@ -24,6 +24,38 @@ sobald eine Zahl von der im Workflow genannten abweicht (Exit 1). Es zählt, was
 die Suiten melden, nicht was im Quelltext deklariert ist. Laufen kann es nur
 lokal: die Jobs selbst werden ja nicht gestartet (siehe unten).
 
+## Fuzzing — lokal belegt, nicht in der CI
+
+Punkt 4 der Definition of Done ([implementierungsplan.md](implementierungsplan.md)
+§6) verlangt Fuzzing des Parser-Codes. Ein Job dafür steht bewusst nicht im
+Workflow: er bräuchte nightly und `cargo-fuzz` auf dem Runner, und die Jobs
+starten ohnehin nicht (siehe unten). Gefahren wird lokal, mit fester Dauer:
+
+```
+sh scripts/fuzz.sh        # 300 s je Ziel
+sh scripts/fuzz.sh 30     # Rauchprobe nach einer Änderung
+```
+
+Zwei Ziele in `core/fuzz/fuzz_targets/`: `isotp` (Empfangsweg über `Loopback`,
+Sendeweg gegen ein Gerät mit Blockgröße 0–8, `dlc` absichtlich auch falsch) und
+`uds` (die Parser für Sitzung, Kennung und Fehlerspeicher sowie die
+NRC-Erkennung).
+
+| Ziel | Dauer | Läufe | Korpus | Absturz |
+| --- | --- | --- | --- | --- |
+| `isotp` | 302 s | 33 494 974 | 66 Einheiten | keiner |
+| `uds` | 302 s | 55 643 504 | 18 Einheiten | keiner |
+
+Gemessen am 17.11.2026 in dieser VM (nightly 1.102, cargo-fuzz 0.13.2); zusammen
+604 s, also die geforderten zehn Minuten. Gefahren wurde in Abschnitten, weil
+ein einzelner Befehl hier nach rund 295 s abgebrochen wird — die Dauer ist die
+Summe der Abschnitte, nicht ein Lauf am Stück.
+
+**Was der Lauf nicht sagt:** kein Absturz heißt nicht keine Fehler. Belegt ist
+die Abwesenheit eines Absturzes auf den erreichten Pfaden, nicht die
+Korrektheit der Auswertung. Der Korpus liegt nicht im Repository
+(`core/fuzz/corpus/` ist ignoriert) — jeder Lauf ohne ihn beginnt bei null.
+
 ## Stand: die Jobs werden nicht gestartet
 
 Gemessen am 15.11.2026 über die GitHub-API:
@@ -100,8 +132,9 @@ diesem Repository **kein** CI-Ergebnis belegt.
 
 Solange 0 von 147 Läufen erfolgreich sind, stützt sich keine Aussage in der
 Dokumentation auf die CI. Belegt ist, was lokal gelaufen ist: `make -C j2534
-test`, `cargo test` für beide Crates, `sh scripts/jvm-tests.sh` (174 Tests) und
-der Android-Build über den Wrapper
+test`, `cargo test` für beide Crates, `sh scripts/jvm-tests.sh` (174 Tests), der
+Fuzz-Lauf über `sh scripts/fuzz.sh` (604 s, siehe oben) und der Android-Build
+über den Wrapper
 (`./android/gradlew -p android :app:testDebugUnitTest :app:assembleDebug`).
 Ungeprüft bleibt alles, was nur auf dem Runner passiert: `cargo ndk` für beide
 ABIs, das Verhalten von `setup-gradle` ohne `gradle-version`, die

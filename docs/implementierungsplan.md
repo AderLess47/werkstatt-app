@@ -125,7 +125,7 @@ Ein Modul gilt als fertig, wenn **alle** Punkte erfüllt sind:
 1. Unit-Tests ohne Hardware (Loopback) laufen im CI.
 2. Ein HIL-Test gegen mindestens ein echtes Steuergerät ist dokumentiert (Log als Evidence im Repo).
 3. Fehlerpfade getestet: Timeout, NRC, Busabbruch, Stromausfall mitten im Schreiben.
-4. Fuzzing mindestens 10 Minuten ohne Absturz (Parser-Code).
+4. ~~Fuzzing mindestens 10 Minuten ohne Absturz (Parser-Code).~~ Erfüllt für den Parser-Code (ISO-TP, UDS) am 17.11.2026: `sh scripts/fuzz.sh`, 604 s, 33,5 Mio. und 55,6 Mio. Läufe, kein Absturz ([ci.md](ci.md)). Für neue Module gilt der Punkt unverändert.
 5. Öffentliche API dokumentiert (rustdoc), keine `unwrap()` in Pfaden, die fremde Daten verarbeiten.
 6. Audit-Eintrag vorhanden und exportierbar.
 7. Risikoklasse zugeordnet und in der Freigabematrix eingetragen.
