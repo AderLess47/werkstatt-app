@@ -2,8 +2,8 @@
 
 **Für:** den nächsten Agenten („Gemini Argon 4“), der ohne den vorherigen Chat
 weiterarbeiten soll.
-**Stand:** 17.11.2026 · **Repo:** `AderLess47/werkstatt-app` (privat), Branch
-`main`, letzter Commit `74cf437`.
+**Stand:** 17.11.2026 · **Repo:** `AderLess47/werkstatt-app` (öffentlich), Branch
+`main`, letzter Code-Commit `2bf8698`, danach nur noch Doku.
 **Aufbau:** Teil A sagt, wo das Projekt steht — belegt und unbelegt getrennt.
 Teil B ist der Plan für Phase 1 = **Meilenstein M1 („Diagnose-Basis“)** aus
 [werkstatt-app-plan.md](werkstatt-app-plan.md) §8, zerlegt in Arbeitspakete, die
@@ -80,6 +80,7 @@ Alles hier ist am 16. und 17.11.2026 in dieser VM gelaufen, nicht abgeleitet:
 | Android-Build | `./android/gradlew -p android :app:assembleDebug` | `BUILD SUCCESSFUL` |
 | Zahlen gegen Jobnamen | `sh scripts/zahlen-pruefen.sh` | alle fünf gleich, Exit 0 |
 | Fuzzing (neu) | `sh scripts/fuzz.sh` | 604 s, 33,5 Mio. + 55,6 Mio. Läufe, kein Absturz |
+| CI (neu) | GitHub Actions, Läufe #323 und #324 | alle sieben Jobs `success`, inklusive Android-APK; Belege in [ci.md](ci.md) |
 
 ## A.3 Was ausdrücklich **nicht** belegt ist
 
@@ -87,10 +88,9 @@ Alles hier ist am 16. und 17.11.2026 in dieser VM gelaufen, nicht abgeleitet:
   (`/dev/kvm` nicht zugänglich). Ungeprüft bleiben damit: jede USB-Strecke, jede
   BLE-Strecke, das `dlopen` der Android-`.so` zur Laufzeit, und **jede** der drei
   in M1 geforderten Gerätezertifizierungen.
-- **Kein CI-Ergebnis.** 147 Läufe, **0 erfolgreich**; die Jobs bekommen keinen
-  Runner (`runner_id: 0`, `steps: []`, Abrechnungssperre des Kontos). Wer im
-  Repo „grün“ liest, liest einen Jobnamen, keine Messung — Einzelheiten in
-  [ci.md](ci.md).
+- **Was die CI nicht sieht.** Die Jobs laufen seit dem 17.11.2026, aber kein
+  Lauf hat ein Gerät oder Fahrzeug vor sich: die USB- und BLE-Strecken sind auf
+  dem Runner nicht angeschlossen. Was dort belegt ist, steht in [ci.md](ci.md).
 - **Keine Oberfläche gesehen.** Der SFD-Bildschirm kompiliert, wurde aber nie
   angezeigt. „Sieht gut aus“ ist hier keine zulässige Aussage.
 - **Die Deutung der SFD-Statusbytes ist eine Annahme** (Byte 0 `00`/`01`, Byte 1
@@ -172,8 +172,9 @@ verglichen. Nicht verglichen heißt hier: nicht committet.
   nicht das *was*.
 - **Keine Attribution:** keine „Generated with“, keine Co-Authored-By-Zeile.
 - **Upload nur über die GitHub-Integration.** Kein Git-Remote, kein Token in der
-  VM. Die API überträgt nur Inhalt (keinen Dateimodus) — Skripte werden deshalb
-  als `sh scripts/…` aufgerufen.
+  VM. Die Contents-API überträgt nur Inhalt, keinen Dateimodus — für das
+  Ausführungsbit ging deshalb ein eigener Tree-Commit über die Git-Data-API
+  (`2bf8698`). Die CI ruft die Skripte unabhängig davon mit `sh`/`bash` auf.
 - **Byte-Identität prüfen:** nach jedem Commit `git hash-object` gegen
   `blob_sha`. Weicht es ab, ist die *lokale* Datei maßgeblich, nicht der Commit —
   den Text aus dem Lauf übernehmen, nicht aus dem Gedächtnis tippen. (Genau
@@ -406,7 +407,8 @@ Fallen, die schon Zeit gekostet haben:
 
 **Zum Schluss, in einem Satz:** der Kern trägt (ISO-TP, SFD, 165 + 224 + 4 + 22
 Prüfungen), die App ist gebaut und übersetzt (186 Tests), aber **nichts davon ist
-an einem Fahrzeug gelaufen** und die CI startet seit 147 Läufen keinen Runner.
+an einem Fahrzeug gelaufen** und die CI meldet erst seit dem Abend des
+17.11.2026 grün (Läufe #323 und #324).
 Phase 1 beginnt deshalb nicht mit Hardware, sondern mit dem allgemeinen
 UDS-Client — und jede Aussage über Verhalten am Fahrzeug bleibt offen, bis
 `docs/geraetepruefung.md` abgehakt ist.
