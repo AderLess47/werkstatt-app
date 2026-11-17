@@ -52,9 +52,13 @@ rustfmt --edition 2021 core/src/isotp.rs
 ```
 
 `rustfmt` gehört zu den Rust-Komponenten. Fehlt es, sagt der Hook das und lässt
-den Schritt aus — sichtbar, wie beim Fuzz-Rauchlauf. Bei unbekannter
-Vergleichsbasis (neuer Branch, Force-Push) gibt es keine Dateiliste; dann wird
-auch die Formatprüfung ausgelassen, und der Hook schreibt es hin.
+den Schritt aus — sichtbar, wie beim Fuzz-Rauchlauf. Dasselbe gilt, wenn nur die
+Komponente fehlt: rustup legt seine Proxy-Binaries unabhängig davon in
+`~/.cargo/bin` ab, deshalb prüft der Hook mit `rustfmt --version` statt mit
+`command -v` und meldet „übersprungen“ — und nicht eine formatierte Datei als
+ungeformatiert, mit einer Reparaturanleitung, die selbst scheitert. Bei
+unbekannter Vergleichsbasis (neuer Branch, Force-Push) gibt es keine Dateiliste;
+dann wird auch die Formatprüfung ausgelassen, und der Hook schreibt es hin.
 
 Die Einordnung ist bewusst grob: ein Pfad, den die Tabelle nicht kennt, lässt
 alle Läufe starten. Im Zweifel wird geprüft, nicht geraten. Alle Läufe werden
