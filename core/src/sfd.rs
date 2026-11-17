@@ -16,11 +16,15 @@
 //! | sperren | `31 01 C0 09` | `71 01 C0 09` |
 //! | Sitzung | `10 03` | `50 03` |
 //!
-//! `31` ist RoutineControl mit `startRoutine` (Subfunktion `01`), `C0` die
-//! Routine-Kennung und das vierte Byte der Schritt: `04` Challenge lesen,
-//! `08` Token senden, `09` wieder sperren. Die Rolle ist ein Byte — welchen
-//! Wert ein Fahrzeug erwartet, steht in seiner Diagnosebeschreibung; hier wird
-//! nur geprüft, dass sie nicht 0 ist.
+//! `31` ist RoutineControl mit `startRoutine` (Subfunktion `01`). Die Kennung
+//! ist zwei Byte breit (`C0 04`, `C0 08`, `C0 09`) — der Schritt steckt also im
+//! **niedrigen** Byte der Routine, nicht in einem eigenen Feld. Die Rolle ist
+//! ein Byte Option: welchen Wert ein Fahrzeug erwartet, steht in seiner
+//! Diagnosebeschreibung; hier wird nur geprüft, dass sie nicht 0 ist.
+//!
+//! Gebaut werden diese Nachrichten in [`crate::uds::routine_start_anfrage`];
+//! dieses Modul liefert nur Kennung und Optionen. Damit gibt es auch für `31`
+//! einen Baukasten und nicht zwei.
 //!
 //! ## Länge
 //!
@@ -61,10 +65,10 @@ pub use crate::uds::{
 
 /// Dienst „ReadDataByIdentifier".
 pub const DIENST_READ_DATA: u8 = 0x22;
-/// Dienst „RoutineControl".
-pub const DIENST_ROUTINE: u8 = 0x31;
-/// Subfunktion `startRoutine`.
-pub const SUB_START: u8 = 0x01;
+/// Dienst „RoutineControl" — derselbe Wert wie [`crate::uds::DIENST_ROUTINE`].
+pub const DIENST_ROUTINE: u8 = crate::uds::DIENST_ROUTINE;
+/// Subfunktion `startRoutine` — derselbe Wert wie [`crate::uds::ROUTINE_START`].
+pub const SUB_START: u8 = crate::uds::ROUTINE_START;
 /// DID der SFD-Statusabfrage (`22 01 74`).
 pub const STATUS_DID: [u8; 2] = [0x01, 0x74];
 /// Routine-Kennung im vierten Byte der RoutineControl-Anfrage.
@@ -77,7 +81,7 @@ pub const MODUS_ENTSPERREN: u8 = 0x08;
 pub const MODUS_SPERREN: u8 = 0x09;
 
 /// Positive Antwort auf RoutineControl.
-pub const ANTWORT_ROUTINE: u8 = 0x71;
+pub const ANTWORT_ROUTINE: u8 = crate::uds::ANTWORT_ROUTINE;
 
 /// Dienstbezeichnung im Audit-Eintrag für das Entsperren.
 ///
@@ -179,6 +183,15 @@ pub fn status_anfrage() -> Vec<u8> {
     vec![DIENST_READ_DATA, STATUS_DID[0], STATUS_DID[1]]
 }
 
+/// Die 16-Bit-Routinenkennung zu einem SFD-Schritt.
+///
+/// `31 01 C0 04` ist Routine `0xC004`, nicht „Routine `C0`, Modus `04`" — die
+/// Kennung ist zwei Byte breit. Diese Funktion ist die einzige Stelle, die
+/// diese Zusammensetzung kennt.
+pub const fn routine_kennung(modus: u8) -> u16 {
+    u16::from_be_bytes([ROUTINE_KENNUNG, modus])
+}
+
 /// `31 01 C0 04 <Rolle>` — Challenge anfordern.
 ///
 /// Die Rolle ist der einzige Parameter; sie kommt aus der Diagnosebeschreibung
@@ -187,13 +200,10 @@ pub fn challenge_anfrage(rolle: u8) -> std::result::Result<Vec<u8>, SfdError> {
     if rolle == 0 {
         return Err(SfdError::RolleUngueltig { rolle });
     }
-    Ok(vec![
-        DIENST_ROUTINE,
-        SUB_START,
-        ROUTINE_KENNUNG,
-        MODUS_CHALLENGE,
-        rolle,
-    ])
+    Ok(crate::uds::routine_start_anfrage(
+        routine_kennung(MODUS_CHALLENGE),
+        &[rolle],
+    ))
 }
 
 /// `31 01 C0 08 <Token>` — Token senden.
@@ -211,15 +221,15 @@ pub fn token_anfrage(token: &[u8]) -> std::result::Result<Vec<u8>, SfdError> {
             hoechstens: MAX_TOKEN,
         });
     }
-    let mut out = Vec::with_capacity(4 + token.len());
-    out.extend_from_slice(&[DIENST_ROUTINE, SUB_START, ROUTINE_KENNUNG, MODUS_ENTSPERREN]);
-    out.extend_from_slice(token);
-    Ok(out)
+    Ok(crate::uds::routine_start_anfrage(
+        routine_kennung(MODUS_ENTSPERREN),
+        token,
+    ))
 }
 
 /// `31 01 C0 09` — wieder sperren.
 pub fn sperren_anfrage() -> Vec<u8> {
-    vec![DIENST_ROUTINE, SUB_START, ROUTINE_KENNUNG, MODUS_SPERREN]
+    crate::uds::routine_start_anfrage(routine_kennung(MODUS_SPERREN), &[])
 }
 
 /// `10 03` — in die Extended Session wechseln.
@@ -315,60 +325,61 @@ pub fn parse_status(antwort: &[u8]) -> std::result::Result<SfdStatus, SfdError> 
 /// das Steuergerät hätte dann nichts geliefert, womit sich ein Token bilden
 /// ließe.
 pub fn parse_challenge(antwort: &[u8]) -> std::result::Result<Vec<u8>, SfdError> {
-    parse_routine(antwort, MODUS_CHALLENGE)?;
-    // `71 01 C0 04` sind vier Byte Kopf — die Challenge beginnt bei Byte 4,
-    // nicht bei 5: Byte 4 ist die Subfunktion/Routine, nicht die Nutzlast.
-    const KOPF: usize = 4;
-    if antwort.len() <= KOPF {
+    let nutzlast = parse_routine(antwort, MODUS_CHALLENGE)?;
+    if nutzlast.is_empty() {
         return Err(SfdError::ZuKurz {
             gelesen: antwort.len(),
-            mindestens: KOPF + 1,
+            mindestens: 5,
         });
     }
-    Ok(antwort[KOPF..].to_vec())
+    Ok(nutzlast.to_vec())
 }
 
 /// Wertet die Antwort auf das Senden des Tokens aus (`71 01 C0 08`).
 pub fn parse_entsperrt(antwort: &[u8]) -> std::result::Result<(), SfdError> {
-    parse_routine(antwort, MODUS_ENTSPERREN)
+    parse_routine(antwort, MODUS_ENTSPERREN).map(|_| ())
 }
 
 /// Wertet die Antwort auf das Sperren aus (`71 01 C0 09`).
 pub fn parse_gesperrt(antwort: &[u8]) -> std::result::Result<(), SfdError> {
-    parse_routine(antwort, MODUS_SPERREN)
+    parse_routine(antwort, MODUS_SPERREN).map(|_| ())
 }
 
-/// Gemeinsamer Kopf `71 01 C0 <Modus>`.
-fn parse_routine(antwort: &[u8], modus: u8) -> std::result::Result<(), SfdError> {
-    if let Some((dienst, code)) = pruefe_nrc(antwort) {
-        return Err(SfdError::Nrc { dienst, code });
-    }
-    const KOPF: usize = 4;
-    if antwort.len() < KOPF {
-        return Err(SfdError::ZuKurz {
-            gelesen: antwort.len(),
-            mindestens: KOPF,
-        });
-    }
-    if antwort[0] != ANTWORT_ROUTINE {
-        return Err(SfdError::FalscherDienst {
-            erwartet: ANTWORT_ROUTINE,
-            gesehen: antwort[0],
-        });
-    }
-    if antwort[1] != SUB_START || antwort[2] != ROUTINE_KENNUNG {
-        return Err(SfdError::FalscherModus {
-            erwartet: ROUTINE_KENNUNG,
-            gesehen: antwort[2],
-        });
-    }
-    if antwort[3] != modus {
-        return Err(SfdError::FalscherModus {
+/// Gemeinsamer Kopf `71 01 C0 <Modus>` — liefert die Nutzlast dahinter.
+///
+/// Geprüft wird in [`crate::uds::routine_kopf`], also an derselben Stelle wie
+/// bei jeder anderen Routine. Hier bleibt die Übersetzung in die SFD-Sprache:
+/// für SFD heißt eine Subfunktion „Schritt" (`FalscherModus`), weil die App
+/// so schon seit dem ersten Ausbau meldet.
+fn parse_routine(antwort: &[u8], modus: u8) -> std::result::Result<&[u8], SfdError> {
+    match crate::uds::routine_kopf(antwort, SUB_START, routine_kennung(modus)) {
+        Ok(nutzlast) => Ok(nutzlast),
+        Err(UdsFehler::Nrc { dienst, code }) => Err(SfdError::Nrc { dienst, code }),
+        Err(UdsFehler::FalscherDienst { erwartet, gesehen }) => {
+            Err(SfdError::FalscherDienst { erwartet, gesehen })
+        }
+        Err(UdsFehler::FalscheSubfunktion { erwartet, gesehen }) => {
+            Err(SfdError::FalscherModus { erwartet, gesehen })
+        }
+        Err(UdsFehler::FalscheRoutine { gesehen, .. }) => Err(SfdError::FalscherModus {
             erwartet: modus,
-            gesehen: antwort[3],
-        });
+            gesehen: gesehen[1],
+        }),
+        Err(UdsFehler::ZuKurz {
+            gelesen,
+            mindestens,
+        }) => Err(SfdError::ZuKurz {
+            gelesen,
+            mindestens,
+        }),
+        // Kopf und Aufschub sind alles, was `runde` liefert; die übrigen Fälle
+        // kann dieser Parser nicht erzeugen. Gemeldet wird trotzdem — nichts
+        // darf als Erfolg durchgehen.
+        Err(_) => Err(SfdError::FalscherDienst {
+            erwartet: ANTWORT_ROUTINE,
+            gesehen: antwort.first().copied().unwrap_or(0),
+        }),
     }
-    Ok(())
 }
 
 /// Hex ohne Trenner, Großbuchstaben — so, wie der Token kopiert wird.
@@ -456,6 +467,13 @@ impl From<UdsFehler> for SfdFehler {
             UdsFehler::FalscheSubfunktion { erwartet, gesehen } => {
                 SfdFehler::Sfd(SfdError::FalscherModus { erwartet, gesehen })
             }
+            // Kann `runde` nicht liefern — die Übersetzung existiert trotzdem,
+            // damit der Fehler nicht in einem `_`-Zweig als etwas anderes
+            // ausgegeben wird. Die Kennung meldet sich als falscher Schritt.
+            UdsFehler::FalscheRoutine { gesehen, .. } => SfdFehler::Sfd(SfdError::FalscherModus {
+                erwartet: ROUTINE_KENNUNG,
+                gesehen: gesehen[1],
+            }),
             UdsFehler::ZuKurz {
                 gelesen,
                 mindestens,
@@ -686,6 +704,21 @@ mod tests {
         assert_eq!(
             challenge_anfrage(0x05).unwrap(),
             vec![0x31, 0x01, 0xC0, 0x04, 0x05]
+        );
+    }
+
+    #[test]
+    fn routine_kennung_legt_den_schritt_in_das_niedrige_byte() {
+        assert_eq!(routine_kennung(MODUS_CHALLENGE).to_be_bytes(), [0xC0, 0x04]);
+        assert_eq!(
+            routine_kennung(MODUS_ENTSPERREN).to_be_bytes(),
+            [0xC0, 0x08]
+        );
+        // Und die Anfrage kommt aus dem allgemeinen Baukasten, nicht aus einer
+        // zweiten Bytefolge hier.
+        assert_eq!(
+            sperren_anfrage(),
+            crate::uds::routine_start_anfrage(routine_kennung(MODUS_SPERREN), &[])
         );
     }
 
