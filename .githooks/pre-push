@@ -17,9 +17,10 @@
 # mehr, weil `c` und `rust` bzw. `jvm-tests` dasselbe abdecken.
 #
 # Welche Jobs laufen, entscheiden die Dateien, die tatsächlich gepusht werden:
-# eine Doku-Korrektur startet keine Cargo- oder JVM-Tests, eine Änderung an
-# `j2534/` keine JVM-Tests. Unbekannte Pfade lassen alle laufen — im Zweifel
-# wird geprüft, nicht geraten.
+# eine Änderung an `j2534/` startet keine JVM-Tests, eine an `android/` keine
+# Cargo-Prüfungen. Reine Doku (`docs/`, `*.md`, `artifacts/`, `model/`) lässt
+# alle fünf laufen — siehe unten bei der Einordnung. Unbekannte Pfade ebenfalls:
+# im Zweifel wird geprüft, nicht geraten.
 #
 # Der Fuzz-Rauchlauf hängt enger: er läuft nur bei `core/src/isotp.rs`,
 # `core/src/uds.rs` und `core/fuzz/`. Er braucht nightly und cargo-fuzz, die
@@ -170,7 +171,11 @@ while read -r f; do
             jvm=1
             fuzz=1
             ;;
-        docs/* | *.md | artifacts/* | model/*) ;;
+        # Doku fährt alle fünf mit. Ein Doku-Push wäre sonst der einzige Fall,
+        # in dem der Hook gar nichts über den Push sagt — und der Lauf dauert
+        # warm rund 40 s, die Hälfte davon die JVM-Tests. `alle=1` genügt, die
+        # Job-Auswahl weiter unten liest es aus.
+        docs/* | *.md | artifacts/* | model/*) alle=1 ;;
         core/src/isotp.rs | core/src/uds.rs) kern=1; fuzz=1 ;;
         core/fuzz/*) fuzz=1 ;;
         core/* | core-ffi/* | j2534/*) kern=1 ;;
@@ -224,14 +229,9 @@ if [ "$modus" = "probe" ]; then
         echo "Geänderte Dateien:" >&2
         sort -u "$dateien" | sed 's/^/  /' >&2
     fi
+    # Hierher kommt nur noch ein leerer Diff: Doku läuft inzwischen mit.
     if [ -z "$ci_jobs" ] && [ "$fuzz" -eq 0 ]; then
-        if [ "$anzahl" -eq 0 ]; then
-            echo "Auswahl: nichts — keine Änderungen gegenüber $basis." >&2
-        elif [ -n "$fmt_ausgelassen" ]; then
-            echo "Auswahl: nichts außer der Formatprüfung, die ausfiele — $fmt_ausgelassen." >&2
-        else
-            echo "Auswahl: nichts — nur Doku, ein Push würde keine Tests starten." >&2
-        fi
+        echo "Auswahl: nichts — keine Änderungen gegenüber $basis." >&2
         exit 0
     fi
     echo "Auswahl:" >&2
@@ -251,15 +251,10 @@ if [ "$modus" = "probe" ]; then
     exit 0
 fi
 
+# Nur ein leerer Diff landet hier: jede geänderte Datei wählt mindestens einen
+# Job, Doku alle fünf.
 if [ -z "$ci_jobs" ] && [ "$fuzz" -eq 0 ]; then
-    if [ "$anzahl" -eq 0 ]; then
-        echo "pre-push: nichts zu übertragen — keine Tests nötig." >&2
-    else
-        echo "pre-push: nur Doku geändert ($anzahl Dateien) — keine Tests nötig." >&2
-    fi
-    if [ -n "$fmt_ausgelassen" ]; then
-        echo "pre-push: Formatprüfung übersprungen — $fmt_ausgelassen." >&2
-    fi
+    echo "pre-push: nichts zu übertragen ($anzahl Dateien) — keine Tests nötig." >&2
     exit 0
 fi
 
