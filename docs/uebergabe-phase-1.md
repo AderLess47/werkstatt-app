@@ -35,10 +35,10 @@ geschätzt):
 | `content/` | `schema/funktion.schema.json` und fünf Funktionen in `funktionen/` | 6 Dateien |
 | `core/fuzz/` | zwei Fuzz-Ziele: ISO-TP (Empfangs- und Sendeweg) und UDS-Parser | 2 Ziele |
 | `core/tests/corpus.rs` + `corpus/` | Konformitätskorpus gegen die C-Implementierung | 4 Tests |
-| `core-ffi/src/lib.rs` | UniFFI-Grenze: `CanTransport`, `IsoTp`, `Sfd`, `LoopbackTransport`, `SfdStatusFfi` | 648 Zeilen |
+| `core-ffi/src/lib.rs` | UniFFI-Grenze: `CanTransport`, `IsoTp`, `Sfd`, `LoopbackTransport`, `Sicherheit` mit `SchluesselAnbieter`, `SfdStatusFfi` | 1.041 Zeilen |
 | `core-ffi/src/bin/uniffi_bindgen.rs` | Bindings erzeugen (Kotlin, Swift) | — |
 | `j2534/` (C) | PassThru-Port, USB-Backend (WinUSB + Simulator), VCI-Checker, Rollout-Auswertung | 165 C-Prüfungen |
-| `android/` | Compose-App: 13 Dateien im Wurzelpaket, 13 unter `transport/` — USB-Weg, OBDLink-Weg, BLE-Weg, SFD-Bildschirm, Berichte | 174 JVM-Tests |
+| `android/` | Compose-App: 13 Dateien im Wurzelpaket, 13 unter `transport/` — USB-Weg, OBDLink-Weg, BLE-Weg, SFD-Bildschirm, Berichte | 179 JVM-Tests |
 | `model/` | Wirtschaftlichkeitsmodell (Python) | — |
 | `docs/` | 14 Planungs- und Prüfdokumente | — |
 
@@ -75,8 +75,8 @@ Alles hier ist am 16. und 17.11.2026 in dieser VM gelaufen, nicht abgeleitet:
 | --- | --- | --- |
 | C-Kern | `make -C j2534 test` | 165 `PASS`-Zeilen, „Alle Rollout-Prüfungen bestanden“ |
 | Rust-Kern | `cargo test --locked --manifest-path core/Cargo.toml` | 224 Tests + 4 Korpus-Tests |
-| FFI | `cargo test --locked --manifest-path core-ffi/Cargo.toml` | 15 Tests |
-| App ohne Gerät | `JAVA_HOME=/tmp/jdk sh scripts/jvm-tests.sh` | `OK (174 tests)` |
+| FFI | `cargo test --locked --manifest-path core-ffi/Cargo.toml` | 19 Tests |
+| App ohne Gerät | `JAVA_HOME=/tmp/jdk sh scripts/jvm-tests.sh` | `OK (179 tests)` |
 | Android-Build | `./android/gradlew -p android :app:assembleDebug` | `BUILD SUCCESSFUL` |
 | Zahlen gegen Jobnamen | `sh scripts/zahlen-pruefen.sh` | alle fünf gleich, Exit 0 |
 | Fuzzing (neu) | `sh scripts/fuzz.sh` | 604 s, 33,5 Mio. + 55,6 Mio. Läufe, kein Absturz |
@@ -125,9 +125,12 @@ Alles hier ist am 16. und 17.11.2026 in dieser VM gelaufen, nicht abgeleitet:
    kommt aus einem [`crate::uds::SecurityProvider`]. Ein leerer Seed heißt
    „Ebene war schon offen“ und führt dazu, dass **nichts** gesendet wird — ein
    erfundener Schlüssel würde am Steuergerät als `0x35 invalidKey` landen und
-   den Befund verfälschen.
-4. ~~**`docs/android-app-modul.md` nennt 119 `@Test`**~~ — nachgezogen: 174 in
-   neunzehn Dateien (SFD, Funktions-Runtime und Audit-Kette kamen dazu).
+   den Befund verfälschen. Über die Sprachgrenze geht derselbe Ablauf: die App
+   gibt einen `SchluesselAnbieter` (Callback-Interface) herein, das Objekt
+   `Sicherheit` reicht ihn an den Kern und übersetzt das Ergebnis in
+   `SicherheitFfi::{BereitsOffen, Entsperrt}`.
+4. ~~**`docs/android-app-modul.md` nennt 119 `@Test`**~~ — nachgezogen: 179 in
+   zwanzig Dateien (SFD, Funktions-Runtime und Audit-Kette kamen dazu).
 5. **`docs/geraetepruefung.md` Abschnitt 10 (SFD)** ist geschrieben und nie
    gelaufen.
 6. **Der lokale Git-Index ist unzuverlässig.** `git status` zeigt Dateien als
@@ -364,7 +367,7 @@ Damit die Arbeit nicht stillsteht und trotzdem messbar bleibt:
 4. `content/schema/funktion.schema.json` mit den Pflichtfeldern aus P4
    schreiben und eine Beispielfunktion validieren. *(erledigt)*
 5. ~~`docs/android-app-modul.md` auf 157 Tests ziehen (offener Punkt A.4.4)~~ —
-   erledigt: 174 in neunzehn Dateien.
+   erledigt: 179 in zwanzig Dateien.
 
 ## B.6 Prüfbefehle (unverändert gültig)
 
@@ -389,8 +392,8 @@ Fallen, die schon Zeit gekostet haben:
 
 ---
 
-**Zum Schluss, in einem Satz:** der Kern trägt (ISO-TP, SFD, 165 + 224 + 4 + 15
-Prüfungen), die App ist gebaut und übersetzt (174 Tests), aber **nichts davon ist
+**Zum Schluss, in einem Satz:** der Kern trägt (ISO-TP, SFD, 165 + 224 + 4 + 19
+Prüfungen), die App ist gebaut und übersetzt (179 Tests), aber **nichts davon ist
 an einem Fahrzeug gelaufen** und die CI startet seit 147 Läufen keinen Runner.
 Phase 1 beginnt deshalb nicht mit Hardware, sondern mit dem allgemeinen
 UDS-Client — und jede Aussage über Verhalten am Fahrzeug bleibt offen, bis
