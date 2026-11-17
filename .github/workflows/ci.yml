@@ -142,12 +142,23 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      # Nur das cmdline-tools-Paket, keine Lizenzen: die Aktion ruft
+      # `sdkmanager --licenses` mit einer Rückfrage auf („Review licenses that
+      # have not been accepted (y/N)?“), was den Job abgebrochen hat. Annehmen
+      # und Nachinstallieren übernimmt der Schritt darunter.
       - uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: false
+          # Nichts nachinstallieren: platform-tools und Plattformen bringt das
+          # Image mit; gebraucht wird sdkmanager für Lizenzen und NDK.
+          packages: ""
 
-      - name: NDK installieren
+      - name: Lizenzen annehmen und NDK installieren
         # `yes |` beantwortet die Lizenzfrage; ohne das kann der Schritt auf
         # einem frischen Runner hängen statt zu scheitern.
-        run: yes | sdkmanager "ndk;26.1.10909125" > /dev/null
+        run: |
+          yes | sdkmanager --licenses > /dev/null
+          yes | sdkmanager "ndk;26.1.10909125" > /dev/null
 
       - uses: dtolnay/rust-toolchain@stable
         with:
