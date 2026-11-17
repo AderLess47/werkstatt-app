@@ -25,7 +25,7 @@ pub mod sfd;
 pub mod transport;
 pub mod uds;
 
-pub use audit::{AuditFehler, AuditKette, AuditEintrag, Ergebnis};
+pub use audit::{AuditEintrag, AuditFehler, AuditKette, Ergebnis};
 pub use content::{laden as funktion_laden, InhaltsFehler};
 pub use function::{
     AusfuehrungsFehler, Freigabe, FunctionDef, Kontext, Precondition, Provenance, Risk, Step,
