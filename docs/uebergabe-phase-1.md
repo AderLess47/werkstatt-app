@@ -139,7 +139,8 @@ Alles hier ist am 16. und 17.11.2026 in dieser VM gelaufen, nicht abgeleitet:
    „… war bereits offen (27 01)“, bei Ablehnung den Dienst mit Klartext-NRC
    („Fehler: abgelehnt (Dienst 0x27, NRC 0x35: invalidKey)“). Seed und
    Schlüssel stehen **nicht** im Eintrag; drei FFI-Tests und ein App-Test
-   prüfen das über `als_json()`.
+   prüfen, dass der Eintrag Ebene und Ausgang nennt und weder Seed noch
+   Schlüssel enthält.
 4. ~~**`docs/android-app-modul.md` nennt 119 `@Test`**~~ — nachgezogen: 186 in
    einundzwanzig Dateien (SFD, Funktions-Runtime, Audit-Kette und der Sicherheitszugriff kamen dazu).
 5. **`docs/geraetepruefung.md` Abschnitt 10 (SFD)** ist geschrieben und nie
