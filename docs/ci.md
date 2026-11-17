@@ -1,6 +1,8 @@
 # CI — was läuft, und wo sie gerade steht
 
-`.github/workflows/ci.yml` läuft bei jedem Push und jedem Pull Request.
+`.github/workflows/ci.yml` läuft bei jedem Push und jedem Pull Request. Zusätzlich
+lässt er sich von Hand starten (`workflow_dispatch`): ein Lauf ist damit
+wiederholbar, ohne dafür einen leeren Commit zu brauchen.
 
 | Job | Was er prüft |
 | --- | --- |
@@ -10,7 +12,7 @@
 | `fmt` | `cargo fmt --check` für `core`, `core-ffi` und `core/fuzz` — eigener Job, weil ein Formatfehler nichts über das Verhalten sagt |
 | `bindings` | erzeugt Kotlin- und Swift-Bindings neu, lädt sie als Artefakt hoch (`needs: rust`) |
 | `jvm-tests` | die 186 Tests der App ohne Gerät über `sh scripts/jvm-tests.sh`, gegen den Host-Build der Bibliothek |
-| `android` | NDK-Bibliothek für `arm64-v8a` und `x86_64`; `./android/gradlew -p android :bindings:test`; dann `:app:testDebugUnitTest :app:assembleDebug` und eine Prüfung, dass beide ABIs in der APK liegen |
+| `android` | nimmt die SDK-Lizenzen selbst an und installiert NDK 26.1; Bindings und Host-Bibliothek; NDK-Bibliothek für `arm64-v8a` und `x86_64`; `./android/gradlew -p android :bindings:test`; dann `:app:testDebugUnitTest :app:assembleDebug` und eine Prüfung, dass beide ABIs in der APK liegen |
 
 Der Android-Job baut über den Wrapper, nicht über ein vom Runner gestelltes
 Gradle: die Version steht allein in
@@ -19,12 +21,40 @@ bewusst kein `gradle-version` — ohne diese Angabe nimmt die Aktion den Wrapper
 des Projekts an und richtet nur den Cache ein. Damit gibt es genau einen Pin und
 keine zweite Gradle-Distribution, die niemand benutzt.
 
+### SDK-Lizenzen: warum der Job sie selbst annimmt
+
+`android-actions/setup-android@v3` akzeptiert die Lizenzen standardmäßig selbst
+(`sdkmanager --licenses`). Auf dem Runner stellte dieser Aufruf die Rückfrage
+„Review licenses that have not been accepted (y/N)?“, und der Job brach dort ab —
+alle folgenden Schritte wurden übersprungen (Lauf #319, 17.11.2026). Die Aktion
+setzt deshalb nur noch das cmdline-tools-Paket
+(`accept-android-sdk-licenses: false`, `packages: ""`); ein eigener Schritt nimmt
+die Lizenzen ohne Rückfrage an und installiert das NDK:
+
+```sh
+yes | sdkmanager --licenses > /dev/null
+yes | sdkmanager "ndk;26.1.10909125" > /dev/null
+```
+
+`yes |` beantwortet die Lizenzfrage vorab; ohne das kann der Schritt auf einem
+frischen Runner hängen statt zu scheitern.
+
+### Skripte werden mit `bash`/`sh` gestartet
+
+Die Helfer unter `scripts/` ruft die CI nicht über `./…` auf, sondern mit
+`bash scripts/gen-bindings.sh …` bzw. `sh scripts/jvm-tests.sh`. Der Modus im
+Repository ist inzwischen `100755` (Commit `2bf8698`), aber der Aufruf soll nicht
+davon abhängen: mit `./` endet ein fehlendes Ausführungsbit sofort in
+„Permission denied“. Genau das traf am 17.11.2026 drei Jobs gleichzeitig, und im
+Log sah es nach einem Fehler des Skripts aus.
+
 Die Zahlen in den Jobnamen sind eine Ankündigung, keine Messung. Damit sie nicht
 abdriften, zählt `sh scripts/zahlen-pruefen.sh` alle fünf lokal nach —
 `make -C j2534 test`, beide `cargo test`, `scripts/jvm-tests.sh` — und bricht ab,
 sobald eine Zahl von der im Workflow genannten abweicht (Exit 1). Es zählt, was
-die Suiten melden, nicht was im Quelltext deklariert ist. Laufen kann es nur
-lokal: die Jobs selbst werden ja nicht gestartet (siehe unten).
+die Suiten melden, nicht was im Quelltext deklariert ist. Das Skript prüft den
+lokalen Stand; im Workflow ist es nicht eingebunden, die Zahlen in den Jobnamen
+gegenzuprüfen bleibt also Handarbeit.
 
 ## Formatierung
 
@@ -80,8 +110,9 @@ Repository, jede per Blob-Hash bestätigt:
 
 Punkt 4 der Definition of Done ([implementierungsplan.md](implementierungsplan.md)
 §6) verlangt Fuzzing des Parser-Codes. Ein Job dafür steht bewusst nicht im
-Workflow: er bräuchte nightly und `cargo-fuzz` auf dem Runner, und die Jobs
-starten ohnehin nicht (siehe unten). Gefahren wird lokal, mit fester Dauer:
+Workflow: er bräuchte nightly und `cargo-fuzz` auf dem Runner, und ein Lauf von
+zehn Minuten je Ziel passt nicht in den Durchlauf. Gefahren wird lokal, mit
+fester Dauer:
 
 ```
 sh scripts/fuzz.sh        # 300 s je Ziel
@@ -108,9 +139,10 @@ die Abwesenheit eines Absturzes auf den erreichten Pfaden, nicht die
 Korrektheit der Auswertung. Der Korpus liegt nicht im Repository
 (`core/fuzz/corpus/` ist ignoriert) — jeder Lauf ohne ihn beginnt bei null.
 
-## Stand: die Jobs werden nicht gestartet
+## Bis zum 17.11.2026: kein Lauf wurde gestartet
 
-Gemessen am 15.11.2026 über die GitHub-API:
+Bis dahin war kein einziger Lauf erfolgreich. Gemessen am 15.11.2026 über die
+GitHub-API:
 
 | Frage | Antwort |
 | --- | --- |
@@ -128,10 +160,10 @@ Gemessen am 15.11.2026 über die GitHub-API:
 Die Zahl der Läufe wächst mit jedem Push; erfolgreich war bisher keiner — auch
 der Lauf, der diese Seite ins Repository brachte, endete nach vier Sekunden
 ohne Runner. Ein erneuter Lauf (Versuch 2) ändert daran nichts: gleiche Dauer,
-gleiches Bild, kein einziger Schritt. Solange das so aussieht, ist die Sperre
+gleiches Bild, kein einziger Schritt. Solange das so aussieht, war die Sperre
 nicht gefallen — unabhängig davon, was in den Abrechnungseinstellungen geändert
 wurde. Nach einer Korrektur kann es dauern, bis sie greift; der nächste Beweis
-ist ein Lauf mit `runner_id ≠ 0`.
+war ein Lauf mit `runner_id ≠ 0`.
 
 Ein Job **ohne Schritte und ohne Runner** ist nicht an einer Prüfung gescheitert
 — er wurde nicht gestartet. Die Meldung, die GitHub dazu anzeigt, lautet:
@@ -144,6 +176,24 @@ Das Bild ist in sich stimmig: die Rechte im Repository sind offen, die
 Workflow-Datei ist gültig (lokal mit einem YAML-Parser geladen, sieben Jobs,
 `android` mit 13 Schritten), und es wurden in diesem Monat Minuten verbraucht.
 Es fehlt also nicht an der Konfiguration, sondern an der Abrechnung.
+
+### Seit dem 17.11.2026 läuft die CI
+
+Das Repository ist seit dem 17.11.2026, 19:17 UTC **öffentlich**. Standard-Runner
+sind in öffentlichen Repositories kostenlos und verbrauchen kein Kontingent
+(GitHub-Abrechnungsdoku: „Standard GitHub-hosted runners in public repositories“),
+damit greift die Abrechnung dieses Pfads nicht mehr. Belegt an drei Läufen
+desselben Abends:
+
+| Lauf | Commit | Ergebnis |
+| --- | --- | --- |
+| #319 | `c6b1bc5` (workflow_dispatch ergänzt) | erste Läufe mit echtem Runner (`runner_id: 1000003054` ff.); der Android-Job scheiterte an der Lizenzabfrage |
+| #322 | `850471b` (Skripte per `bash` aufgerufen) | `conclusion: success`, alle sieben Jobs grün |
+| #323 | `2bf8698` (Skripte ausführbar) | `conclusion: success`, alle sieben Jobs grün |
+
+Damit ist auch das auf dem Runner belegt, was vorher nur lokal galt: `cargo ndk`
+für beide ABIs, die `readelf`-Prüfung, `setup-gradle` ohne `gradle-version`, der
+Kotlin-Linktest, der APK-Bau mit beiden `libvci_ffi.so` und die Artefakt-Uploads.
 
 ## Was die Sperre löst — und wer es kann
 
@@ -159,8 +209,8 @@ dieser Maschine aus ist es nicht erreichbar. Drei Wege:
    fällt.
 2. **Repository öffentlich machen.** Standard-Runner in öffentlichen
    Repositories sind kostenlos, die Abrechnung dieses Pfads greift dort nicht.
-   Das ist eine Entscheidung über den Code, nicht über die Technik — das
-   Repository ist derzeit privat.
+   Das ist eine Entscheidung über den Code, nicht über die Technik — diesen Weg
+   ist das Repository am 17.11.2026 gegangen (siehe oben).
 3. **Selbst gehosteter Runner.** `runs-on` auf einen eigenen Runner zeigen; der
    zählt nicht zur Abrechnung. Braucht eine dauerhaft erreichbare Maschine, die
    es hier nicht gibt.
@@ -177,13 +227,13 @@ Prüfbar über `GET /repos/AderLess47/werkstatt-app/actions/runs/{id}/jobs`:
 - `steps` ist gefüllt (mindestens `Set up job`),
 - die Laufzeit liegt über ein paar Sekunden.
 
-Danach ist der erste grüne Lauf die eigentliche Prüfung — bis dahin ist in
-diesem Repository **kein** CI-Ergebnis belegt.
+Danach ist der erste grüne Lauf die eigentliche Prüfung — er kam mit #322
+(17.11.2026, 19:37 UTC), zwei Läufe später folgte #323.
 
 ## Lokaler Ersatz: `scripts/ci-lokal.sh`
 
-Weil die Jobs nicht starten, fährt ein Skript dieselben fünf Jobs mit denselben
-Befehlen auf dieser Maschine:
+Für den Fall, dass auf dem Runner nichts durchgeht (oder ohne Netz), fährt ein
+Skript dieselben fünf Jobs mit denselben Befehlen auf dieser Maschine:
 
 ```
 sh scripts/ci-lokal.sh
@@ -231,13 +281,14 @@ die es nicht gibt.
 
 ## Was das für den Stand der Verifikation heißt
 
-Solange 0 von 147 Läufen erfolgreich sind, stützt sich keine Aussage in der
-Dokumentation auf die CI. Belegt ist, was lokal gelaufen ist: `make -C j2534
-test`, `cargo test` für beide Crates, `sh scripts/jvm-tests.sh` (186 Tests), der
-Fuzz-Lauf über `sh scripts/fuzz.sh` (604 s, siehe oben) und der Android-Build
-über den Wrapper
-(`./android/gradlew -p android :app:testDebugUnitTest :app:assembleDebug`).
-Ungeprüft bleibt alles, was nur auf dem Runner passiert: `cargo ndk` für beide
-ABIs, das Verhalten von `setup-gradle` ohne `gradle-version`, die
-Artefakt-Uploads und die Abhängigkeitsauflösung über JitPack auf einem frischen
-Rechner.
+Seit dem 17.11.2026 stützt sich die Doku auch auf die CI: die Läufe #322 und #323
+sind grün, inklusive Android-Job. Belegt ist damit zusätzlich zu den lokalen
+Läufen (`make -C j2534 test`, beide `cargo test`, `sh scripts/jvm-tests.sh` mit
+186 Tests, `sh scripts/fuzz.sh` über 604 s, siehe oben): `cargo ndk` für beide
+ABIs, das Verhalten von `setup-gradle` ohne `gradle-version`, der APK-Bau mit
+beiden ABIs, die Artefakt-Uploads und die Abhängigkeitsauflösung über JitPack
+auf einem frischen Rechner.
+
+Ungeprüft bleibt, was kein Lauf zeigen kann: die Anzeige und der Ablauf gegen
+ein echtes Steuergerät. Dafür fehlen hier Gerät und Fahrzeug; die App läuft
+bisher nur im Test und im Emulator-freien JVM-Lauf.
