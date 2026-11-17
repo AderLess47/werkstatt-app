@@ -205,9 +205,113 @@ fn sfd_lehnt_ungueltigen_hex_text_ab() {
     assert!(matches!(err, VciError::Sfd { .. }), "{err}");
 }
 
+/// Kleine Definition für die Grenztests: eine Sitzung, kein Backup,
+/// keine Spannungsbedingung (der Loopback kann keine messen).
+fn yaml(risk: &str, freigabe: &str, evidence: &str) -> String {
+    format!(
+            "id: grenztest\ntitel: Grenztest\nrisk: {risk}\nmatch:\n  vin_praefix: WVW\npreconditions:\n  - klemme15\nsteps:\n  - anfrage: \"10 03\"\n    erwartet: \"50 03\"\n    timeout_ms: 1000\nprovenance:\n  quelle: Test\n  freigabe: {freigabe}\n  evidence_hash: \"{evidence}\"\n"
+        )
+}
+
+#[test]
+fn funktion_laeuft_ueber_die_grenze_und_protokolliert() {
+    let lb = LoopbackTransport::new();
+    push_sf(&lb, &[0x50, 0x03, 0x00, 0x32]);
+    let funktion = Funktion::aus_yaml("t.yaml".to_string(), yaml("R1", "geprüft", "a1b2")).unwrap();
+    let audit = Audit::new();
+
+    let ergebnis = funktion
+        .ausfuehren(
+            Box::new(lb.clone()),
+            FunktionsKontextFfi {
+                vin: "WVWZZZ1JZXW000001".to_string(),
+                klemme15: true,
+                motor_aus: true,
+                bestaetigung: false,
+            },
+            audit.clone(),
+            1_000,
+        )
+        .unwrap();
+
+    assert_eq!(ergebnis.funktion, "grenztest");
+    assert_eq!(ergebnis.schritte, 1);
+    assert_eq!(ergebnis.audit_laufnummern, vec![1]);
+    assert_eq!(audit.len(), 1);
+    assert!(audit.pruefen().is_ok());
+    assert_eq!(lb.sent()[0].data[..3], [0x02, 0x10, 0x03]);
+    let json = audit.als_json();
+    assert!(json.contains("session 10 03"), "{json}");
+}
+
+#[test]
+fn funktion_ab_r2_ohne_bestaetigung_wird_abgelehnt() {
+    let lb = LoopbackTransport::new();
+    let funktion = Funktion::aus_yaml("t.yaml".to_string(), yaml("R2", "geprüft", "a1b2")).unwrap();
+    let audit = Audit::new();
+
+    let err = funktion
+        .ausfuehren(
+            Box::new(lb.clone()),
+            FunktionsKontextFfi {
+                vin: "VIN".to_string(),
+                klemme15: true,
+                motor_aus: true,
+                bestaetigung: false,
+            },
+            audit.clone(),
+            5,
+        )
+        .unwrap_err();
+
+    assert!(matches!(err, VciError::Protocol { .. }), "{err}");
+    assert!(lb.sent().is_empty(), "es darf kein Rahmen rausgehen");
+    assert_eq!(audit.len(), 1, "die Ablehnung wird protokolliert");
+}
+
+#[test]
+fn unbelegter_entwurf_ab_r2_wird_schon_beim_laden_abgelehnt() {
+    let funktion = Funktion::aus_yaml("t.yaml".to_string(), yaml("R2", "unbelegt", "")).unwrap();
+    let fehler = funktion.pruefe_freigabe().unwrap_err();
+    assert!(matches!(fehler, VciError::Protocol { .. }), "{fehler}");
+}
+
+#[test]
+fn audit_kette_ueber_die_grenze_prueft_und_exportiert() {
+    let audit = Audit::new();
+    audit
+        .anhaengen(
+            1,
+            "VIN".to_string(),
+            0x7E0,
+            "session 10 03".to_string(),
+            true,
+            String::new(),
+        )
+        .unwrap();
+    audit
+        .anhaengen(
+            2,
+            "VIN".to_string(),
+            0x7E0,
+            "routine 31 01 02 03".to_string(),
+            false,
+            "Timeout".to_string(),
+        )
+        .unwrap();
+
+    assert_eq!(audit.len(), 2);
+    assert!(audit.pruefen().is_ok());
+    let eintraege = audit.eintraege();
+    assert_eq!(eintraege[1].ergebnis, "Fehler: Timeout");
+    assert_eq!(eintraege[1].vorheriger_hash, eintraege[0].hash);
+    assert_eq!(audit.letzter_hash(), eintraege[1].hash);
+}
+
 #[test]
 fn sfd_token_mit_300_byte_geht_ueber_die_grenze() {
     let lb = LoopbackTransport::new();
+    // Flow Control, danach die positive Antwort — der Sender wartet selbst.
     lb.push(CanFrameFfi {
         id: 0x7E8,
         data: vec![0x30, 0x00, 0x00],
@@ -215,53 +319,89 @@ fn sfd_token_mit_300_byte_geht_ueber_die_grenze() {
     });
     push_sf(&lb, &[0x71, 0x01, 0xC0, 0x08]);
 
+    let token = vec![0x5Au8; 300];
     Sfd::new(Audit::new(), "VIN".to_string())
-        .entsperren_mit_bytes(Box::new(lb.clone()), vec![0x5A; 300], 100)
+        .entsperren_mit_bytes(Box::new(lb.clone()), token.clone(), 100)
         .unwrap();
 
     let sent = lb.sent();
-    assert_eq!(sent[0].data[0] & 0xF0, 0x10);
-    let angekuendigt =
-        ((sent[0].data[0] as usize & 0x0F) << 8) | sent[0].data[1] as usize;
-    assert_eq!(angekuendigt, 4 + 300);
-    assert!(sent.len() > 40, "viele Rahmen, waren: {}", sent.len());
+    assert_eq!(sent[0].data[0] & 0xF0, 0x10, "First Frame");
+    let angekuendigt = (((sent[0].data[0] as usize) & 0x0F) << 8) | sent[0].data[1] as usize;
+    assert_eq!(angekuendigt, 4 + token.len());
+    assert!(sent.len() > 40, "300 Byte brauchen viele Rahmen");
 }
 
 #[test]
 fn sfd_entsperren_und_sperren_schreiben_in_die_kette() {
-    let lb = LoopbackTransport::new();
     let audit = Audit::new();
     let sfd = Sfd::new(audit.clone(), "WVWZZZ1JZXW000001".to_string());
 
+    let lb = LoopbackTransport::new();
     push_sf(&lb, &[0x71, 0x01, 0xC0, 0x08]);
-    sfd.entsperren(Box::new(lb.clone()), "DEAD".to_string(), 100)
+    sfd.entsperren(Box::new(lb), "DEAD".to_string(), 100)
         .unwrap();
-    push_sf(&lb, &[0x71, 0x01, 0xC0, 0x09]);
-    sfd.sperren(Box::new(lb.clone()), 100).unwrap();
 
-    assert_eq!(audit.len(), 2);
     let eintraege = audit.eintraege();
+    assert_eq!(eintraege.len(), 1);
     assert_eq!(eintraege[0].dienst, "SFD entsperren 31 01 C0 08");
     assert_eq!(eintraege[0].ergebnis, "Erfolg");
-    assert_eq!(eintraege[1].dienst, "SFD sperren 31 01 C0 09");
-    assert_eq!(eintraege[0].hash, eintraege[1].vorheriger_hash);
-    audit.pruefen().unwrap();
+    assert_eq!(eintraege[0].vin, "WVWZZZ1JZXW000001");
+    assert!(audit.pruefen().is_ok());
     assert!(
         !audit.als_json().contains("DEAD"),
-        "Token darf nicht im Nachweis stehen"
+        "der Token gehört nicht in den Nachweis"
     );
+
+    let lb = LoopbackTransport::new();
+    push_sf(&lb, &[0x71, 0x01, 0xC0, 0x09]);
+    sfd.sperren(Box::new(lb), 100).unwrap();
+
+    let eintraege = audit.eintraege();
+    assert_eq!(eintraege.len(), 2);
+    assert_eq!(eintraege[1].dienst, "SFD sperren 31 01 C0 09");
+    assert_eq!(eintraege[1].vorheriger_hash, eintraege[0].hash);
+    assert!(audit.pruefen().is_ok());
 }
 
 #[test]
 fn sfd_ablehnung_steht_als_fehler_in_der_kette() {
-    let lb = LoopbackTransport::new();
     let audit = Audit::new();
+    let lb = LoopbackTransport::new();
     push_sf(&lb, &[0x7F, 0x31, 0x35]);
 
-    Sfd::new(audit.clone(), "VIN".to_string())
+    let err = Sfd::new(audit.clone(), "VIN".to_string())
         .entsperren(Box::new(lb), "DEAD".to_string(), 100)
         .unwrap_err();
+    assert!(matches!(err, VciError::Nrc { .. }), "{err}");
 
-    assert_eq!(audit.len(), 1);
-    assert!(audit.eintraege()[0].ergebnis.contains("invalidKey"));
+    let eintraege = audit.eintraege();
+    assert_eq!(eintraege.len(), 1, "auch die Ablehnung wird protokolliert");
+    assert!(
+        eintraege[0].ergebnis.starts_with("Fehler:"),
+        "{eintraege:?}"
+    );
+}
+
+#[test]
+fn vorbedingungen_und_schrittliste_kommen_als_daten_an() {
+    // Dieselbe Form wie im Katalog: Spannungsgrenzen als min_mv/max_mv.
+    let text = "id: spannung\ntitel: Spannung\nrisk: R1\nmatch:\n  vin_praefix: WVW\npreconditions:\n  - klemme15\n  - motor_aus\n  - bordspannung:\n      min_mv: 11800\n      max_mv: 14400\nsteps:\n  - anfrage: \"10 03\"\n    erwartet: \"50 03\"\n    timeout_ms: 2000\nprovenance:\n  quelle: Test\n  freigabe: geprüft\n  evidence_hash: \"a1b2\"\n";
+    let funktion = Funktion::aus_yaml("spannung.yaml".to_string(), text.to_string()).unwrap();
+
+    let bedingungen = funktion.vorbedingungen();
+    assert_eq!(bedingungen.len(), 3);
+    assert_eq!(bedingungen[0].art, "klemme15");
+    assert_eq!(bedingungen[1].art, "motor_aus");
+    assert_eq!(bedingungen[2].art, "bordspannung");
+    assert_eq!(
+        (bedingungen[2].min_mv, bedingungen[2].max_mv),
+        (11800, 14400)
+    );
+
+    let schritte = funktion.schrittliste();
+    assert_eq!(schritte.len(), 1);
+    assert_eq!(schritte[0].nummer, 1, "Schritte zählen ab 1");
+    assert_eq!(schritte[0].anfrage_hex, "10 03");
+    assert_eq!(schritte[0].erwartet_hex, "50 03");
+    assert_eq!(schritte[0].timeout_ms, 2000);
 }
