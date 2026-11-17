@@ -2,8 +2,8 @@
 
 **Für:** den nächsten Agenten („Gemini Argon 4“), der ohne den vorherigen Chat
 weiterarbeiten soll.
-**Stand:** 16.11.2026 · **Repo:** `AderLess47/werkstatt-app` (privat), Branch
-`main`, letzter Commit `c2dedf1`.
+**Stand:** 17.11.2026 · **Repo:** `AderLess47/werkstatt-app` (privat), Branch
+`main`, letzter Commit `74cf437`.
 **Aufbau:** Teil A sagt, wo das Projekt steht — belegt und unbelegt getrennt.
 Teil B ist der Plan für Phase 1 = **Meilenstein M1 („Diagnose-Basis“)** aus
 [werkstatt-app-plan.md](werkstatt-app-plan.md) §8, zerlegt in Arbeitspakete, die
@@ -18,15 +18,21 @@ ausdrücklich als ungeprüft markiert sind.
 
 ## A.1 Was existiert
 
-Gemessen am 16.11.2026 im Arbeitsbaum (Zeilen und Dateien gezählt, nicht
+Gemessen am 17.11.2026 im Arbeitsbaum (Zeilen und Dateien gezählt, nicht
 geschätzt):
 
 | Baustein | Stand | Umfang |
 | --- | --- | --- |
 | `core/src/transport.rs` | Transport-Trait, `CanFrame`, `Capabilities`, Fehlerarten — die einzige Stelle, die Hardware kennt | 100 Zeilen |
-| `core/src/isotp.rs` | ISO 15765-2: Single/First/Consecutive/FlowControl, Blockgröße, `STmin`, Padding, Fristen | 368 Zeilen |
+| `core/src/isotp.rs` | ISO 15765-2: Single/First/Consecutive/FlowControl, Blockgröße, `STmin`, Padding, Fristen | 445 Zeilen |
 | `core/src/loopback.rs` | Transport im Speicher, damit alles ohne Gerät prüfbar ist | 66 Zeilen |
-| `core/src/sfd.rs` | UDS-**Teilmenge** für SFD: `22 01 74`, `10 03`, `31 01 C0 04/08/09`, NRC-Klartext, 0x78-Aufschub, Token-Hex | 1014 Zeilen |
+| `core/src/uds.rs` | allgemeiner Client: `10` (auch `10 03`), `22`, `19`; NRC-Klartext, 0x78-Kette, `runde()` als gemeinsamer Pfad | 914 Zeilen |
+| `core/src/sfd.rs` | VAG-SFD über UDS: `22 01 74`, `10 03`, `31 01 C0 04/08/09`, NRC-Klartext, 0x78-Aufschub, Token-Hex | 1115 Zeilen |
+| `core/src/content.rs` | Funktionsdefinitionen aus YAML lesen und prüfen, Schema, Fehler mit Datei und Zeile | 680 Zeilen |
+| `core/src/function.rs` | Vorbedingungen, Schritte, Recovery, `VehicleMatch`, `Kontext` | 896 Zeilen |
+| `core/src/audit.rs` | SHA-256-Hash-Kette über jede Operation, JSON-Export | 584 Zeilen |
+| `content/` | `schema/funktion.schema.json` und fünf Funktionen in `funktionen/` | 6 Dateien |
+| `core/fuzz/` | zwei Fuzz-Ziele: ISO-TP (Empfangs- und Sendeweg) und UDS-Parser | 2 Ziele |
 | `core/tests/corpus.rs` + `corpus/` | Konformitätskorpus gegen die C-Implementierung | 4 Tests |
 | `core-ffi/src/lib.rs` | UniFFI-Grenze: `CanTransport`, `IsoTp`, `Sfd`, `LoopbackTransport`, `SfdStatusFfi` | 648 Zeilen |
 | `core-ffi/src/bin/uniffi_bindgen.rs` | Bindings erzeugen (Kotlin, Swift) | — |
@@ -35,14 +41,24 @@ geschätzt):
 | `model/` | Wirtschaftlichkeitsmodell (Python) | — |
 | `docs/` | 14 Planungs- und Prüfdokumente | — |
 
-**Was fehlt** (und was M1 gerade deshalb groß macht): `core/src/uds.rs`,
-`core/src/j1979.rs`, `core/src/function.rs`, `core/src/audit.rs`, `content/`
-(YAML-Schema, Validator, Funktionsdefinitionen), `tools/`, `app-ios/`, Backend.
-`core/src/lib.rs` führt `uds`, `function` und `audit` bereits als „folgt“ — die
-Reihenfolge dort ist die Abhängigkeitsreihenfolge, nicht eine Wunschliste.
+**Was fehlt** (und was M1 gerade deshalb groß macht): `core/src/j1979.rs`,
+`core/src/fahrzeug.rs` (die Entscheidung „welches Fahrzeug ist das“, nicht das
+Lesen der VIN), `tools/`, `app-ios/`, Backend.
 
-Ebenfalls fehlt: eine **Fahrzeugidentifikation**. `22 F190` wird heute nur als
-Dienst im SFD-Zusammenhang gelesen, nicht als VIN ausgewertet.
+Am 16.11.2026 standen hier noch `uds.rs`, `function.rs`, `audit.rs` und
+`content/` als fehlend. Das ist überholt; nachgezogen am 17.11.2026: `uds.rs`
+(914 Zeilen, allgemeiner Client mit `runde()`, Session, DID, DTC, NRC und
+0x78-Kette), `function.rs` (896), `content.rs` (680, Schema und Validator),
+`audit.rs` (584, Hash-Kette) sowie `content/schema/funktion.schema.json` mit
+fünf Funktionen in `content/funktionen/`. `core/src/lib.rs` führt sie als
+`pub mod`, nicht mehr als „folgt“ — die Reihenfolge dort ist die
+Abhängigkeitsreihenfolge, nicht eine Wunschliste.
+
+Ebenfalls offen: eine **Fahrzeugidentifikation**. Die VIN lässt sich lesen
+(`22 F190` über `uds::UdsClient::read_did`, mit Test für die 20-Byte-Antwort),
+und `VehicleMatch` prüft ein `vin_praefix` — was fehlt, ist die Stelle, die aus
+einer Verbindung ein Fahrzeug macht (Kennungen, HSN/TSN, im Zweifel „unbekannt“
+statt geraten).
 
 ## A.2 Was belegt ist
 
@@ -56,6 +72,7 @@ Alles hier ist am 16.11.2026 in dieser VM gelaufen, nicht abgeleitet:
 | App ohne Gerät | `JAVA_HOME=/tmp/jdk sh scripts/jvm-tests.sh` | `OK (174 tests)` |
 | Android-Build | `./android/gradlew -p android :app:assembleDebug` | `BUILD SUCCESSFUL` |
 | Zahlen gegen Jobnamen | `sh scripts/zahlen-pruefen.sh` | alle fünf gleich, Exit 0 |
+| Fuzzing (neu am 17.11.2026) | `sh scripts/fuzz.sh` | 604 s, 33,5 Mio. + 55,6 Mio. Läufe, kein Absturz |
 
 ## A.3 Was ausdrücklich **nicht** belegt ist
 
@@ -84,9 +101,11 @@ Alles hier ist am 16.11.2026 in dieser VM gelaufen, nicht abgeleitet:
    und `can_recv` **verwirft** jede Antwort mit anderer Kennung (`:257`). Die App
    benutzt diesen Pfad nicht (sie lädt nur `libvci_ffi.so`) — für M1 wird er aber
    relevant, sobald mehrere Steuergeräte über Passthru angesprochen werden.
-3. **Kein allgemeiner UDS-Client.** `sfd.rs` kann SFD und sonst nichts. M1
-   braucht `0x10/0x11/0x14/0x19/0x22/0x27/0x2E/0x31/0x3E` — heute ist das eine
-   Teilmenge davon, direkt im SFD-Modul.
+3. **Der UDS-Client ist da, aber schmal.** `sfd.rs` läuft seit dem 17.11.2026
+   über [`crate::uds::UdsClient::runde`] und `uds::parse_sitzung` — einen
+   zweiten NRC- und 0x78-Pfad gibt es nicht mehr. `uds.rs` kennt heute `0x10`
+   (inklusive `10 03`), `0x22` und `0x19`; aus M1 fehlen `0x11`, `0x14`, `0x27`,
+   `0x2E`, `0x31` und `0x3E` (TesterPresent).
 4. ~~**`docs/android-app-modul.md` nennt 119 `@Test`**~~ — nachgezogen: 174 in
    neunzehn Dateien (SFD, Funktions-Runtime und Audit-Kette kamen dazu).
 5. **`docs/geraetepruefung.md` Abschnitt 10 (SFD)** ist geschrieben und nie
@@ -285,8 +304,8 @@ merkt.
 2. HIL-Test gegen ein echtes Steuergerät dokumentiert — **hier nicht erfüllbar**.
 3. Fehlerpfade getestet: Timeout, NRC, Busabbruch, Stromausfall mitten im
    Schreiben — **teilweise hier** (alles außer echtem Stromausfall).
-4. Fuzzing ≥ 10 Minuten ohne Absturz — **hier erfüllbar** (`cargo-fuzz`,
-   nachts; die CI führt es derzeit nicht aus).
+4. Fuzzing ≥ 10 Minuten ohne Absturz — **erledigt am 17.11.2026**: `sh
+   scripts/fuzz.sh`, 604 s, kein Absturz ([ci.md](ci.md)).
 5. Öffentliche API dokumentiert, keine `unwrap()` auf fremden Daten — **hier
    erfüllbar**.
 6. Audit-Eintrag vorhanden und exportierbar — **hier erfüllbar** (P5).
