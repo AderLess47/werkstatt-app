@@ -2,13 +2,21 @@
 # Pre-Push: keine Übertragung ohne grüne Tests — aber auch keine Tests, die
 # nichts prüfen können.
 #
-# Drei Läufe stehen zur Verfügung, alle aus dem Repository, nicht aus der CI:
+# Zwei Läufe stehen zur Verfügung, beide aus dem Repository, nicht aus der CI:
 #
-#   scripts/kern-tests.sh   C-Kern, Korpus, Rust-Kern, FFI
-#   scripts/jvm-tests.sh    die JVM-Tests der App
+#   scripts/ci-lokal.sh     die Jobs aus .github/workflows/ci.yml
+#                           (`c`, `rust`, `clippy`, `fmt`, `jvm-tests`)
 #   scripts/fuzz.sh         Rauchlauf der Fuzz-Ziele (ISO-TP, UDS)
 #
-# Welche davon laufen, entscheiden die Dateien, die tatsächlich gepusht werden:
+# Warum der CI-Lauf und nicht mehr die einzelnen Skripte: der Workflow startet in
+# diesem Repository nicht (kein Runner, siehe docs/ci.md). Wenn der Hook etwas
+# anderes prüft als der Workflow, prüft er am Ende etwas anderes, als in der
+# Ankündigung steht — also ruft er dieselben Jobs mit denselben Befehlen auf,
+# nur eben hier. `scripts/kern-tests.sh` und `scripts/jvm-tests.sh` bleiben als
+# einzelne Einstiegspunkte für die Hand bestehen; der Hook braucht sie nicht
+# mehr, weil `c` und `rust` bzw. `jvm-tests` dasselbe abdecken.
+#
+# Welche Jobs laufen, entscheiden die Dateien, die tatsächlich gepusht werden:
 # eine Doku-Korrektur startet keine Cargo- oder JVM-Tests, eine Änderung an
 # `j2534/` keine JVM-Tests. Unbekannte Pfade lassen alle laufen — im Zweifel
 # wird geprüft, nicht geraten.
@@ -20,14 +28,10 @@
 # optionalen Werkzeug scheitern zu lassen. Ausgelassen heißt hier nicht grün:
 # die Zeile steht da.
 #
-# Die Formatprüfung fährt kein Skript, sondern `rustfmt --check` — und zwar nur
-# für die Rust-Dateien, die dieser Push anfasst, nicht für das ganze Crate. Das
-# Crate ist überwiegend von Hand formatiert; ein Lauf über alles würde jeden
-# Push blockieren, bis der Reformat übertragen ist (docs/ci.md). So gilt die
-# Regel, die durchsetzbar ist: wer eine Datei ändert, liefert sie formatiert ab.
-#
-# Fehlt `rustfmt` — oder nur seine rustup-Komponente —, sagt der Hook das und
-# lässt den Schritt aus. Ein Werkzeugausfall ist kein Formatbefund.
+# Dasselbe gilt für `cargo fmt`: fehlt die rustfmt-Komponente, wird der
+# `fmt`-Job ausgelassen und benannt. Ein Werkzeugausfall ist kein Formatbefund —
+# und eine Prüfung, die jede Datei als unformatiert meldet, wäre schlimmer als
+# keine.
 #
 # Trockenlauf, ohne zu pushen und ohne zu testen:
 #
@@ -56,23 +60,21 @@ if [ "${1:-}" = "--probe" ]; then
     basis=${1:-}
 fi
 
-zuruecksetzen() { rm -f "$dateien" "$rustdateien"; }
+zuruecksetzen() { rm -f "$dateien"; }
 dateien=$(mktemp)
-rustdateien=$(mktemp)
 trap 'zuruecksetzen' EXIT INT TERM
 
-# Ob `rustfmt` wirklich läuft, steht hier oben und nicht erst bei der Prüfung:
-# auch der Trockenlauf soll sagen, ob die Formatprüfung laufen würde.
+# Ob `cargo fmt` wirklich läuft, steht hier oben und nicht erst beim Job: auch
+# der Trockenlauf soll sagen, ob der `fmt`-Job laufen würde.
 #
 # Geprüft wird mit einem echten Aufruf, nicht mit `command -v`: rustup legt seine
 # Proxy-Binaries in ~/.cargo/bin unabhängig von den installierten Komponenten ab.
-# Fehlt die Komponente, findet `command -v` den Proxy trotzdem, und `rustfmt
-# --check` endet für jede Datei mit einem Fehler — die Prüfung würde dann eine
-# formatierte Datei als „nicht formatiert“ melden und die falsche Reparatur
-# empfehlen. `rustfmt --version` unterscheidet die beiden Fälle.
-rustfmt_bereit() {
-    command -v rustfmt > /dev/null || return 1
-    rustfmt --version > /dev/null 2>&1
+# Fehlt die Komponente, findet `command -v` den Proxy trotzdem, und `cargo fmt`
+# endet mit einem Fehler — der Job würde dann „rot“ melden, obwohl nichts über
+# die Formatierung gesagt ist.
+fmt_bereit() {
+    command -v cargo > /dev/null || return 1
+    cargo fmt --version > /dev/null 2>&1
 }
 
 # Dasselbe für den Fuzz-Rauchlauf: cargo-fuzz und nightly gehören nicht zur
@@ -158,60 +160,86 @@ fi
 kern=0
 jvm=0
 fuzz=0
-doku=0
+alle=0
 while read -r f; do
     case "$f" in
         '') continue ;;
         '*')
+            alle=1
             kern=1
             jvm=1
             fuzz=1
             ;;
-        docs/* | *.md | artifacts/* | model/*) doku=1 ;;
+        docs/* | *.md | artifacts/* | model/*) ;;
         core/src/isotp.rs | core/src/uds.rs) kern=1; fuzz=1 ;;
         core/fuzz/*) fuzz=1 ;;
         core/* | core-ffi/* | j2534/*) kern=1 ;;
         android/*) jvm=1 ;;
-        scripts/kern-tests.sh) kern=1 ;;
+        scripts/kern-tests.sh | scripts/ci-lokal.sh) kern=1 ;;
         scripts/jvm-tests.sh) jvm=1 ;;
-        *) kern=1; jvm=1 ;;
+        *)
+            alle=1
+            kern=1
+            jvm=1
+            ;;
     esac
 done < "$dateien"
 
 anzahl=$(sort -u "$dateien" | wc -l | tr -d ' ')
 
-# Welche Rust-Dateien dieser Push anfasst — Grundlage der Formatprüfung. Der
-# Stern steht für „Dateiliste unbekannt“ (neuer Branch, Force-Push); dann lässt
-# sich keine Datei benennen, und die Prüfung sagt das, statt zu raten.
-rustliste_unbekannt=0
-: > "$rustdateien"
-while read -r f; do
-    case "$f" in
-        '') continue ;;
-        '*') rustliste_unbekannt=1 ;;
-        *.rs) [ -f "$f" ] && echo "$f" >> "$rustdateien" ;;
-    esac
-done < "$dateien"
+# Welche Jobs des CI-Laufs dieser Push braucht. `c`, `rust`, `clippy` und `fmt`
+# gehören zum Rust- und C-Kern; `jvm-tests` zur App. Bei unbekannter Dateiliste
+# laufen alle fünf — genau wie in der CI, wo kein Job vom anderen abhängt.
+ci_jobs=""
+if [ "$alle" -eq 1 ]; then
+    ci_jobs="c rust clippy fmt jvm-tests"
+else
+    if [ "$kern" -eq 1 ]; then
+        ci_jobs="c rust clippy fmt"
+    fi
+    if [ "$jvm" -eq 1 ]; then
+        ci_jobs="$ci_jobs jvm-tests"
+    fi
+fi
+
+# Der `fmt`-Job hängt an der rustfmt-Komponente. Fehlt sie, wird er ausgelassen
+# und benannt — nicht als rot gemeldet, denn über die Formatierung sagt das
+# nichts.
+fmt_ausgelassen=""
+if [ -n "$ci_jobs" ]; then
+    if ! fmt_bereit; then
+        rest=""
+        for job in $ci_jobs; do
+            if [ "$job" != "fmt" ]; then
+                rest="$rest $job"
+            fi
+        done
+        ci_jobs=${rest# }
+        fmt_ausgelassen="cargo fmt fehlt: rustup component add rustfmt"
+    fi
+fi
 
 if [ "$modus" = "probe" ]; then
     if [ -n "$basis" ]; then
         echo "Geänderte Dateien:" >&2
         sort -u "$dateien" | sed 's/^/  /' >&2
     fi
-    if [ "$kern" -eq 0 ] && [ "$jvm" -eq 0 ] && [ "$fuzz" -eq 0 ] && [ ! -s "$rustdateien" ]; then
+    if [ -z "$ci_jobs" ] && [ "$fuzz" -eq 0 ]; then
         if [ "$anzahl" -eq 0 ]; then
             echo "Auswahl: nichts — keine Änderungen gegenüber $basis." >&2
+        elif [ -n "$fmt_ausgelassen" ]; then
+            echo "Auswahl: nichts außer der Formatprüfung, die ausfiele — $fmt_ausgelassen." >&2
         else
             echo "Auswahl: nichts — nur Doku, ein Push würde keine Tests starten." >&2
         fi
         exit 0
     fi
     echo "Auswahl:" >&2
-    if [ "$kern" -eq 1 ]; then
-        echo "  scripts/kern-tests.sh  (C-Kern, Korpus, Rust-Kern, FFI-Schicht)" >&2
+    if [ -n "$ci_jobs" ]; then
+        echo "  scripts/ci-lokal.sh    ($ci_jobs)" >&2
     fi
-    if [ "$jvm" -eq 1 ]; then
-        echo "  scripts/jvm-tests.sh   (die JVM-Tests der App)" >&2
+    if [ -n "$fmt_ausgelassen" ]; then
+        echo "  fmt                    (würde ausgelassen — $fmt_ausgelassen)" >&2
     fi
     if [ "$fuzz" -eq 1 ]; then
         if fuzz_bereit; then
@@ -220,23 +248,17 @@ if [ "$modus" = "probe" ]; then
             echo "  scripts/fuzz.sh        (würde ausgelassen — $fuzz_grund)" >&2
         fi
     fi
-    if [ -s "$rustdateien" ]; then
-        if rustfmt_bereit; then
-            echo "  rustfmt --check        (nur die geänderten Rust-Dateien: $(sort -u "$rustdateien" | wc -l | tr -d ' '))" >&2
-        else
-            echo "  rustfmt --check        (würde ausgelassen — rustfmt fehlt: rustup component add rustfmt)" >&2
-        fi
-    elif [ "$rustliste_unbekannt" -eq 1 ]; then
-        echo "  rustfmt --check        (würde ausgelassen — Dateiliste unbekannt)" >&2
-    fi
     exit 0
 fi
 
-if [ "$kern" -eq 0 ] && [ "$jvm" -eq 0 ] && [ "$fuzz" -eq 0 ] && [ ! -s "$rustdateien" ]; then
+if [ -z "$ci_jobs" ] && [ "$fuzz" -eq 0 ]; then
     if [ "$anzahl" -eq 0 ]; then
         echo "pre-push: nichts zu übertragen — keine Tests nötig." >&2
     else
         echo "pre-push: nur Doku geändert ($anzahl Dateien) — keine Tests nötig." >&2
+    fi
+    if [ -n "$fmt_ausgelassen" ]; then
+        echo "pre-push: Formatprüfung übersprungen — $fmt_ausgelassen." >&2
     fi
     exit 0
 fi
@@ -244,49 +266,18 @@ fi
 fehlgeschlagen=0
 gesamt_start=$(date +%s)
 
-# Format zuerst: sie dauert Millisekunden, und wer ohnehin formatieren muss, soll
-# das vor den Tests erfahren. Fehlende `rustfmt` lassen den Schritt sichtbar aus
-# — wie beim Fuzz-Werkzeug, statt einen Push an einem Komponenten-Fehler zu
-# beenden. Ob das Werkzeug läuft, sagt `rustfmt_bereit` (oben, weil auch der
-# Trockenlauf davon abhängt).
-format_pruefen() {
-    if ! rustfmt_bereit; then
-        echo "pre-push: Formatprüfung übersprungen — rustfmt fehlt: rustup component add rustfmt." >&2
-        return 0
-    fi
-
-    unformatiert=""
-    while read -r f; do
-        rustfmt --check --edition 2021 "$f" > /dev/null 2>&1 || unformatiert="$unformatiert $f"
-    done < "$rustdateien"
-
-    if [ -n "$unformatiert" ]; then
-        fehlgeschlagen=1
-        echo "pre-push: Format rot — diese Dateien sind nicht rustfmt-sauber:" >&2
-        for f in $unformatiert; do
-            echo "    $f" >&2
-        done
-        echo "pre-push: beheben mit  rustfmt --edition 2021 <datei>" >&2
-    else
-        echo "pre-push: Format grün ($(sort -u "$rustdateien" | wc -l | tr -d ' ') Rust-Datei(en) geprüft)." >&2
-    fi
-
-    if [ "$rustliste_unbekannt" -eq 1 ]; then
-        echo "pre-push: Vergleichsbasis unbekannt — geprüft wurden nur die benannten Dateien." >&2
-    fi
-}
-
 # Alle Läufe werden gefahren, auch wenn der erste rot ist: wer ohnehin nicht
 # pushen kann, soll alle Befunde auf einmal sehen. Die Ausgabe kommt gesammelt,
 # weil ein Fehlschlag mitten in einer Fortschrittszeile sonst unlesbar ist.
-pruefe() { # <Titel> <Skript>
+pruefe() { # <Titel> <Skript> [Argumente …]
     titel=$1
     skript=$2
+    shift 2
     log=$(mktemp)
     start=$(date +%s)
 
     echo "pre-push: $titel läuft …" >&2
-    if sh "$skript" > "$log" 2>&1; then
+    if sh "$skript" "$@" > "$log" 2>&1; then
         echo "pre-push: $titel grün ($(( $(date +%s) - start )) s)." >&2
         rm -f "$log"
         return 0
@@ -301,24 +292,13 @@ pruefe() { # <Titel> <Skript>
     return 0
 }
 
-# Fehlt das Fuzz-Werkzeug, wird der Schritt ausgelassen und benannt. Ohne diese
-# Prüfung würde `scripts/fuzz.sh` mit Exit 1 enden und den Push blockieren — für
-# ein Werkzeug, das nicht jeder Arbeitsplatz hat. Ob es laufen kann, sagt
-# `fuzz_bereit` (oben, weil auch der Trockenlauf davon abhängt).
-
-if [ -s "$rustdateien" ]; then
-    format_pruefen
-elif [ "$rustliste_unbekannt" -eq 1 ]; then
-    echo "pre-push: Formatprüfung übersprungen — geänderte Dateien unbekannt (neuer Branch oder Force-Push)." >&2
-fi
-
 # Bewusst kein `[ … ] && pruefe …`: unter `set -e` beendet die fehlgeschlagene
 # Bedingung das Skript, statt die Prüfung zu überspringen.
-if [ "$kern" -eq 1 ]; then
-    pruefe "Rust- und C-Kern" scripts/kern-tests.sh
+if [ -n "$fmt_ausgelassen" ]; then
+    echo "pre-push: Formatprüfung übersprungen — $fmt_ausgelassen." >&2
 fi
-if [ "$jvm" -eq 1 ]; then
-    pruefe "JVM-Tests der App" scripts/jvm-tests.sh
+if [ -n "$ci_jobs" ]; then
+    pruefe "lokaler CI-Lauf ($ci_jobs)" scripts/ci-lokal.sh $ci_jobs
 fi
 
 # Kurz, weil er bei jedem Push auf Parser-Code mitläuft: 20 s je Ziel zeigen,
@@ -336,7 +316,7 @@ fi
 
 if [ "$fehlgeschlagen" -ne 0 ]; then
     echo "pre-push: Prüfung rot — Push abgebrochen, nichts wurde übertragen." >&2
-    echo "Ganze Ausgabe: sh scripts/kern-tests.sh, sh scripts/jvm-tests.sh bzw. sh scripts/fuzz.sh" >&2
+    echo "Ganze Ausgabe: sh scripts/ci-lokal.sh, sh scripts/fuzz.sh" >&2
     exit 1
 fi
 

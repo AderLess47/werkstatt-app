@@ -2,12 +2,17 @@
 # Lokaler Ersatz für die CI — dieselben fünf Jobs, die auf einem Runner laufen
 # könnten: `c`, `rust`, `clippy`, `fmt`, `jvm-tests`.
 #
-#     sh scripts/ci-lokal.sh
+#     sh scripts/ci-lokal.sh                  # alle fünf
+#     sh scripts/ci-lokal.sh fmt clippy       # nur diese beiden
 #
 # Warum es das gibt: in diesem Repository startet seit 147 Läufen kein Runner
 # mehr (`runner_id: 0`, `steps: []`, Abrechnungssperre, siehe docs/ci.md). Ein
 # Workflow, der nie läuft, prüft nichts — dieses Skript fährt dieselben Befehle
 # auf dieser Maschine und schreibt auf, was dabei herauskam.
+#
+# Die Job-Namen lassen sich einzeln nennen; der Pre-Push-Hook nutzt das, damit
+# ein Push nur die Prüfungen startet, die zu den geänderten Dateien passen.
+# Ohne Argumente laufen alle fünf.
 #
 # Nicht enthalten sind `android` (braucht Android SDK und NDK, hier nicht
 # vorhanden) und `bindings` (erzeugt Kotlin- und Swift-Bindings als Artefakt;
@@ -34,9 +39,9 @@
 # Übersicht. Ablage ist `dist/ci-lokal/<Zeitstempel>/` (`dist/` ist ignoriert);
 # mit `CI_LOKAL_PROTOKOLL` lässt sich der Pfad vorgeben.
 #
-# Exit 0 nur, wenn alle fünf Jobs grün sind. Ein Job, der mangels Werkzeug nicht
-# laufen konnte, zählt nicht als grün: er steht als „nicht gelaufen“ in der
-# Übersicht und das Skript endet mit 1.
+# Exit 0 nur, wenn alle gewählten Jobs grün sind. Ein Job, der mangels Werkzeug
+# nicht laufen konnte, zählt nicht als grün: er steht als „nicht gelaufen“ in
+# der Übersicht und das Skript endet mit 1.
 #
 # Voraussetzungen: `cargo` mit `rustfmt` und `clippy`, `make`, ein C-Compiler,
 # ein JDK (`JAVA_HOME` oder `java` im PATH) für die JVM-Tests.
@@ -44,6 +49,32 @@
 set -u
 
 cd "$(dirname "$0")/.."
+
+alle_jobs="c rust clippy fmt jvm-tests"
+
+if [ "$#" -eq 0 ]; then
+    auswahl=$alle_jobs
+else
+    auswahl=$*
+    for job in $auswahl; do
+        case "$job" in
+            c | rust | clippy | fmt | jvm-tests) ;;
+            *)
+                echo "FEHLER: unbekannter Job „$job“ — erlaubt: $alle_jobs" >&2
+                exit 2
+                ;;
+        esac
+    done
+fi
+
+gewaehlt() { # <job>
+    for job in $auswahl; do
+        if [ "$job" = "$1" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
 
 zeitstempel=$(date -u +%Y%m%dT%H%M%SZ)
 protokoll=${CI_LOKAL_PROTOKOLL:-dist/ci-lokal/$zeitstempel}
@@ -84,7 +115,7 @@ ueberspringe() { # <job> <grund>
     log=$protokoll/$job.log
     printf '%s\n' "$grund" > "$log"
     printf '  %-10s nicht gelaufen — %s\n' "$job" "$grund"
-    printf '%-10s %-14s %4s s\n' "$job" "nicht gelaufen" "—" >> "$uebersicht"
+    printf '%-10s %-14s %4s\n' "$job" "nicht gelaufen" "—" >> "$uebersicht"
     nicht_gelaufen=$((nicht_gelaufen + 1))
 }
 
@@ -185,24 +216,34 @@ job_jvm() {
 }
 
 # --- Ablauf ----------------------------------------------------------------
-echo "Lokaler CI-Ersatz — Jobs c, rust, clippy, fmt, jvm-tests"
+echo "Lokaler CI-Ersatz — Jobs: $auswahl"
 echo "Ausgaben: $protokoll"
 echo "Nicht enthalten: android (SDK/NDK fehlt), bindings (Artefakt-Upload)"
 echo
 
-fahre c job_c
-fahre rust job_rust
-fahre clippy job_clippy
-fahre fmt job_fmt
+if gewaehlt c; then
+    fahre c job_c
+fi
+if gewaehlt rust; then
+    fahre rust job_rust
+fi
+if gewaehlt clippy; then
+    fahre clippy job_clippy
+fi
+if gewaehlt fmt; then
+    fahre fmt job_fmt
+fi
 
 # Der JVM-Job braucht ein JDK. Fehlt es, ist das kein grüner Lauf: die 174 Tests
 # sind dann nicht gefahren worden, und die Übersicht soll das sagen.
-if [ -z "${JAVA_HOME:-}" ] && ! command -v java > /dev/null; then
-    ueberspringe jvm-tests "kein JDK (JAVA_HOME leer, java nicht im PATH)"
-elif [ -n "${JAVA_HOME:-}" ] && [ ! -x "$JAVA_HOME/bin/java" ]; then
-    ueberspringe jvm-tests "JAVA_HOME zeigt auf kein JDK: $JAVA_HOME/bin/java fehlt"
-else
-    fahre jvm-tests job_jvm
+if gewaehlt jvm-tests; then
+    if [ -z "${JAVA_HOME:-}" ] && ! command -v java > /dev/null; then
+        ueberspringe jvm-tests "kein JDK (JAVA_HOME leer, java nicht im PATH)"
+    elif [ -n "${JAVA_HOME:-}" ] && [ ! -x "$JAVA_HOME/bin/java" ]; then
+        ueberspringe jvm-tests "JAVA_HOME zeigt auf kein JDK: $JAVA_HOME/bin/java fehlt"
+    else
+        fahre jvm-tests job_jvm
+    fi
 fi
 
 echo
@@ -217,4 +258,4 @@ if [ "$rot" -ne 0 ] || [ "$nicht_gelaufen" -ne 0 ]; then
 fi
 
 echo
-echo "Alle fünf Jobs grün."
+echo "Alle gewählten Jobs grün."

@@ -20,15 +20,26 @@ ab, wenn eine rot ist:
 | geänderte Pfade | was läuft |
 | --- | --- |
 | `docs/`, `*.md`, `artifacts/`, `model/` | nichts — „nur Doku geändert“ |
-| `core/`, `core-ffi/`, `j2534/`, `scripts/kern-tests.sh` | `scripts/kern-tests.sh` |
-| `android/`, `scripts/jvm-tests.sh` | `scripts/jvm-tests.sh` |
-| `core/src/isotp.rs`, `core/src/uds.rs`, `core/fuzz/` | `scripts/kern-tests.sh` und `scripts/fuzz.sh` (Rauchlauf) |
-| jede `*.rs` in der Dateiliste | zusätzlich `rustfmt --check` für genau diese Dateien |
-| alles andere: Workflows, `.githooks/`, andere Skripte | alle |
-| neuer Branch oder unbekannte Vergleichsbasis | alle |
+| `core/`, `core-ffi/`, `j2534/`, `scripts/kern-tests.sh`, `scripts/ci-lokal.sh` | Jobs `c`, `rust`, `clippy`, `fmt` |
+| `android/`, `scripts/jvm-tests.sh` | Job `jvm-tests` |
+| `core/src/isotp.rs`, `core/src/uds.rs`, `core/fuzz/` | Jobs `c`, `rust`, `clippy`, `fmt` und `scripts/fuzz.sh` (Rauchlauf) |
+| alles andere: Workflows, `.githooks/`, andere Skripte | alle fünf Jobs |
+| neuer Branch oder unbekannte Vergleichsbasis | alle fünf Jobs |
 
-`scripts/kern-tests.sh` prüft C-Kern (165 Prüfungen), Korpus-Aktualität,
-Rust-Kern und FFI-Schicht; `scripts/jvm-tests.sh` die 174 JVM-Tests der App.
+Die Jobs sind dieselben wie in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml):
+`c` (C-Kern, 165 Prüfungen, und Korpus-Aktualität), `rust` (163 Tests im Kern,
+4 Korpus-Tests, 15 in der FFI-Schicht), `clippy` (`--all-targets`,
+`-D warnings`), `fmt` (`cargo fmt --check`) und `jvm-tests` (174 Tests der App).
+Gefahren werden sie von `scripts/ci-lokal.sh`, das auch einzeln aufrufbar ist:
+
+```
+sh scripts/ci-lokal.sh        # alle fünf
+sh scripts/ci-lokal.sh fmt    # nur die Formatprüfung
+```
+
+Der Hook ruft dieses Skript statt der einzelnen Skripte, weil der Workflow in
+diesem Repository nicht startet (kein Runner, [docs/ci.md](../docs/ci.md)) — was
+der Hook prüft, soll dasselbe sein, was in der CI angekündigt ist.
 
 Der Fuzz-Rauchlauf ist der kurze Bruder des Zehn-Minuten-Laufs aus der Definition
 of Done: 20 Sekunden je Ziel, und nur, wenn Parser-Code angefasst wurde. Er
@@ -38,29 +49,25 @@ Die Länge stellt `VCI_FUZZ_SEKUNDEN` ein.
 
 ## Formatprüfung
 
-`rustfmt --check` läuft für die **Rust-Dateien, die der Push anfasst** — nicht für
-das ganze Crate. Grund: das Crate ist überwiegend von Hand formatiert, und ein
-Lauf über alles würde jeden Push blockieren, bis der Reformat übertragen ist
-(acht Dateien, rund 184 KB, siehe [docs/ci.md](../docs/ci.md)). Durchsetzbar ist
-dagegen die Regel: wer eine Datei ändert, liefert sie formatiert ab.
+Der Job `fmt` prüft das **ganze** Crate: `cargo fmt --check` für `core`,
+`core-ffi` und `core/fuzz` — derselbe Befehl wie im Workflow. Bis zum 17.11.2026
+ging das nicht: das Crate war von Hand formatiert, und ein Lauf über alles hätte
+jeden Push blockiert, bis der Reformat übertragen war (acht Dateien, rund
+184 KB, siehe [docs/ci.md](../docs/ci.md)). Seit er übertragen ist, gilt die
+strenge Regel: was gepusht wird, ist überall rustfmt-sauber.
 
-Geprüft wird jede Datei einzeln mit `rustfmt --check --edition 2021 <datei>`.
-Ist eine davon nicht sauber, nennt der Hook sie und bricht den Push ab. Beheben:
+Beheben:
 
 ```
-rustfmt --edition 2021 core/src/isotp.rs
+cargo fmt --manifest-path core/Cargo.toml
 ```
 
-`rustfmt` gehört zu den Rust-Komponenten. Fehlt es, sagt der Hook das und lässt
-den Schritt aus — sichtbar, wie beim Fuzz-Rauchlauf. Dasselbe gilt, wenn nur die
-Komponente fehlt: rustup legt seine Proxy-Binaries unabhängig davon in
-`~/.cargo/bin` ab, deshalb prüft der Hook mit `rustfmt --version` statt mit
-`command -v` und meldet „übersprungen“ — und nicht eine formatierte Datei als
-ungeformatiert, mit einer Reparaturanleitung, die selbst scheitert. Bei
-unbekannter Vergleichsbasis (neuer Branch, Force-Push) gibt es keine Dateiliste;
-dann wird auch die Formatprüfung ausgelassen, und der Hook schreibt es hin.
-Fehlt `rustfmt` oder das Fuzz-Werkzeug, nennt auch der Trockenlauf den Schritt als
-ausgelassen statt ihn anzukündigen.
+`cargo fmt` braucht die rustfmt-Komponente. Fehlt sie, lässt der Hook den Job aus
+und sagt es — sichtbar, wie beim Fuzz-Rauchlauf; ein Werkzeugausfall ist kein
+Formatbefund. Geprüft wird mit `cargo fmt --version`, nicht mit `command -v`:
+rustup legt seine Proxy-Binaries unabhängig von den installierten Komponenten in
+`~/.cargo/bin` ab, ein Proxy allein sagt also nichts. Fehlt das Werkzeug, nennt
+auch der Trockenlauf den Job als ausgelassen statt ihn anzukündigen.
 
 Die Einordnung ist bewusst grob: ein Pfad, den die Tabelle nicht kennt, lässt
 alle Läufe starten. Im Zweifel wird geprüft, nicht geraten. Alle Läufe werden
@@ -121,3 +128,7 @@ Der Hook ersetzt **nicht** die CI. Er prüft nur, was auf der Kommandozeile
 prüfbar ist — kein Android-SDK, kein Gerät, keine APK. `:app:assembleDebug` und
 der Start auf einem Tablet bleiben Sache des CI-Jobs `android` bzw. von
 [docs/geraetepruefung.md](../docs/geraetepruefung.md).
+
+Auch `scripts/ci-lokal.sh` ist kein Runner: es prüft den Arbeitsbaum statt eines
+frischen Klons, mit den Werkzeugen dieser Maschine. Was der Lauf belegt und was
+nicht, steht in [docs/ci.md](../docs/ci.md) unter „Lokaler Ersatz“.
