@@ -27,7 +27,7 @@ ab, wenn eine rot ist:
 | neuer Branch oder unbekannte Vergleichsbasis | alle fünf Jobs |
 
 Die Jobs sind dieselben wie in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml):
-der Hook prüft C-Kern (165 Prüfungen) samt Korpus-Aktualität, 184 Tests im
+der Hook prüft C-Kern (165 Prüfungen) samt Korpus-Aktualität, 200 Tests im
 Rust-Kern, 4 Korpus-Tests und 15 in der FFI-Schicht, dazu `clippy`
 (`--all-targets`, `-D warnings`), `fmt` (`cargo fmt --check`)
 und die 174 JVM-Tests der App. Gefahren werden sie von `scripts/ci-lokal.sh`,
