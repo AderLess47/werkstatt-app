@@ -139,7 +139,7 @@ Ein Modul gilt als fertig, wenn **alle** Punkte erfüllt sind:
 Build-Matrix | Rust für `aarch64-linux-android` und `aarch64-apple-ios` (`x86_64-pc-windows-msvc` erst für einen Desktop-Worker); C für Windows (MSVC) und Linux (gcc) — die DLL bleibt C, siehe [ADR-001](adr-001-kernsprache.md) |
 Kern-Jobs | `cargo test` (224 Tests), `cargo clippy --all-targets -- -D warnings` und `cargo fmt --check` für Kern, FFI und Fuzz laufen je als eigener Job; der Reformat der acht handformatierten Dateien ist übertragen und jede gegen `git hash-object` geprüft ([ci.md](ci.md)); `cargo deny` (Lizenzen, CVEs) fehlt ganz |
 C-Jobs | `gcc -Wall -Wextra -Wpedantic`, Exportliste gegen `win/j2534.def` prüfen (wie lokal: 16 Symbole) |
-Fuzzing | `sh scripts/fuzz.sh` — `cargo-fuzz` und nightly, zwei Ziele (ISO-TP, UDS), 300 s je Ziel wie in §6.4; ein CI-Job dafür fehlt, solange die Jobs nicht starten ([ci.md](ci.md)) |
+Fuzzing | `sh scripts/fuzz.sh` — `cargo-fuzz` und nightly, zwei Ziele (ISO-TP, UDS), 300 s je Ziel wie in §6.4; ein CI-Job dafür fehlt weiterhin — nightly und `cargo-fuzz` auf dem Runner plus zehn Minuten je Ziel passen nicht in einen Durchlauf, gefahren wird lokal ([ci.md](ci.md)) |
 HIL | nächtlich am Prüfstand: 20 Funktionen × 3 Steuergeräte, Golden-Log-Vergleich |
 Artefakte | signierte Builds, SBOM (CycloneDX), reproduzierbar (`--locked`, feste Toolchain) |
 Release | DLL mit EV-Zertifikat signieren, Hash im Content-Manifest, Rollback-Paket |
@@ -165,7 +165,7 @@ PM | 1,0 | Sprintsteuerung, Partner, Recht |
 
 | Risiko | Frühindikator | Gegenmaßnahme |
 |---|---|---|
-ISO-TP-Timing bricht bei schnellen Gateways | Sprint 2 am Fahrzeug statt nur im Simulator | Zeitmessung im CI, P2/P2\*-Parameter je Fahrzeug |
+ISO-TP-Timing bricht bei schnellen Gateways | Sprint 2 am Fahrzeug statt nur im Simulator | Zeitmessung im CI, P2/P2\\*-Parameter je Fahrzeug |
 Content-Schema passt nicht zu echten Funktionen | Sprint 1 mit 5 echten Funktionen, nicht mit Spielwiese | Schema gegen 30 Funktionen aus dem Katalog prüfen |
 VCI-Vielfalt explodiert im Support | jeder neue Dongle braucht einen Testfall | Capability-Modell, VCI-Checker, Matrix mit Reifegrad |
 iOS blockiert USB-Passthru | früh im S7 | nur BLE/WLAN/IP auf iOS, Gateway für USB |
