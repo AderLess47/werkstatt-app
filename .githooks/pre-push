@@ -26,6 +26,9 @@
 # Push blockieren, bis der Reformat übertragen ist (docs/ci.md). So gilt die
 # Regel, die durchsetzbar ist: wer eine Datei ändert, liefert sie formatiert ab.
 #
+# Fehlt `rustfmt` — oder nur seine rustup-Komponente —, sagt der Hook das und
+# lässt den Schritt aus. Ein Werkzeugausfall ist kein Formatbefund.
+#
 # Trockenlauf, ohne zu pushen und ohne zu testen:
 #
 #   sh .githooks/pre-push --probe              (gegen den Upstream-Branch)
@@ -207,8 +210,20 @@ gesamt_start=$(date +%s)
 # das vor den Tests erfahren. Fehlende `rustfmt` lassen den Schritt sichtbar aus
 # — wie beim Fuzz-Werkzeug, statt einen Push an einem Komponenten-Fehler zu
 # beenden.
+#
+# Geprüft wird mit einem echten Aufruf, nicht mit `command -v`: rustup legt seine
+# Proxy-Binaries in ~/.cargo/bin unabhängig von den installierten Komponenten ab.
+# Fehlt die Komponente, findet `command -v` den Proxy trotzdem, und `rustfmt
+# --check` endet für jede Datei mit einem Fehler — die Schleife unten würde dann
+# eine formatierte Datei als „nicht formatiert“ melden und die falsche Reparatur
+# empfehlen. `rustfmt --version` unterscheidet die beiden Fälle.
+rustfmt_bereit() {
+    command -v rustfmt > /dev/null || return 1
+    rustfmt --version > /dev/null 2>&1
+}
+
 format_pruefen() {
-    if ! command -v rustfmt > /dev/null; then
+    if ! rustfmt_bereit; then
         echo "pre-push: Formatprüfung übersprungen — rustfmt fehlt (rustup component add rustfmt)." >&2
         return 0
     fi
