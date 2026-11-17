@@ -93,7 +93,9 @@ jobs:
       # Erzeugt, nicht gepflegt: die Bindings entstehen bei jedem Lauf neu aus
       # der Rust-Schnittstelle. Damit kann keine Kopie veralten (ADR-001 §5).
       - name: Bindings erzeugen
-        run: ./scripts/gen-bindings.sh kotlin swift
+        # Die Skripte liegen ohne Ausführungsbit im Repository; `bash` macht den
+        # Aufruf davon unabhängig.
+        run: bash scripts/gen-bindings.sh kotlin swift
 
       - name: Hochladen
         uses: actions/upload-artifact@v4
@@ -122,7 +124,7 @@ jobs:
         run: cargo build --release --locked --manifest-path core-ffi/Cargo.toml
 
       - name: Kotlin-Bindings erzeugen
-        run: ./scripts/gen-bindings.sh kotlin
+        run: bash scripts/gen-bindings.sh kotlin
 
       # Ohne Gradle, ohne Android SDK, ohne NDK: das Skript holt Compiler und
       # Jars selbst (Cache, sonst Maven Central) und übersetzt die Bindings mit
@@ -169,7 +171,7 @@ jobs:
 
       # Baut die Host-Bibliothek und erzeugt die Kotlin-Bindings.
       - name: Bindings und Host-Bibliothek
-        run: ./scripts/gen-bindings.sh kotlin
+        run: bash scripts/gen-bindings.sh kotlin
 
       - name: Bibliothek für Android-ABIs
         run: |
