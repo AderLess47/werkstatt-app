@@ -62,7 +62,7 @@ statt geraten).
 
 ## A.2 Was belegt ist
 
-Alles hier ist am 16.11.2026 in dieser VM gelaufen, nicht abgeleitet:
+Alles hier ist am 16. und 17.11.2026 in dieser VM gelaufen, nicht abgeleitet:
 
 | Prüfung | Befehl | Ergebnis |
 | --- | --- | --- |
@@ -72,7 +72,7 @@ Alles hier ist am 16.11.2026 in dieser VM gelaufen, nicht abgeleitet:
 | App ohne Gerät | `JAVA_HOME=/tmp/jdk sh scripts/jvm-tests.sh` | `OK (174 tests)` |
 | Android-Build | `./android/gradlew -p android :app:assembleDebug` | `BUILD SUCCESSFUL` |
 | Zahlen gegen Jobnamen | `sh scripts/zahlen-pruefen.sh` | alle fünf gleich, Exit 0 |
-| Fuzzing (neu am 17.11.2026) | `sh scripts/fuzz.sh` | 604 s, 33,5 Mio. + 55,6 Mio. Läufe, kein Absturz |
+| Fuzzing (neu) | `sh scripts/fuzz.sh` | 604 s, 33,5 Mio. + 55,6 Mio. Läufe, kein Absturz |
 
 ## A.3 Was ausdrücklich **nicht** belegt ist
 
@@ -305,7 +305,8 @@ merkt.
 3. Fehlerpfade getestet: Timeout, NRC, Busabbruch, Stromausfall mitten im
    Schreiben — **teilweise hier** (alles außer echtem Stromausfall).
 4. Fuzzing ≥ 10 Minuten ohne Absturz — **erledigt am 17.11.2026**: `sh
-   scripts/fuzz.sh`, 604 s, kein Absturz ([ci.md](ci.md)).
+   scripts/fuzz.sh`, 604 s, kein Absturz ([ci.md](ci.md)). Die CI führt es
+   weiterhin nicht aus.
 5. Öffentliche API dokumentiert, keine `unwrap()` auf fremden Daten — **hier
    erfüllbar**.
 6. Audit-Eintrag vorhanden und exportierbar — **hier erfüllbar** (P5).
