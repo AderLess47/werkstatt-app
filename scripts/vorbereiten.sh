@@ -2,7 +2,8 @@
 # Bereitet diese Maschine auf Tests und APK-Build vor — nach einem
 # Sandbox-Restore in einem Schritt:
 #
-#   JDK 17 · cargo im PATH · Host-Bibliothek des Kerns (für die JVM-Tests)
+#   JDK 17 · cargo im PATH · rustfmt (Formatprüfung des Hakens)
+#   Host-Bibliothek des Kerns (für die JVM-Tests)
 #   Android SDK (Platform 34, Build-Tools 34.0.0) · NDK 26.1.10909125
 #   Gradle 8.9 · die Android-Bibliothek in jniLibs (für den APK-Build)
 #
@@ -87,6 +88,36 @@ fi
 command -v cargo > /dev/null ||
     fehler "cargo fehlt — rustup installieren (https://rustup.rs) oder ~/.cargo/bin in den PATH legen"
 echo "cargo:  $(cargo --version)"
+
+# --- rustfmt ----------------------------------------------------------------
+# Der Pre-Push-Haken prüft nur die geänderten Rust-Dateien auf Formatierung,
+# und ohne `rustfmt` lässt er den Schritt aus — sichtbar, aber ein frischer
+# Arbeitsplatz soll ihn gar nicht erst überspringen müssen.
+#
+# Geprüft wird mit einem echten Aufruf und nicht mit `command -v`: rustup legt
+# die Proxy-Binaries in ~/.cargo/bin unabhängig von den Komponenten ab. Fehlt
+# die Komponente, findet `command -v` den Proxy trotzdem — und `rustfmt
+# --check` endet dann mit einem Fehler, den der Haken als „nicht formatiert“
+# liest und jede Datei rot meldet. Der Aufruf unterscheidet die beiden Fälle.
+rustfmt_ok() {
+    rustfmt --version > /dev/null 2>&1
+}
+
+if rustfmt_ok; then
+    echo "rustfmt: $(rustfmt --version 2>/dev/null | head -1)"
+elif [ "$PROBE" -eq 1 ]; then
+    wuerde_holen "rustfmt (rustup component add rustfmt)"
+else
+    # rustup holt die Komponente passend zur aktiven Toolchain. Ohne rustup
+    # (Cargo aus der Distribution) bleibt nur der Hinweis.
+    if command -v rustup > /dev/null; then
+        rustup component add rustfmt > /dev/null ||
+            fehler "rustup component add rustfmt fehlgeschlagen"
+    fi
+    rustfmt_ok ||
+        fehler "rustfmt fehlt — rustup component add rustfmt (sonst überspringt der Pre-Push-Haken die Formatprüfung)"
+    echo "rustfmt: $(rustfmt --version 2>/dev/null | head -1)"
+fi
 
 # --- JDK --------------------------------------------------------------------
 jdk_ok() {
