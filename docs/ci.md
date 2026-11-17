@@ -189,15 +189,17 @@ Befehlen auf dieser Maschine:
 sh scripts/ci-lokal.sh
 ```
 
-Gemessen am 17.11.2026, 13:36 UTC in dieser VM (rustc 1.100.0, cargo 1.100.0,
-OpenJDK 17.0.21, Linux 6.1.102 x86_64):
+Gemessen am 17.11.2026, 14:12 UTC in dieser VM (rustc 1.100.0, cargo 1.100.0,
+OpenJDK 17.0.21, Linux 6.1.102 x86_64) — alle fünf Jobs grün in zusammen 36 s.
+Ein Lauf um 13:36 UTC desselben Tages ergab dieselben Zahlen; nur `fmt`
+brauchte dort 1 s statt 0 s.
 
 | Job | Ergebnis | Dauer | Was im Log steht |
 | --- | --- | --- | --- |
 | `c` | grün | 0 s | 165 `PASS`-Zeilen, Korpus byteweise unverändert |
 | `rust` | grün | 1 s | 163 Tests im Kern, 4 Korpus-Tests, 15 in der FFI-Schicht |
 | `clippy` | grün | 0 s | keine Warnung in `core` und `core-ffi` |
-| `fmt` | grün | 1 s | `--check` für `core`, `core-ffi`, `core/fuzz` |
+| `fmt` | grün | 0 s | `--check` für `core`, `core-ffi`, `core/fuzz` |
 | `jvm-tests` | grün | 35 s | `OK (174 tests)` |
 
 Die Dauern sind **mit warmem Build-Verzeichnis** gemessen — `target/` war vom
