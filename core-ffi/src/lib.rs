@@ -660,26 +660,39 @@ pub enum SicherheitFfi {
 /// reicht Transport und Anbieter durch und übersetzt das Ergebnis. Es gibt
 /// bewusst keinen Weg, bei dem der Kern selbst einen Schlüssel rechnet — der
 /// Algorithmus kommt aus dem Anbieter der Plattform.
+///
+/// Wie [`Sfd`] geht der Vorgang **durch die Kette**: sie kommt beim Bauen mit,
+/// nicht je Aufruf, und der Eintrag enthält Ebene und Ausgang — keinen Seed,
+/// keinen Schlüssel.
 #[derive(uniffi::Object)]
 pub struct Sicherheit {
     inner: UdsClient,
+    audit: Arc<Audit>,
+    vin: String,
 }
 
 #[uniffi::export]
 impl Sicherheit {
     /// Standardadressierung: Anfragen `0x7E0`, Antworten `0x7E8`.
+    ///
+    /// `vin` steht im Audit-Eintrag; kennt die App ihn nicht, gehört dort ein
+    /// ehrliches „unbekannt“ hin statt einer erfundenen Nummer.
     #[uniffi::constructor]
-    pub fn new() -> Arc<Self> {
+    pub fn new(audit: Arc<Audit>, vin: String) -> Arc<Self> {
         Arc::new(Sicherheit {
             inner: UdsClient::new(),
+            audit,
+            vin,
         })
     }
 
     /// Für Fahrzeuge mit abweichender Adressierung.
     #[uniffi::constructor]
-    pub fn with_ids(req_id: u32, rsp_id: u32) -> Arc<Self> {
+    pub fn with_ids(audit: Arc<Audit>, vin: String, req_id: u32, rsp_id: u32) -> Arc<Self> {
         Arc::new(Sicherheit {
             inner: UdsClient::with_ids(req_id, rsp_id),
+            audit,
+            vin,
         })
     }
 
@@ -702,13 +715,67 @@ impl Sicherheit {
             inner: anbieter.as_ref(),
         };
         let mut t = ForeignTransport::new(transport.as_ref());
+        let mut kette = self.audit.inner.lock().map_err(|_| VciError::Io)?;
         let res = self
             .inner
             .security_access(&mut t, ebene, &adapter, timeout_ms);
+        self.protokolliere(&mut kette, ebene, &res);
+        // Sperre loslassen, bevor der Fehler nach außen geht: ein zweiter
+        // Aufruf darf nicht an einer gehaltenen Sperre hängen.
+        drop(kette);
         t.finish_uds(res).map(|z| match z {
             vci_core::uds::SecurityZugriff::BereitsOffen => SicherheitFfi::BereitsOffen,
             vci_core::uds::SecurityZugriff::Entsperrt => SicherheitFfi::Entsperrt,
         })
+    }
+}
+
+impl Sicherheit {
+    /// Hängt den Ausgang eines Sicherheitszugriffs an die Kette.
+    ///
+    /// Der Eintrag nennt Ebene und Ausgang — **keinen** Seed, **keinen**
+    /// Schlüssel. Die Kette ist ein Nachweis, den man weitergibt (Support,
+    /// Datei, Ticket); ein Geheimnis darin wäre ein weitergegebenes Geheimnis.
+    /// Steht nur der Dienst drin, belegt der Eintrag den Vorgang, ohne ihn zu
+    /// verraten.
+    ///
+    /// Auch der Fehlversuch wird protokolliert: genau den will man später
+    /// erklärt haben. „Bereits offen“ und „entsperrt“ bekommen eigene Sätze,
+    /// weil beides verschiedene Vorgänge sind.
+    ///
+    /// Hier und nicht im Kern, weil dieser Eintrag der einzige Weg der App zu
+    /// `27` ist: `Sicherheit` wird mit der Kette gebaut, es gibt also keinen
+    /// Aufruf, der entsperrt und nichts protokolliert.
+    fn protokolliere(
+        &self,
+        kette: &mut AuditKette,
+        ebene: u8,
+        ergebnis: &std::result::Result<vci_core::uds::SecurityZugriff, vci_core::uds::UdsFehler>,
+    ) {
+        let dienst = match ergebnis {
+            Ok(vci_core::uds::SecurityZugriff::BereitsOffen) => {
+                format!("SecurityAccess Ebene 0x{ebene:02X} war bereits offen (27 {ebene:02X})")
+            }
+            Ok(vci_core::uds::SecurityZugriff::Entsperrt) => {
+                format!("SecurityAccess Ebene 0x{ebene:02X} entsperrt (27 {ebene:02X})")
+            }
+            // Beim Fehler bleibt die Ebene stehen; der Grund kommt aus dem
+            // Klartext des Fehlers (etwa „NRC 0x35: invalidKey“).
+            Err(_) => format!("SecurityAccess Ebene 0x{ebene:02X}"),
+        };
+        let ausgang = match ergebnis {
+            Ok(_) => Ergebnis::Erfolg,
+            Err(e) => Ergebnis::Fehler {
+                grund: e.to_string(),
+            },
+        };
+        kette.anhaengen(
+            jetzt_ms(),
+            &self.vin,
+            self.inner.iso().req_id(),
+            &dienst,
+            ausgang,
+        );
     }
 }
 
