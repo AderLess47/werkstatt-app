@@ -38,7 +38,7 @@ geschätzt):
 | `core-ffi/src/lib.rs` | UniFFI-Grenze: `CanTransport`, `IsoTp`, `Sfd`, `LoopbackTransport`, `Sicherheit` mit `SchluesselAnbieter`, `SfdStatusFfi` | 1.041 Zeilen |
 | `core-ffi/src/bin/uniffi_bindgen.rs` | Bindings erzeugen (Kotlin, Swift) | — |
 | `j2534/` (C) | PassThru-Port, USB-Backend (WinUSB + Simulator), VCI-Checker, Rollout-Auswertung | 165 C-Prüfungen |
-| `android/` | Compose-App: 15 Dateien im Wurzelpaket, 13 unter `transport/` — USB-Weg, OBDLink-Weg, BLE-Weg, SFD-Bildschirm, Sicherheitszugriff, Berichte | 185 JVM-Tests |
+| `android/` | Compose-App: 15 Dateien im Wurzelpaket, 13 unter `transport/` — USB-Weg, OBDLink-Weg, BLE-Weg, SFD-Bildschirm, Sicherheitszugriff, Berichte | 186 JVM-Tests |
 | `model/` | Wirtschaftlichkeitsmodell (Python) | — |
 | `docs/` | 14 Planungs- und Prüfdokumente | — |
 
@@ -75,8 +75,8 @@ Alles hier ist am 16. und 17.11.2026 in dieser VM gelaufen, nicht abgeleitet:
 | --- | --- | --- |
 | C-Kern | `make -C j2534 test` | 165 `PASS`-Zeilen, „Alle Rollout-Prüfungen bestanden“ |
 | Rust-Kern | `cargo test --locked --manifest-path core/Cargo.toml` | 224 Tests + 4 Korpus-Tests |
-| FFI | `cargo test --locked --manifest-path core-ffi/Cargo.toml` | 19 Tests |
-| App ohne Gerät | `JAVA_HOME=/tmp/jdk sh scripts/jvm-tests.sh` | `OK (185 tests)` |
+| FFI | `cargo test --locked --manifest-path core-ffi/Cargo.toml` | 22 Tests |
+| App ohne Gerät | `JAVA_HOME=/tmp/jdk sh scripts/jvm-tests.sh` | `OK (186 tests)` |
 | Android-Build | `./android/gradlew -p android :app:assembleDebug` | `BUILD SUCCESSFUL` |
 | Zahlen gegen Jobnamen | `sh scripts/zahlen-pruefen.sh` | alle fünf gleich, Exit 0 |
 | Fuzzing (neu) | `sh scripts/fuzz.sh` | 604 s, 33,5 Mio. + 55,6 Mio. Läufe, kein Absturz |
@@ -131,7 +131,16 @@ Alles hier ist am 16. und 17.11.2026 in dieser VM gelaufen, nicht abgeleitet:
    `SicherheitFfi::{BereitsOffen, Entsperrt}`. Im Bildschirm steht das als
    eigener Abschnitt (`SicherheitAbschnitt.kt`): Ebene, Seed und Ergebnis, der
    Schlüssel wird eingetragen und nicht gerechnet.
-4. ~~**`docs/android-app-modul.md` nennt 119 `@Test`**~~ — nachgezogen: 185 in
+
+   Seit dem 17.11.2026 hängt dieser Vorgang an der Audit-Kette: das Objekt
+   `Sicherheit` bekommt sie beim Bauen mit (`Sicherheit(audit, vin)` bzw.
+   `with_ids(...)`) und schreibt je Versuch einen Eintrag — bei Erfolg
+   „SecurityAccess Ebene 0x01 entsperrt (27 01)“, bei einer schon offenen Ebene
+   „… war bereits offen (27 01)“, bei Ablehnung den Dienst mit Klartext-NRC
+   („Fehler: abgelehnt (Dienst 0x27, NRC 0x35: invalidKey)“). Seed und
+   Schlüssel stehen **nicht** im Eintrag; drei FFI-Tests und ein App-Test
+   prüfen das über `als_json()`.
+4. ~~**`docs/android-app-modul.md` nennt 119 `@Test`**~~ — nachgezogen: 186 in
    einundzwanzig Dateien (SFD, Funktions-Runtime, Audit-Kette und der Sicherheitszugriff kamen dazu).
 5. **`docs/geraetepruefung.md` Abschnitt 10 (SFD)** ist geschrieben und nie
    gelaufen.
@@ -369,7 +378,7 @@ Damit die Arbeit nicht stillsteht und trotzdem messbar bleibt:
 4. `content/schema/funktion.schema.json` mit den Pflichtfeldern aus P4
    schreiben und eine Beispielfunktion validieren. *(erledigt)*
 5. ~~`docs/android-app-modul.md` auf 157 Tests ziehen (offener Punkt A.4.4)~~ —
-   erledigt: 185 in einundzwanzig Dateien.
+   erledigt: 186 in einundzwanzig Dateien.
 
 ## B.6 Prüfbefehle (unverändert gültig)
 
@@ -394,8 +403,8 @@ Fallen, die schon Zeit gekostet haben:
 
 ---
 
-**Zum Schluss, in einem Satz:** der Kern trägt (ISO-TP, SFD, 165 + 224 + 4 + 19
-Prüfungen), die App ist gebaut und übersetzt (185 Tests), aber **nichts davon ist
+**Zum Schluss, in einem Satz:** der Kern trägt (ISO-TP, SFD, 165 + 224 + 4 + 22
+Prüfungen), die App ist gebaut und übersetzt (186 Tests), aber **nichts davon ist
 an einem Fahrzeug gelaufen** und die CI startet seit 147 Läufen keinen Runner.
 Phase 1 beginnt deshalb nicht mit Hardware, sondern mit dem allgemeinen
 UDS-Client — und jede Aussage über Verhalten am Fahrzeug bleibt offen, bis
