@@ -16,7 +16,7 @@
 //!
 //! ## Aufschübe
 //!
-//! `7F <Dienst> 78` heißt nicht „abgelehnt", sondern „rechne noch". Ein
+//! `7F <Dienst> 78` heißt nicht „abgelehnt“, sondern „rechne noch“. Ein
 //! Steuergerät darf das mehrfach senden; ohne Grenze würde der Aufrufer bei
 //! einem hängenden Steuergerät unendlich warten. Deshalb höchstens
 //! [`MAX_AUFSCHUB`] Aufschübe, danach gilt es als Ablehnung — die Ursache liegt
@@ -28,27 +28,27 @@ use std::fmt;
 use crate::isotp::IsotpChannel;
 use crate::transport::{Result as TransportResult, Transport, TransportError};
 
-/// Dienst „DiagnosticSessionControl".
+/// Dienst „DiagnosticSessionControl“.
 pub const DIENST_SITZUNG: u8 = 0x10;
 /// Positive Antwort auf DiagnosticSessionControl.
 pub const ANTWORT_SITZUNG: u8 = 0x50;
-/// Dienst „ReadDataByIdentifier".
+/// Dienst „ReadDataByIdentifier“.
 pub const DIENST_READ_DID: u8 = 0x22;
 /// Positive Antwort auf ReadDataByIdentifier.
 pub const ANTWORT_READ_DID: u8 = 0x62;
 /// Negative Antwort (`7F <Dienst> <NRC>`).
 pub const ANTWORT_NEGATIV: u8 = 0x7F;
-/// NRC „responsePending" — kein Ergebnis, sondern ein Aufschub.
+/// NRC „responsePending“ — kein Ergebnis, sondern ein Aufschub.
 pub const NRC_RESPONSE_PENDING: u8 = 0x78;
 /// Subfunktion `extendedDiagnosticSession`.
 pub const SITZUNG_EXTENDED: u8 = 0x03;
-/// Dienst „ReadDTCInformation".
+/// Dienst „ReadDTCInformation“.
 pub const DIENST_READ_DTC: u8 = 0x19;
 /// Positive Antwort auf ReadDTCInformation.
 pub const ANTWORT_READ_DTC: u8 = 0x59;
 /// Unterfunktion `reportDTCByStatusMask`.
 pub const READ_DTC_BY_STATUS_MASK: u8 = 0x02;
-/// Statusmaske „alle unterstützten Fehler".
+/// Statusmaske „alle unterstützten Fehler“.
 pub const DTC_MASKE_ALLE: u8 = 0xFF;
 /// Bit 7 einer Unterfunktion: positive Antwort unterdrücken.
 pub const UNTERDRUECKUNGS_BIT: u8 = 0x80;
@@ -68,9 +68,9 @@ pub const P2_STERN_MS: u32 = 5_000;
 pub enum UdsFehler {
     /// Transportfehler — nichts empfangen, Kabel, Gerät weg.
     ///
-    /// Eigener Fall statt „Protokollfehler", weil die Reaktion eine andere
-    /// ist: ein Timeout heißt „Zündung? Adressierung?", ein NRC heißt „das
-    /// Steuergerät will nicht".
+    /// Eigener Fall statt „Protokollfehler“, weil die Reaktion eine andere
+    /// ist: ein Timeout heißt „Zündung? Adressierung?“, ein NRC heißt „das
+    /// Steuergerät will nicht“.
     Transport(TransportError),
     /// Das Steuergerät hat abgelehnt (`7F <Dienst> <NRC>`).
     Nrc { dienst: u8, code: u8 },
@@ -308,7 +308,7 @@ pub struct DtcListe {
     /// Welche Statusbits dieses Steuergerät überhaupt führt.
     ///
     /// Nicht jede Steuergerätegeneration belegt alle acht Bits; wer die Maske
-    /// ignoriert, hält ein nicht belegtes Bit für „nicht gesetzt".
+    /// ignoriert, hält ein nicht belegtes Bit für „nicht gesetzt“.
     pub status_verfuegbarkeit: u8,
     /// Die Einträge in der Reihenfolge, in der sie kamen.
     pub eintraege: Vec<DtcEintrag>,
@@ -463,7 +463,7 @@ impl UdsClient {
     /// `19 02 <Maske>` — Fehlerspeicher lesen, Einträge roh.
     ///
     /// Kein Fehler gespeichert ist ein leeres Ergebnis, kein Fehlerfall: die
-    /// Werkstatt will wissen „nichts drin" und nicht „Abruf fehlgeschlagen".
+    /// Werkstatt will wissen „nichts drin“ und nicht „Abruf fehlgeschlagen“.
     pub fn read_dtc<T: Transport>(
         &self,
         t: &mut T,
@@ -771,7 +771,7 @@ mod tests {
 
     #[test]
     fn leere_dtc_liste_ist_gueltig() {
-        // „Nichts gespeichert" ist ein Befund, kein Fehlerfall.
+        // „Nichts gespeichert“ ist ein Befund, kein Fehlerfall.
         let liste = parse_dtc_liste(&[0x59, 0x02, 0xFF]).unwrap();
         assert_eq!(liste.status_verfuegbarkeit, 0xFF);
         assert!(liste.eintraege.is_empty());
