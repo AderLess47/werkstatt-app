@@ -163,11 +163,7 @@ impl IsotpChannel {
                         "Steuergerät meldet Pufferüberlauf (FC 0x32)",
                     ))
                 }
-                _ => {
-                    return Err(TransportError::Protocol(
-                        "unbekannter Flow-Control-Status",
-                    ))
-                }
+                _ => return Err(TransportError::Protocol("unbekannter Flow-Control-Status")),
             }
         }
         Err(TransportError::Protocol(
@@ -293,9 +289,7 @@ mod tests {
     #[test]
     fn pufferueberlauf_des_steuergeraets_bricht_ab() {
         let mut t = Loopback::new(vec![CanFrame::new(RSP_ID, &[0x32, 0, 0])]);
-        let err = IsotpChannel::new()
-            .send(&mut t, &[0u8; 20])
-            .unwrap_err();
+        let err = IsotpChannel::new().send(&mut t, &[0u8; 20]).unwrap_err();
         assert_eq!(
             err,
             TransportError::Protocol("Steuergerät meldet Pufferüberlauf (FC 0x32)")
@@ -305,10 +299,7 @@ mod tests {
     #[test]
     fn vertroestung_wird_hingenommen() {
         // Erst „wait", dann „continue to send" — der Sender darf nicht aufgeben.
-        let mut t = Loopback::new(vec![
-            CanFrame::new(RSP_ID, &[0x31, 0x00, 0x00]),
-            fc(0, 0),
-        ]);
+        let mut t = Loopback::new(vec![CanFrame::new(RSP_ID, &[0x31, 0x00, 0x00]), fc(0, 0)]);
         IsotpChannel::new().send(&mut t, &[0u8; 20]).unwrap();
         assert_eq!(t.sent().len(), 1 + 2, "First Frame und zwei CF");
     }
