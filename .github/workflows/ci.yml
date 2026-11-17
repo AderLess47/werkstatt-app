@@ -24,9 +24,9 @@ jobs:
 
   rust:
     # Die Zahlen im Namen sind die lokal belegten: 224 Tests im Kern, 4 aus dem
-    # Konformitätskorpus, 19 in der FFI-Schicht. Sie stehen hier, damit ein
+    # Konformitätskorpus, 22 in der FFI-Schicht. Sie stehen hier, damit ein
     # Blick auf den Lauf genügt, um zu sehen, ob noch alle da sind.
-    name: Rust-Kern (224 Kern, 4 Korpus, 19 FFI)
+    name: Rust-Kern (224 Kern, 4 Korpus, 22 FFI)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -99,7 +99,7 @@ jobs:
           path: core-ffi/bindings
 
   jvm-tests:
-    name: JVM-Tests ohne Gerät (185)
+    name: JVM-Tests ohne Gerät (186)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
