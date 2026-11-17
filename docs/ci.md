@@ -29,20 +29,30 @@ lokal: die Jobs selbst werden ja nicht gestartet (siehe unten).
 
 `cargo fmt --check` fehlt hier mit Absicht. Das Crate ist über die Zeit von Hand
 formatiert worden; ein Lauf mit rustfmt ändert am 17.11.2026 **zwölf Dateien mit
-rund 235 KB** Quelltext (`audit`, `content`, `function`, `isotp`, `sfd`, `uds`,
-`lib`, `content/tests`, `function/tests` in `core/src/`, dazu `core-ffi/src/lib`,
-`core-ffi/src/tests` und `core/tests/corpus.rs`).
+rund 235 KB** Quelltext.
 
 Die Änderung selbst ist rein mechanisch und lokal bereits gefahren — der Kern
 danach weiter grün (163 Tests, Clippy sauber). Der Haken ist der Weg ins
 Repository: es gibt von dieser Maschine keinen `git push`, jede Datei geht
 einzeln durch die API, und `sfd.rs` allein hat 38 KB. Ein einzelnes verrutschtes
 Zeichen wäre ein Programmierfehler in getestetem Code — deshalb steht der Job
-erst im Workflow, wenn die Dateien übertragen und jede gegen `git hash-object`
+erst im Workflow, wenn alle Dateien übertragen und jede gegen `git hash-object`
 geprüft ist. Ein Job, der beim ersten Lauf rot ist, prüft nichts.
 
-Stand der Formatierung: `core/src/j1979.rs`, `core/fuzz/` und die beiden oben
-genannten Clippy-Dateien sind fmt-sauber; der Rest noch nicht.
+**Stand am 17.11.2026.** Sauber und im Repository: `core/tests/corpus.rs`,
+`core/src/content/tests.rs`, `core-ffi/src/lib.rs`, `core-ffi/src/tests.rs`,
+`core/src/j1979.rs` und `core/fuzz/`.
+
+Offen sind acht Dateien mit zusammen rund 184 KB. Sie liegen **lokal** formatiert
+vor, im Repository steht noch die alte Fassung: `core/src/audit.rs` (20 KB),
+`core/src/content.rs` (28), `core/src/function.rs` (32),
+`core/src/function/tests.rs` (16), `core/src/isotp.rs` (17),
+`core/src/lib.rs` (1,5), `core/src/sfd.rs` (38), `core/src/uds.rs` (31).
+
+Wer sie überträgt, prüft jede Datei gegen `git hash-object`, bevor er den Job
+aufnimmt; die Reihenfolge ist beliebig, weil keine Datei von der anderen
+abhängt. Ein Reformat auf einer Maschine mit `git push` erledigt dasselbe in
+einer Minute — das ist der kürzere Weg, wenn es ihn gibt.
 
 ## Fuzzing — lokal belegt, nicht in der CI
 
