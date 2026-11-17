@@ -60,9 +60,10 @@ fn load() -> Vec<Scenario> {
         let role = parts.next().unwrap_or("");
         match role {
             "scenario" => {
-                let mut s = Scenario::default();
-                s.name = parts.collect::<Vec<_>>().join(" ");
-                cur = Some(s);
+                cur = Some(Scenario {
+                    name: parts.collect::<Vec<_>>().join(" "),
+                    ..Default::default()
+                });
             }
             "desc" => {}
             "req" => cur.as_mut().unwrap().req = unhex(parts.next().unwrap_or("")),
