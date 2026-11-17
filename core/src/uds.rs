@@ -95,6 +95,13 @@ pub const ROUTINE_OK: u8 = 0x00;
 pub const DIENST_WRITE_DID: u8 = 0x2E;
 /// Positive Antwort auf WriteDataByIdentifier.
 pub const ANTWORT_WRITE_DID: u8 = 0x6E;
+/// Dienst „SecurityAccess“.
+pub const DIENST_SECURITY: u8 = 0x27;
+/// Positive Antwort auf SecurityAccess.
+pub const ANTWORT_SECURITY: u8 = 0x67;
+/// Abstand zwischen den beiden Unterfunktionen einer Ebene: `anfordern` ist
+/// ungerade, `senden` die nächste Zahl (`01`/`02`, `03`/`04` …).
+pub const SECURITY_SCHLUESSEL_OFFSET: u8 = 1;
 
 /// Höchstzahl an Aufschüben (`NRC 0x78`), die ein Aufruf abwartet.
 pub const MAX_AUFSCHUB: usize = 3;
@@ -136,6 +143,13 @@ pub enum UdsFehler {
     FalscheRoutine { erwartet: [u8; 2], gesehen: [u8; 2] },
     /// Antwort ist kürzer als ihr eigener Kopf.
     ZuKurz { gelesen: usize, mindestens: usize },
+    /// Der [`SecurityProvider`] hat keinen Schlüssel geliefert.
+    ///
+    /// Eigener Fall, weil das kein Befund über das Fahrzeug ist: `27 <Ebene>`
+    /// ohne Schlüsselbytes beantwortet jedes Steuergerät mit `0x13`, und der
+    /// Bericht zeigte dann einen Längenfehler am Steuergerät, obwohl der Fehler
+    /// beim Anbieter liegt.
+    LeererSchluessel { ebene: u8 },
     /// Die DTC-Liste endet mitten im Eintrag.
     ///
     /// Ein Eintrag ist vier Byte lang; bleibt ein Rest, hat das Steuergerät
@@ -181,6 +195,11 @@ impl fmt::Display for UdsFehler {
             UdsFehler::DtcRest { uebrig } => write!(
                 f,
                 "DTC-Liste endet mitten im Eintrag: {uebrig} Byte übrig (je Eintrag 4)"
+            ),
+            UdsFehler::LeererSchluessel { ebene } => write!(
+                f,
+                "kein Schlüssel für Ebene 0x{ebene:02X}: der SecurityProvider \
+                 hat eine leere Antwort geliefert"
             ),
         }
     }
@@ -705,6 +724,114 @@ pub fn parse_write_did(antwort: &[u8], did: u16) -> std::result::Result<(), UdsF
     Ok(())
 }
 
+/// Rechnet zu einem Seed den Schlüssel einer Ebene aus.
+///
+/// Das ist die **einzige** Stelle im Kern, an der ein Schlüssel entsteht — und
+/// sie ist ein Trait ohne Vorgabe, weil die Algorithmen herstellerspezifisch
+/// und lizenzpflichtig sind. Im Repository steht deshalb keiner: die
+/// Implementierung kommt von außen, aus einem signierten, lizenzierten
+/// Baustein ([implementierungsplan.md](../../docs/implementierungsplan.md) §3).
+/// Wer hier einen Algorithmus aus einer fremden Quelle einträgt, macht das
+/// Produkt zu dem, das der Plan in §1.1 ausschließt.
+pub trait SecurityProvider {
+    /// Schlüssel zu `seed` für die Ebene `ebene` (die ungerade Unterfunktion).
+    ///
+    /// Eine leere Antwort ist ein Fehler des Anbieters und wird als
+    /// [`UdsFehler::LeererSchluessel`] gemeldet, bevor etwas gesendet wird.
+    fn schluessel(&self, ebene: u8, seed: &[u8]) -> Vec<u8>;
+}
+
+/// Ergebnis eines Sicherheitszugriffs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecurityZugriff {
+    /// Das Steuergerät hat einen leeren Seed geliefert (oder nur Nullbytes):
+    /// die Ebene war bereits offen, es wurde **kein** Schlüssel gesendet.
+    BereitsOffen,
+    /// Seed geschickt, Schlüssel geschickt, Bestätigung erhalten.
+    Entsperrt,
+}
+
+/// `27 <Ebene>` — Seed für eine Ebene anfordern.
+pub fn security_seed_anfrage(ebene: u8) -> Vec<u8> {
+    vec![DIENST_SECURITY, ebene]
+}
+
+/// `27 <Ebene+1> <Schlüssel>` — Schlüssel senden.
+pub fn security_key_anfrage(ebene: u8, schluessel: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(2 + schluessel.len());
+    out.extend_from_slice(&[DIENST_SECURITY, ebene + SECURITY_SCHLUESSEL_OFFSET]);
+    out.extend_from_slice(schluessel);
+    out
+}
+
+/// Ist die Ebene schon offen?
+///
+/// ISO 14229-1 lässt zwei Formen zu: eine leere Antwort oder einen Seed aus
+/// lauter Nullbytes. Beides heißt „kein Schlüssel nötig“ — ein Anbieter, der
+/// darauf trotzdem rechnet, schickt einen Schlüssel zu einem Seed, den es nicht
+/// gibt, und provoziert `0x35`.
+pub fn seed_ist_frei(seed: &[u8]) -> bool {
+    seed.is_empty() || seed.iter().all(|b| *b == 0)
+}
+
+/// Wertet `67 <Ebene> [<Seed>]` aus und gibt den Seed zurück.
+pub fn parse_seed(antwort: &[u8], ebene: u8) -> std::result::Result<Vec<u8>, UdsFehler> {
+    if let Some((dienst, code)) = pruefe_nrc(antwort) {
+        return Err(UdsFehler::Nrc { dienst, code });
+    }
+    if antwort.len() < 2 {
+        return Err(UdsFehler::ZuKurz {
+            gelesen: antwort.len(),
+            mindestens: 2,
+        });
+    }
+    if antwort[0] != ANTWORT_SECURITY {
+        return Err(UdsFehler::FalscherDienst {
+            erwartet: ANTWORT_SECURITY,
+            gesehen: antwort[0],
+        });
+    }
+    // Wie bei `19 02` und `11`: manche Steuergeräte spiegeln das
+    // Unterdrückungsbit der Anfrage.
+    let gesehen = antwort[1] & !UNTERDRUECKUNGS_BIT;
+    if gesehen != ebene {
+        return Err(UdsFehler::FalscheSubfunktion {
+            erwartet: ebene,
+            gesehen,
+        });
+    }
+    Ok(antwort[2..].to_vec())
+}
+
+/// Wertet `67 <Ebene+1>` aus.
+///
+/// Die Bestätigung trägt keinen Schlüssel zurück — sie sagt nur, dass der
+/// gesendete angenommen wurde. Ob die Ebene wirklich offen ist, merkt man erst
+/// am nächsten geschützten Dienst; dieses Modul spiegelt den Zustand nicht.
+pub fn parse_key(antwort: &[u8], ebene: u8) -> std::result::Result<(), UdsFehler> {
+    let erwartet = ebene + SECURITY_SCHLUESSEL_OFFSET;
+    if let Some((dienst, code)) = pruefe_nrc(antwort) {
+        return Err(UdsFehler::Nrc { dienst, code });
+    }
+    if antwort.len() < 2 {
+        return Err(UdsFehler::ZuKurz {
+            gelesen: antwort.len(),
+            mindestens: 2,
+        });
+    }
+    if antwort[0] != ANTWORT_SECURITY {
+        return Err(UdsFehler::FalscherDienst {
+            erwartet: ANTWORT_SECURITY,
+            gesehen: antwort[0],
+        });
+    }
+    let gesehen = antwort[1] & !UNTERDRUECKUNGS_BIT;
+    if gesehen != erwartet {
+        return Err(UdsFehler::FalscheSubfunktion { erwartet, gesehen });
+    }
+    Ok(())
+}
+
 /// UDS-Client über einen ISO-TP-Kanal.
 ///
 /// Zustandslos wie [`IsotpChannel`]: Sitzung und Sicherheitszugriff sind
@@ -814,6 +941,40 @@ impl UdsClient {
     ) -> std::result::Result<(), UdsFehler> {
         let antwort = self.runde(t, &write_did_anfrage(did, daten), timeout_ms)?;
         parse_write_did(&antwort, did)
+    }
+
+    /// `27 <Ebene>` / `27 <Ebene+1>` — Sicherheitszugriff in zwei Schritten.
+    ///
+    /// Der Ablauf steht hier, der Algorithmus nicht: [`SecurityProvider`]
+    /// rechnet den Schlüssel. Ein leerer Seed heißt „Ebene war schon offen“ und
+    /// wird als [`SecurityZugriff::BereitsOffen`] gemeldet, ohne einen Schlüssel
+    /// zu senden — das ist der Unterschied zwischen „nichts zu tun“ und
+    /// „Zugriff erhalten“.
+    ///
+    /// Nach einem [`UdsClient::reset`] ist der Zugriff weg, und ein Fehlversuch
+    /// kann eine Wartezeit (`0x37`) auslösen; beides ist Zustand des
+    /// Steuergeräts, nicht dieses Clients.
+    pub fn security_access<T: Transport, P: SecurityProvider>(
+        &self,
+        t: &mut T,
+        ebene: u8,
+        provider: &P,
+        timeout_ms: u32,
+    ) -> std::result::Result<SecurityZugriff, UdsFehler> {
+        let antwort = self.runde(t, &security_seed_anfrage(ebene), timeout_ms)?;
+        let seed = parse_seed(&antwort, ebene)?;
+        if seed_ist_frei(&seed) {
+            return Ok(SecurityZugriff::BereitsOffen);
+        }
+        let schluessel = provider.schluessel(ebene, &seed);
+        if schluessel.is_empty() {
+            // Nicht senden: ein leerer Schlüssel wäre beim Steuergerät ein
+            // Längenfehler und verdeckte, wo der Fehler wirklich liegt.
+            return Err(UdsFehler::LeererSchluessel { ebene });
+        }
+        let antwort = self.runde(t, &security_key_anfrage(ebene, &schluessel), timeout_ms)?;
+        parse_key(&antwort, ebene)?;
+        Ok(SecurityZugriff::Entsperrt)
     }
 
     /// `19 02 <Maske>` — Fehlerspeicher lesen, Einträge roh.
@@ -1875,5 +2036,204 @@ mod tests {
             3 + daten.len()
         );
         assert_eq!(&gesendet[0].data[2..5], &[0x2E, 0xF1, 0x90]);
+    }
+
+    // --- SecurityAccess ---------------------------------------------------
+
+    /// Test-Anbieter: spiegelt den Seed byteweise.
+    ///
+    /// Absichtlich **kein** Algorithmus aus einem Fahrzeug — hier wird der
+    /// Ablauf geprüft, nicht eine Herstellerimplementierung. Genau deshalb ist
+    /// der Schlüssel ein Trait und kein Code in diesem Modul.
+    struct TestAnbieter;
+
+    impl SecurityProvider for TestAnbieter {
+        fn schluessel(&self, _ebene: u8, seed: &[u8]) -> Vec<u8> {
+            seed.iter().map(|b| b ^ 0xFF).collect()
+        }
+    }
+
+    /// Ein Anbieter, der nichts liefert — der Fehler liegt dann bei ihm.
+    struct LeererAnbieter;
+
+    impl SecurityProvider for LeererAnbieter {
+        fn schluessel(&self, _ebene: u8, _seed: &[u8]) -> Vec<u8> {
+            Vec::new()
+        }
+    }
+
+    #[test]
+    fn security_seed_anfrage_ist_27_mit_ebene() {
+        assert_eq!(security_seed_anfrage(0x01), vec![0x27, 0x01]);
+        assert_eq!(security_seed_anfrage(0x03), vec![0x27, 0x03]);
+    }
+
+    #[test]
+    fn security_key_anfrage_zaehlt_die_ebene_hoch() {
+        assert_eq!(
+            security_key_anfrage(0x01, &[0xAA, 0xBB]),
+            vec![0x27, 0x02, 0xAA, 0xBB]
+        );
+        assert_eq!(security_key_anfrage(0x03, &[0x01]), vec![0x27, 0x04, 0x01]);
+    }
+
+    #[test]
+    fn seed_wird_gelesen() {
+        assert_eq!(
+            parse_seed(&[0x67, 0x01, 0xAA, 0xBB], 0x01).unwrap(),
+            vec![0xAA, 0xBB]
+        );
+    }
+
+    #[test]
+    fn leerer_seed_heisst_bereits_offen() {
+        // Beide Formen: Antwort ohne Seed und Seed aus lauter Nullbytes.
+        assert!(seed_ist_frei(&parse_seed(&[0x67, 0x01], 0x01).unwrap()));
+        assert!(seed_ist_frei(
+            &parse_seed(&[0x67, 0x01, 0x00, 0x00], 0x01).unwrap()
+        ));
+        // Ein einzelnes Byte ungleich null ist ein echter Seed.
+        assert!(!seed_ist_frei(&[0x00, 0x01]));
+    }
+
+    #[test]
+    fn seed_mit_falscher_ebene_wird_abgelehnt() {
+        assert_eq!(
+            parse_seed(&[0x67, 0x03, 0xAA], 0x01).unwrap_err(),
+            UdsFehler::FalscheSubfunktion {
+                erwartet: 0x01,
+                gesehen: 0x03
+            }
+        );
+    }
+
+    #[test]
+    fn seed_nrc_wird_benannt() {
+        // 0x37 heißt „requiredTimeDelayNotExpired“ — nach zu vielen Versuchen
+        // muss die Werkstatt warten, statt weiter zu probieren.
+        let err = parse_seed(&[0x7F, 0x27, 0x37], 0x01).unwrap_err();
+        assert_eq!(
+            err,
+            UdsFehler::Nrc {
+                dienst: 0x27,
+                code: 0x37
+            }
+        );
+        assert!(
+            err.to_string().contains("requiredTimeDelayNotExpired"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn seed_zu_kurz_wird_abgelehnt() {
+        assert_eq!(
+            parse_seed(&[0x67], 0x01).unwrap_err(),
+            UdsFehler::ZuKurz {
+                gelesen: 1,
+                mindestens: 2
+            }
+        );
+    }
+
+    #[test]
+    fn seed_mit_falschem_dienst_wird_abgelehnt() {
+        assert_eq!(
+            parse_seed(&[0x50, 0x01], 0x01).unwrap_err(),
+            UdsFehler::FalscherDienst {
+                erwartet: 0x67,
+                gesehen: 0x50
+            }
+        );
+    }
+
+    #[test]
+    fn schluessel_bestaetigung_ohne_nutzlast() {
+        assert_eq!(parse_key(&[0x67, 0x02], 0x01), Ok(()));
+    }
+
+    #[test]
+    fn schluessel_bestaetigung_mit_falscher_ebene_wird_abgelehnt() {
+        // Antwort auf 0x04, gefragt war die Schlüsselunterfunktion zu 0x01.
+        assert_eq!(
+            parse_key(&[0x67, 0x04], 0x01).unwrap_err(),
+            UdsFehler::FalscheSubfunktion {
+                erwartet: 0x02,
+                gesehen: 0x04
+            }
+        );
+    }
+
+    #[test]
+    fn falscher_schluessel_kommt_als_nrc_zurueck() {
+        let err = parse_key(&[0x7F, 0x27, 0x35], 0x01).unwrap_err();
+        assert_eq!(
+            err,
+            UdsFehler::Nrc {
+                dienst: 0x27,
+                code: 0x35
+            }
+        );
+        assert!(err.to_string().contains("invalidKey"), "{err}");
+    }
+
+    #[test]
+    fn security_access_am_simulator() {
+        // Seed 11 22, Antwort 67 01 …, Schlüssel gespiegelt: EE DD.
+        let mut t = Loopback::new(vec![
+            antwort(&[0x67, 0x01, 0x11, 0x22]),
+            antwort(&[0x67, 0x02]),
+        ]);
+        let ergebnis = UdsClient::new()
+            .security_access(&mut t, 0x01, &TestAnbieter, 100)
+            .unwrap();
+
+        assert_eq!(ergebnis, SecurityZugriff::Entsperrt);
+        assert_eq!(&t.sent()[0].data[..3], &[0x02, 0x27, 0x01]);
+        assert_eq!(&t.sent()[1].data[..5], &[0x04, 0x27, 0x02, 0xEE, 0xDD]);
+    }
+
+    #[test]
+    fn security_access_bei_offener_ebene_sendet_keinen_schluessel() {
+        // Zwei Nullbytes: die Ebene ist schon offen. Ein Schlüssel dazu wäre
+        // erfunden und das Steuergerät würde ihn mit 0x35 ablehnen.
+        let mut t = Loopback::new(vec![antwort(&[0x67, 0x01, 0x00, 0x00])]);
+        let ergebnis = UdsClient::new()
+            .security_access(&mut t, 0x01, &TestAnbieter, 100)
+            .unwrap();
+
+        assert_eq!(ergebnis, SecurityZugriff::BereitsOffen);
+        assert_eq!(t.sent().len(), 1, "nur die Seed-Anfrage ging raus");
+    }
+
+    #[test]
+    fn security_access_ohne_schluessel_sendet_nichts_weiter() {
+        let mut t = Loopback::new(vec![antwort(&[0x67, 0x01, 0x11, 0x22])]);
+        let err = UdsClient::new()
+            .security_access(&mut t, 0x01, &LeererAnbieter, 100)
+            .unwrap_err();
+
+        assert_eq!(err, UdsFehler::LeererSchluessel { ebene: 0x01 });
+        assert_eq!(
+            t.sent().len(),
+            1,
+            "ein leerer Schlüssel darf nicht als 27 02 rausgehen"
+        );
+    }
+
+    #[test]
+    fn security_access_wartet_aufschub_ab() {
+        let mut t = Loopback::new(vec![
+            aufschub(0x27),
+            antwort(&[0x67, 0x01, 0x11, 0x22]),
+            antwort(&[0x67, 0x02]),
+        ]);
+        let ergebnis = UdsClient::new()
+            .security_access(&mut t, 0x01, &TestAnbieter, 100)
+            .unwrap();
+
+        assert_eq!(ergebnis, SecurityZugriff::Entsperrt);
+        // Zwei Anfragen für zwei Schritte — der Aufschub löst keine dritte aus.
+        assert_eq!(t.sent().len(), 2);
     }
 }
