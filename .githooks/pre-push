@@ -61,6 +61,20 @@ dateien=$(mktemp)
 rustdateien=$(mktemp)
 trap 'zuruecksetzen' EXIT INT TERM
 
+# Ob `rustfmt` wirklich läuft, steht hier oben und nicht erst bei der Prüfung:
+# auch der Trockenlauf soll sagen, ob die Formatprüfung laufen würde.
+#
+# Geprüft wird mit einem echten Aufruf, nicht mit `command -v`: rustup legt seine
+# Proxy-Binaries in ~/.cargo/bin unabhängig von den installierten Komponenten ab.
+# Fehlt die Komponente, findet `command -v` den Proxy trotzdem, und `rustfmt
+# --check` endet für jede Datei mit einem Fehler — die Prüfung würde dann eine
+# formatierte Datei als „nicht formatiert“ melden und die falsche Reparatur
+# empfehlen. `rustfmt --version` unterscheidet die beiden Fälle.
+rustfmt_bereit() {
+    command -v rustfmt > /dev/null || return 1
+    rustfmt --version > /dev/null 2>&1
+}
+
 if [ "$modus" = "push" ]; then
     # Git schreibt je Ref „<lokale ref> <sha> <remote ref> <sha>“ nach stdin.
     # Diese Zeilen sind die einzige verlässliche Auskunft darüber, was
@@ -187,7 +201,11 @@ if [ "$modus" = "probe" ]; then
         echo "  scripts/fuzz.sh        (Rauchlauf ISO-TP und UDS, ${VCI_FUZZ_SEKUNDEN:-20} s je Ziel)" >&2
     fi
     if [ -s "$rustdateien" ]; then
-        echo "  rustfmt --check        (nur die geänderten Rust-Dateien: $(sort -u "$rustdateien" | wc -l | tr -d ' '))" >&2
+        if rustfmt_bereit; then
+            echo "  rustfmt --check        (nur die geänderten Rust-Dateien: $(sort -u "$rustdateien" | wc -l | tr -d ' '))" >&2
+        else
+            echo "  rustfmt --check        (würde ausgelassen — rustfmt fehlt: rustup component add rustfmt)" >&2
+        fi
     elif [ "$rustliste_unbekannt" -eq 1 ]; then
         echo "  rustfmt --check        (würde ausgelassen — Dateiliste unbekannt)" >&2
     fi
@@ -209,19 +227,8 @@ gesamt_start=$(date +%s)
 # Format zuerst: sie dauert Millisekunden, und wer ohnehin formatieren muss, soll
 # das vor den Tests erfahren. Fehlende `rustfmt` lassen den Schritt sichtbar aus
 # — wie beim Fuzz-Werkzeug, statt einen Push an einem Komponenten-Fehler zu
-# beenden.
-#
-# Geprüft wird mit einem echten Aufruf, nicht mit `command -v`: rustup legt seine
-# Proxy-Binaries in ~/.cargo/bin unabhängig von den installierten Komponenten ab.
-# Fehlt die Komponente, findet `command -v` den Proxy trotzdem, und `rustfmt
-# --check` endet für jede Datei mit einem Fehler — die Schleife unten würde dann
-# eine formatierte Datei als „nicht formatiert“ melden und die falsche Reparatur
-# empfehlen. `rustfmt --version` unterscheidet die beiden Fälle.
-rustfmt_bereit() {
-    command -v rustfmt > /dev/null || return 1
-    rustfmt --version > /dev/null 2>&1
-}
-
+# beenden. Ob das Werkzeug läuft, sagt `rustfmt_bereit` (oben, weil auch der
+# Trockenlauf davon abhängt).
 format_pruefen() {
     if ! rustfmt_bereit; then
         echo "pre-push: Formatprüfung übersprungen — rustfmt fehlt (rustup component add rustfmt)." >&2
