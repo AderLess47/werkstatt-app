@@ -137,7 +137,7 @@ Ein Modul gilt als fertig, wenn **alle** Punkte erfüllt sind:
 | Baustein | Inhalt |
 |---|---|
 Build-Matrix | Rust für `aarch64-linux-android` und `aarch64-apple-ios` (`x86_64-pc-windows-msvc` erst für einen Desktop-Worker); C für Windows (MSVC) und Linux (gcc) — die DLL bleibt C, siehe [ADR-001](adr-001-kernsprache.md) |
-Kern-Jobs | `cargo test` (184 Tests), `cargo clippy --all-targets -- -D warnings` und `cargo fmt --check` für Kern, FFI und Fuzz laufen je als eigener Job; der Reformat der acht handformatierten Dateien ist übertragen und jede gegen `git hash-object` geprüft ([ci.md](ci.md)); `cargo deny` (Lizenzen, CVEs) fehlt ganz |
+Kern-Jobs | `cargo test` (200 Tests), `cargo clippy --all-targets -- -D warnings` und `cargo fmt --check` für Kern, FFI und Fuzz laufen je als eigener Job; der Reformat der acht handformatierten Dateien ist übertragen und jede gegen `git hash-object` geprüft ([ci.md](ci.md)); `cargo deny` (Lizenzen, CVEs) fehlt ganz |
 C-Jobs | `gcc -Wall -Wextra -Wpedantic`, Exportliste gegen `win/j2534.def` prüfen (wie lokal: 16 Symbole) |
 Fuzzing | `sh scripts/fuzz.sh` — `cargo-fuzz` und nightly, zwei Ziele (ISO-TP, UDS), 300 s je Ziel wie in §6.4; ein CI-Job dafür fehlt, solange die Jobs nicht starten ([ci.md](ci.md)) |
 HIL | nächtlich am Prüfstand: 20 Funktionen × 3 Steuergeräte, Golden-Log-Vergleich |
