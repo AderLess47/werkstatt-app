@@ -27,6 +27,7 @@ geschätzt):
 | `core/src/isotp.rs` | ISO 15765-2: Single/First/Consecutive/FlowControl, Blockgröße, `STmin`, Padding, Fristen | 445 Zeilen |
 | `core/src/loopback.rs` | Transport im Speicher, damit alles ohne Gerät prüfbar ist | 66 Zeilen |
 | `core/src/uds.rs` | allgemeiner Client: `10` (auch `10 03`), `22`, `19`; NRC-Klartext, 0x78-Kette, `runde()` als gemeinsamer Pfad | 914 Zeilen |
+| `core/src/j1979.rs` | Fehlercodes dekodieren: `P0301`, Statusbit als Wort, Fehlerart roh | 20 Tests |
 | `core/src/sfd.rs` | VAG-SFD über UDS: `22 01 74`, `10 03`, `31 01 C0 04/08/09`, NRC-Klartext, 0x78-Aufschub, Token-Hex | 1115 Zeilen |
 | `core/src/content.rs` | Funktionsdefinitionen aus YAML lesen und prüfen, Schema, Fehler mit Datei und Zeile | 680 Zeilen |
 | `core/src/function.rs` | Vorbedingungen, Schritte, Recovery, `VehicleMatch`, `Kontext` | 896 Zeilen |
@@ -41,9 +42,10 @@ geschätzt):
 | `model/` | Wirtschaftlichkeitsmodell (Python) | — |
 | `docs/` | 14 Planungs- und Prüfdokumente | — |
 
-**Was fehlt** (und was M1 gerade deshalb groß macht): `core/src/j1979.rs`,
-`core/src/fahrzeug.rs` (die Entscheidung „welches Fahrzeug ist das“, nicht das
-Lesen der VIN), `tools/`, `app-ios/`, Backend.
+**Was fehlt** (und was M1 gerade deshalb groß macht): `core/src/fahrzeug.rs`
+(die Entscheidung „welches Fahrzeug ist das“, nicht das Lesen der VIN) sowie die
+Restdienste von P1 — `0x11`, `0x14`, `0x27`, `0x2E`, `0x31`, `0x3E`. Dazu
+Freeze Frames und Live-Daten aus P2, `tools/`, `app-ios/`, Backend.
 
 Am 16.11.2026 standen hier noch `uds.rs`, `function.rs`, `audit.rs` und
 `content/` als fehlend. Das ist überholt; nachgezogen am 17.11.2026: `uds.rs`
@@ -53,6 +55,10 @@ Am 16.11.2026 standen hier noch `uds.rs`, `function.rs`, `audit.rs` und
 fünf Funktionen in `content/funktionen/`. `core/src/lib.rs` führt sie als
 `pub mod`, nicht mehr als „folgt“ — die Reihenfolge dort ist die
 Abhängigkeitsreihenfolge, nicht eine Wunschliste.
+
+Neu am 17.11.2026: `j1979.rs` mit der DTC-Dekodierung (20 Tests). Was dort
+**nicht** steht, ist der Rest von P2: Freeze Frame (`19 04`) und Live-Daten aus
+DID-Sätzen brauchen Antwortlängen, die noch niemand aufgezeichnet hat.
 
 Ebenfalls offen: eine **Fahrzeugidentifikation**. Die VIN lässt sich lesen
 (`22 F190` über `uds::UdsClient::read_did`, mit Test für die 20-Byte-Antwort),
@@ -67,7 +73,7 @@ Alles hier ist am 16. und 17.11.2026 in dieser VM gelaufen, nicht abgeleitet:
 | Prüfung | Befehl | Ergebnis |
 | --- | --- | --- |
 | C-Kern | `make -C j2534 test` | 165 `PASS`-Zeilen, „Alle Rollout-Prüfungen bestanden“ |
-| Rust-Kern | `cargo test --locked --manifest-path core/Cargo.toml` | 143 Tests + 4 Korpus-Tests |
+| Rust-Kern | `cargo test --locked --manifest-path core/Cargo.toml` | 163 Tests + 4 Korpus-Tests |
 | FFI | `cargo test --locked --manifest-path core-ffi/Cargo.toml` | 15 Tests |
 | App ohne Gerät | `JAVA_HOME=/tmp/jdk sh scripts/jvm-tests.sh` | `OK (174 tests)` |
 | Android-Build | `./android/gradlew -p android :app:assembleDebug` | `BUILD SUCCESSFUL` |
@@ -192,7 +198,7 @@ Seed/Key-Algorithmen im Repo), `0x2E` (Write), `0x31` (RoutineControl), `0x3E`
 
 **Wichtig:** der 0x78- und NRC-Pfad existiert zweimal, wenn P1 nichts
 konsolidiert. Ziel ist **ein** `runde()` in `uds.rs`; `sfd.rs` ruft ihn auf und
-behält seine Tests als Regressionsnetz (seinerzeit 48 Tests, heute 143 — sie
+behält seine Tests als Regressionsnetz (seinerzeit 48 Tests, heute 163 — sie
 mussten beim Umbau unverändert grün bleiben, ohne Änderung an den Erwartungen).
 
 **Tests ohne Gerät:** je Dienst positiv / NRC / zu kurz / falscher Echo / 0x78
@@ -205,6 +211,10 @@ Tests, alle gegen `Loopback`.
 ### P2 — `core/src/j1979.rs`: DTC und Live-Daten auswerten
 
 **Ziel:** reine Parser, keine Hardware.
+
+**Stand 17.11.2026:** die DTC-Dekodierung steht (`system`, `code_text`,
+`status_flags`, `unbelegte_bits`, `dekodiere_liste`, `dekodiere_roh`) mit 20
+Tests. Offen: Freeze Frame und Live-Daten über DID-Sätze.
 
 **Umfang:** DTC-Dreiergruppen (`P/C/B/U`, zwei Fehlerbits, Statusbyte mit
 `testFailed`/`confirmedDtc`/`pendingDtc`), Freeze Frame (`0x19 04`), Live-Daten
@@ -331,13 +341,14 @@ Damit die Arbeit nicht stillsteht und trotzdem messbar bleibt:
 ## B.5 Erste fünf Aufgaben (heute anfangbar)
 
 1. `core/src/uds.rs` anlegen: `runde()`, `session()`, `read_did()` — mit Tests
-   für positiv, NRC, zu kurz, 0x78.
+   für positiv, NRC, zu kurz, 0x78. *(erledigt)*
 2. `sfd.rs` auf `uds::runde()` umstellen; die damals 48 Kern-Tests mussten
    unverändert grün bleiben (sie waren das Regressionsnetz für den Umbau).
+   *(erledigt)*
 3. `core/src/j1979.rs` mit der DTC-Dekodierung beginnen — reiner Parser, kein
-   Bus, sofort testbar.
+   Bus, sofort testbar. *(Dekodierung erledigt am 17.11.2026)*
 4. `content/schema/funktion.schema.json` mit den Pflichtfeldern aus P4
-   schreiben und eine Beispielfunktion validieren.
+   schreiben und eine Beispielfunktion validieren. *(erledigt)*
 5. ~~`docs/android-app-modul.md` auf 157 Tests ziehen (offener Punkt A.4.4)~~ —
    erledigt: 174 in neunzehn Dateien.
 
@@ -364,7 +375,7 @@ Fallen, die schon Zeit gekostet haben:
 
 ---
 
-**Zum Schluss, in einem Satz:** der Kern trägt (ISO-TP, SFD, 165 + 143 + 4 + 15
+**Zum Schluss, in einem Satz:** der Kern trägt (ISO-TP, SFD, 165 + 163 + 4 + 15
 Prüfungen), die App ist gebaut und übersetzt (174 Tests), aber **nichts davon ist
 an einem Fahrzeug gelaufen** und die CI startet seit 147 Läufen keinen Runner.
 Phase 1 beginnt deshalb nicht mit Hardware, sondern mit dem allgemeinen
