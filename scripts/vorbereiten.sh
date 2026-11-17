@@ -90,9 +90,10 @@ command -v cargo > /dev/null ||
 echo "cargo:  $(cargo --version)"
 
 # --- rustfmt ----------------------------------------------------------------
-# Der Pre-Push-Haken prüft nur die geänderten Rust-Dateien auf Formatierung,
-# und ohne `rustfmt` lässt er den Schritt aus — sichtbar, aber ein frischer
-# Arbeitsplatz soll ihn gar nicht erst überspringen müssen.
+# Der Pre-Push-Haken prüft das ganze Crate auf Formatierung (`cargo fmt
+# --check` für `core`, `core-ffi`, `core/fuzz`), und ohne `rustfmt` lässt er
+# den Schritt aus — sichtbar, aber ein frischer Arbeitsplatz soll ihn gar nicht
+# erst überspringen müssen.
 #
 # Geprüft wird mit einem echten Aufruf und nicht mit `command -v`: rustup legt
 # die Proxy-Binaries in ~/.cargo/bin unabhängig von den Komponenten ab. Fehlt
