@@ -121,7 +121,7 @@ Gemessen am 15.11.2026 über die GitHub-API:
 | letzter Lauf (`43737325391`, Commit `e0ad5607`, Lauf 147) | 5 Jobs: vier mit `conclusion: failure`, je `runner_id: 0`, `steps: []`; gestartet 16:46:11, beendet 16:46:14/15; `bindings` `skipped`, weil `rust` nicht gelaufen ist — dasselbe Bild wie beim vorigen Stand |
 | Repository | **privat** (`private: true`) |
 | Actions im Repository | `enabled: true`, `allowed_actions: all` |
-| Actions-Minuten im Monat (Konto) | 978 Linux + 388 macOS, brutto rund 30 $, im Nutzungsbericht mit 0 $ netto ausgewiesen |
+| Actions-Minuten im Monat (Konto) | 978 Linux + 388 macOS, brutto rund 30 $, im Nutzungsbericht mit 0 $ Netto ausgewiesen |
 | Lauf des Commits, der diese Seite hinzufügte (#126) | `created_at` 13:44:10, `updated_at` 13:44:14, `conclusion: failure` |
 | erneuter Lauf, Versuch 2 (#126, „Re-run failed jobs“) | 13:49:00 → 13:49:04, wieder `steps: []`, `runner_id: 0`, `failure` |
 
@@ -225,9 +225,7 @@ neu erzeugte Fassung verglichen statt über `git diff`: der Arbeitsbaum kann vom
 Index abweichen, und ein Vergleich gegen den Index meldete dann eine Änderung,
 die es nicht gibt.
 
-## Erster Lauf nach der Sperre
-
-### Was das für den Stand der Verifikation heißt
+## Was das für den Stand der Verifikation heißt
 
 Solange 0 von 147 Läufen erfolgreich sind, stützt sich keine Aussage in der
 Dokumentation auf die CI. Belegt ist, was lokal gelaufen ist: `make -C j2534
