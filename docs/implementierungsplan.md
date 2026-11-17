@@ -165,7 +165,7 @@ PM | 1,0 | Sprintsteuerung, Partner, Recht |
 
 | Risiko | Frühindikator | Gegenmaßnahme |
 |---|---|---|
-ISO-TP-Timing bricht bei schnellen Gateways | Sprint 2 am Fahrzeug statt nur im Simulator | Zeitmessung im CI, P2/P2\\*-Parameter je Fahrzeug |
+ISO-TP-Timing bricht bei schnellen Gateways | Sprint 2 am Fahrzeug statt nur im Simulator | Zeitmessung im CI, `P2`/`P2*`-Parameter je Fahrzeug |
 Content-Schema passt nicht zu echten Funktionen | Sprint 1 mit 5 echten Funktionen, nicht mit Spielwiese | Schema gegen 30 Funktionen aus dem Katalog prüfen |
 VCI-Vielfalt explodiert im Support | jeder neue Dongle braucht einen Testfall | Capability-Modell, VCI-Checker, Matrix mit Reifegrad |
 iOS blockiert USB-Passthru | früh im S7 | nur BLE/WLAN/IP auf iOS, Gateway für USB |
