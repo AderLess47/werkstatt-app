@@ -17,7 +17,7 @@ use vci_core::content::InhaltsFehler;
 use vci_core::function::{AusfuehrungsFehler, FunctionDef, Kontext};
 use vci_core::sfd::{SfdError, SfdFehler};
 use vci_core::transport::{Capabilities, PAD};
-use vci_core::{CanFrame, IsotpChannel, Loopback, SfdClient, Transport, TransportError};
+use vci_core::{CanFrame, IsotpChannel, Loopback, SfdClient, Transport, TransportError, UdsClient};
 
 uniffi::setup_scaffolding!();
 
@@ -220,6 +220,20 @@ impl<'a> ForeignTransport<'a> {
 
     /// Dasselbe für SFD-Abläufe, deren Fehlerart `SfdFehler` ist.
     fn finish_sfd<T>(&self, result: std::result::Result<T, SfdFehler>) -> Result<T, VciError> {
+        match result {
+            Ok(v) => Ok(v),
+            Err(e) => match self.last.borrow_mut().take() {
+                Some(original) => Err(original),
+                None => Err(VciError::from(e)),
+            },
+        }
+    }
+
+    /// Und für UDS-Abläufe (`UdsFehler`) — etwa den Sicherheitszugriff.
+    fn finish_uds<T>(
+        &self,
+        result: std::result::Result<T, vci_core::uds::UdsFehler>,
+    ) -> Result<T, VciError> {
         match result {
             Ok(v) => Ok(v),
             Err(e) => match self.last.borrow_mut().take() {
@@ -592,6 +606,109 @@ impl Sfd {
                 .sperren_protokolliert(&mut t, timeout_ms, &self.vin, &mut kette, jetzt_ms());
         drop(kette);
         t.finish_sfd(res)
+    }
+}
+
+/// Rechnet zu einem Seed den Schlüssel einer Ebene — auf der Plattform.
+///
+/// Der Kern bringt den **Ablauf** mit (`27 <Ebene>` fragen, `27 <Ebene+1>`
+/// schicken, Bestätigung prüfen), aber keinen Algorithmus: die sind
+/// herstellerspezifisch und lizenzpflichtig
+/// ([docs/implementierungsplan.md](../../docs/implementierungsplan.md) §3). Die
+/// App reicht hier ihren Anbieter herein; der Kern ruft ihn genau einmal je
+/// Zugriff und sendet, was zurückkommt.
+///
+/// `ebene` ist `u32` wie überall an dieser Grenze (`u8` würde in Kotlin zu
+/// `UByte`), `seed` kommt als Liste von Bytes an — so, wie er auf dem Bus lag.
+#[uniffi::export(callback_interface)]
+pub trait SchluesselAnbieter: Send + Sync {
+    /// Schlüssel zu `seed` für `ebene`.
+    ///
+    /// Eine leere Antwort heißt „kein Schlüssel“: der Kern sendet dann nichts
+    /// und meldet einen Protokollfehler, statt einen Schlüssel zu erfinden.
+    fn schluessel(&self, ebene: u32, seed: Vec<u8>) -> Vec<u8>;
+}
+
+/// Vermittelt zwischen dem Kern-Trait und dem Callback der Plattform.
+///
+/// Der Kern kennt nur `SecurityProvider`; hier wird die Ebene auf `u8`
+/// zurückgeschnitten (der Kern arbeitet byteweise) und der Seed kopiert, weil
+/// er über die Sprachgrenze geht.
+struct AnbieterAdapter<'a> {
+    inner: &'a dyn SchluesselAnbieter,
+}
+
+impl vci_core::uds::SecurityProvider for AnbieterAdapter<'_> {
+    fn schluessel(&self, ebene: u8, seed: &[u8]) -> Vec<u8> {
+        self.inner.schluessel(ebene as u32, seed.to_vec())
+    }
+}
+
+/// Ausgang eines Sicherheitszugriffs, wie ihn die App anzeigt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum SicherheitFfi {
+    /// Leerer Seed (oder nur Nullbytes): die Ebene war schon offen, es wurde
+    /// **kein** Schlüssel gesendet.
+    BereitsOffen,
+    /// Seed und Schlüssel gesendet, Bestätigung erhalten.
+    Entsperrt,
+}
+
+/// `27` (SecurityAccess) für die App.
+///
+/// Der Ablauf liegt im Kern (`UdsClient::security_access`); dieses Objekt
+/// reicht Transport und Anbieter durch und übersetzt das Ergebnis. Es gibt
+/// bewusst keinen Weg, bei dem der Kern selbst einen Schlüssel rechnet — der
+/// Algorithmus kommt aus dem Anbieter der Plattform.
+#[derive(uniffi::Object)]
+pub struct Sicherheit {
+    inner: UdsClient,
+}
+
+#[uniffi::export]
+impl Sicherheit {
+    /// Standardadressierung: Anfragen `0x7E0`, Antworten `0x7E8`.
+    #[uniffi::constructor]
+    pub fn new() -> Arc<Self> {
+        Arc::new(Sicherheit {
+            inner: UdsClient::new(),
+        })
+    }
+
+    /// Für Fahrzeuge mit abweichender Adressierung.
+    #[uniffi::constructor]
+    pub fn with_ids(req_id: u32, rsp_id: u32) -> Arc<Self> {
+        Arc::new(Sicherheit {
+            inner: UdsClient::with_ids(req_id, rsp_id),
+        })
+    }
+
+    /// `27 <Ebene>` / `27 <Ebene+1> <Schlüssel>` — Ebene öffnen.
+    ///
+    /// Der Anbieter wird **nur** gefragt, wenn das Steuergerät einen Seed
+    /// geliefert hat: bei einem leeren Seed war die Ebene schon offen, und ein
+    /// Schlüssel dazu würde am Steuergerät als `0x35` landen.
+    pub fn security_access(
+        &self,
+        transport: Box<dyn CanTransport>,
+        ebene: u32,
+        anbieter: Box<dyn SchluesselAnbieter>,
+        timeout_ms: u32,
+    ) -> Result<SicherheitFfi, VciError> {
+        let ebene = u8::try_from(ebene).map_err(|_| VciError::Protocol {
+            detail: format!("Ebene {ebene} passt nicht in ein Byte"),
+        })?;
+        let adapter = AnbieterAdapter {
+            inner: anbieter.as_ref(),
+        };
+        let mut t = ForeignTransport::new(transport.as_ref());
+        let res = self
+            .inner
+            .security_access(&mut t, ebene, &adapter, timeout_ms);
+        t.finish_uds(res).map(|z| match z {
+            vci_core::uds::SecurityZugriff::BereitsOffen => SicherheitFfi::BereitsOffen,
+            vci_core::uds::SecurityZugriff::Entsperrt => SicherheitFfi::Entsperrt,
+        })
     }
 }
 
