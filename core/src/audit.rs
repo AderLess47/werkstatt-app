@@ -206,7 +206,11 @@ impl AuditEintrag {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuditFehler {
     /// Laufnummer passt nicht zur Position (Eintrag entfernt oder getauscht).
-    Laufnummer { stelle: usize, erwartet: u32, gefunden: u32 },
+    Laufnummer {
+        stelle: usize,
+        erwartet: u32,
+        gefunden: u32,
+    },
     /// `vorheriger_hash` zeigt nicht auf den Vorgänger.
     KetteGebrochen { stelle: usize },
     /// Der gespeicherte Hash passt nicht zum Inhalt.
@@ -455,11 +459,20 @@ mod tests {
     #[test]
     fn erste_laufnummer_ist_eins_und_zeigt_auf_den_start() {
         let mut kette = AuditKette::neu();
-        let nr = kette.anhaengen(1_000, "WVWZZZ1JZXW000001", 0x7E0, "status", Ergebnis::Erfolg);
+        let nr = kette.anhaengen(
+            1_000,
+            "WVWZZZ1JZXW000001",
+            0x7E0,
+            "status",
+            Ergebnis::Erfolg,
+        );
 
         assert_eq!(nr, 1);
         assert_eq!(kette.eintraege()[0].laufnummer, 1);
-        assert_eq!(kette.eintraege()[0].vorheriger_hash, AuditKette::start_hash());
+        assert_eq!(
+            kette.eintraege()[0].vorheriger_hash,
+            AuditKette::start_hash()
+        );
         assert!(kette.pruefen().is_ok());
     }
 
@@ -486,7 +499,10 @@ mod tests {
             grund: "abgebrochen".to_string(),
         };
 
-        assert_eq!(kette.pruefen(), Err(AuditFehler::HashPasstNicht { stelle: 0 }));
+        assert_eq!(
+            kette.pruefen(),
+            Err(AuditFehler::HashPasstNicht { stelle: 0 })
+        );
     }
 
     #[test]
@@ -541,7 +557,13 @@ mod tests {
     #[test]
     fn json_enthaelt_alle_felder_und_den_letzten_hash() {
         let mut kette = AuditKette::neu();
-        kette.anhaengen(1_700, "WVWZZZ1JZXW000001", 0x7E0, "routine 31 01 C0 08", Ergebnis::Erfolg);
+        kette.anhaengen(
+            1_700,
+            "WVWZZZ1JZXW000001",
+            0x7E0,
+            "routine 31 01 C0 08",
+            Ergebnis::Erfolg,
+        );
 
         let json = kette.als_json();
 
@@ -550,7 +572,10 @@ mod tests {
         assert!(json.contains("\"vin\": \"WVWZZZ1JZXW000001\""));
         assert!(json.contains("\"dienst\": \"routine 31 01 C0 08\""));
         assert!(json.contains("\"ergebnis\": \"Erfolg\""));
-        assert!(json.contains(&format!("\"letzter_hash\": \"{}\"", hex32(&kette.letzter_hash()))));
+        assert!(json.contains(&format!(
+            "\"letzter_hash\": \"{}\"",
+            hex32(&kette.letzter_hash())
+        )));
     }
 
     #[test]
