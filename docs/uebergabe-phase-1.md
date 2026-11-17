@@ -26,7 +26,7 @@ geschätzt):
 | `core/src/transport.rs` | Transport-Trait, `CanFrame`, `Capabilities`, Fehlerarten — die einzige Stelle, die Hardware kennt | 100 Zeilen |
 | `core/src/isotp.rs` | ISO 15765-2: Single/First/Consecutive/FlowControl, Blockgröße, `STmin`, Padding, Fristen | 445 Zeilen |
 | `core/src/loopback.rs` | Transport im Speicher, damit alles ohne Gerät prüfbar ist | 66 Zeilen |
-| `core/src/uds.rs` | allgemeiner Client: `10` (auch `10 03`), `22`, `19`; NRC-Klartext, 0x78-Kette, `runde()` als gemeinsamer Pfad | 914 Zeilen |
+| `core/src/uds.rs` | allgemeiner Client: `10` (auch `10 03`), `11`, `14`, `19`, `22`, `3E`; NRC-Klartext, 0x78-Kette, `runde()` als gemeinsamer Pfad | 1.316 Zeilen |
 | `core/src/j1979.rs` | Fehlercodes dekodieren: `P0301`, Statusbit als Wort, Fehlerart roh | 20 Tests |
 | `core/src/sfd.rs` | VAG-SFD über UDS: `22 01 74`, `10 03`, `31 01 C0 04/08/09`, NRC-Klartext, 0x78-Aufschub, Token-Hex | 1115 Zeilen |
 | `core/src/content.rs` | Funktionsdefinitionen aus YAML lesen und prüfen, Schema, Fehler mit Datei und Zeile | 680 Zeilen |
@@ -44,17 +44,18 @@ geschätzt):
 
 **Was fehlt** (und was M1 gerade deshalb groß macht): `core/src/fahrzeug.rs`
 (die Entscheidung „welches Fahrzeug ist das“, nicht das Lesen der VIN) sowie die
-Restdienste von P1 — `0x11`, `0x14`, `0x27`, `0x2E`, `0x31`, `0x3E`. Dazu
-Freeze Frames und Live-Daten aus P2, `tools/`, `app-ios/`, Backend.
+Restdienste von P1 — `0x27`, `0x2E`, `0x31`. Dazu Freeze Frames und Live-Daten
+aus P2, `tools/`, `app-ios/`, Backend.
 
 Am 16.11.2026 standen hier noch `uds.rs`, `function.rs`, `audit.rs` und
 `content/` als fehlend. Das ist überholt; nachgezogen am 17.11.2026: `uds.rs`
-(914 Zeilen, allgemeiner Client mit `runde()`, Session, DID, DTC, NRC und
-0x78-Kette), `function.rs` (896), `content.rs` (680, Schema und Validator),
-`audit.rs` (584, Hash-Kette) sowie `content/schema/funktion.schema.json` mit
-fünf Funktionen in `content/funktionen/`. `core/src/lib.rs` führt sie als
-`pub mod`, nicht mehr als „folgt“ — die Reihenfolge dort ist die
-Abhängigkeitsreihenfolge, nicht eine Wunschliste.
+(1.316 Zeilen, allgemeiner Client mit `runde()`, Session, DID, DTC, Reset,
+Fehlerspeicher löschen, TesterPresent, NRC und 0x78-Kette), `function.rs` (896),
+`content.rs` (680, Schema und Validator), `audit.rs` (584, Hash-Kette) sowie
+`content/schema/funktion.schema.json` mit fünf Funktionen in
+`content/funktionen/`. `core/src/lib.rs` führt sie als `pub mod`, nicht mehr als
+„folgt“ — die Reihenfolge dort ist die Abhängigkeitsreihenfolge, nicht eine
+Wunschliste.
 
 Neu am 17.11.2026: `j1979.rs` mit der DTC-Dekodierung (20 Tests). Was dort
 **nicht** steht, ist der Rest von P2: Freeze Frame (`19 04`) und Live-Daten aus
@@ -73,7 +74,7 @@ Alles hier ist am 16. und 17.11.2026 in dieser VM gelaufen, nicht abgeleitet:
 | Prüfung | Befehl | Ergebnis |
 | --- | --- | --- |
 | C-Kern | `make -C j2534 test` | 165 `PASS`-Zeilen, „Alle Rollout-Prüfungen bestanden“ |
-| Rust-Kern | `cargo test --locked --manifest-path core/Cargo.toml` | 163 Tests + 4 Korpus-Tests |
+| Rust-Kern | `cargo test --locked --manifest-path core/Cargo.toml` | 184 Tests + 4 Korpus-Tests |
 | FFI | `cargo test --locked --manifest-path core-ffi/Cargo.toml` | 15 Tests |
 | App ohne Gerät | `JAVA_HOME=/tmp/jdk sh scripts/jvm-tests.sh` | `OK (174 tests)` |
 | Android-Build | `./android/gradlew -p android :app:assembleDebug` | `BUILD SUCCESSFUL` |
@@ -107,11 +108,11 @@ Alles hier ist am 16. und 17.11.2026 in dieser VM gelaufen, nicht abgeleitet:
    und `can_recv` **verwirft** jede Antwort mit anderer Kennung (`:257`). Die App
    benutzt diesen Pfad nicht (sie lädt nur `libvci_ffi.so`) — für M1 wird er aber
    relevant, sobald mehrere Steuergeräte über Passthru angesprochen werden.
-3. **Der UDS-Client ist da, aber schmal.** `sfd.rs` läuft seit dem 17.11.2026
-   über [`crate::uds::UdsClient::runde`] und `uds::parse_sitzung` — einen
-   zweiten NRC- und 0x78-Pfad gibt es nicht mehr. `uds.rs` kennt heute `0x10`
-   (inklusive `10 03`), `0x22` und `0x19`; aus M1 fehlen `0x11`, `0x14`, `0x27`,
-   `0x2E`, `0x31` und `0x3E` (TesterPresent).
+3. **Der UDS-Client ist da, aber noch nicht vollständig.** `sfd.rs` läuft seit
+   dem 17.11.2026 über [`crate::uds::UdsClient::runde`] und `uds::parse_sitzung`
+   — einen zweiten NRC- und 0x78-Pfad gibt es nicht mehr. `uds.rs` kennt heute
+   `0x10` (inklusive `10 03`), `0x11`, `0x14`, `0x19`, `0x22` und `0x3E`;
+   aus M1 fehlen `0x27`, `0x2E` und `0x31`.
 4. ~~**`docs/android-app-modul.md` nennt 119 `@Test`**~~ — nachgezogen: 174 in
    neunzehn Dateien (SFD, Funktions-Runtime und Audit-Kette kamen dazu).
 5. **`docs/geraetepruefung.md` Abschnitt 10 (SFD)** ist geschrieben und nie
@@ -198,7 +199,7 @@ Seed/Key-Algorithmen im Repo), `0x2E` (Write), `0x31` (RoutineControl), `0x3E`
 
 **Wichtig:** der 0x78- und NRC-Pfad existiert zweimal, wenn P1 nichts
 konsolidiert. Ziel ist **ein** `runde()` in `uds.rs`; `sfd.rs` ruft ihn auf und
-behält seine Tests als Regressionsnetz (seinerzeit 48 Tests, heute 163 — sie
+behält seine Tests als Regressionsnetz (seinerzeit 48 Tests, heute 184 — sie
 mussten beim Umbau unverändert grün bleiben, ohne Änderung an den Erwartungen).
 
 **Tests ohne Gerät:** je Dienst positiv / NRC / zu kurz / falscher Echo / 0x78
@@ -299,7 +300,7 @@ S9 im Plan. Braucht belegte Funktionsdefinitionen je Modell, nicht Code.
 
 ```
 P1 ──┬─→ P2 ──┐
-     └─→ P3 ──┴─→ P4 ──→ P5 ──→ P6 ──→ P7
+     �└─→ P3 ──┴─→ P4 ──→ P5 ──→ P6 ──→ P7
                                       └─→ (P8, P9, P10 mit Ressourcen)
 ```
 
@@ -375,7 +376,7 @@ Fallen, die schon Zeit gekostet haben:
 
 ---
 
-**Zum Schluss, in einem Satz:** der Kern trägt (ISO-TP, SFD, 165 + 163 + 4 + 15
+**Zum Schluss, in einem Satz:** der Kern trägt (ISO-TP, SFD, 165 + 184 + 4 + 15
 Prüfungen), die App ist gebaut und übersetzt (174 Tests), aber **nichts davon ist
 an einem Fahrzeug gelaufen** und die CI startet seit 147 Läufen keinen Runner.
 Phase 1 beginnt deshalb nicht mit Hardware, sondern mit dem allgemeinen
