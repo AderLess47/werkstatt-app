@@ -9,7 +9,7 @@
 | `clippy` | `cargo clippy --all-targets -- -D warnings` für `core` und `core-ffi`; `--all-targets` schließt die Tests ein, und genau dort lagen die zwei Warnungen, die den Job sonst nie erreicht hätten |
 | `fmt` | `cargo fmt --check` für `core`, `core-ffi` und `core/fuzz` — eigener Job, weil ein Formatfehler nichts über das Verhalten sagt |
 | `bindings` | erzeugt Kotlin- und Swift-Bindings neu, lädt sie als Artefakt hoch (`needs: rust`) |
-| `jvm-tests` | die 179 Tests der App ohne Gerät über `sh scripts/jvm-tests.sh`, gegen den Host-Build der Bibliothek |
+| `jvm-tests` | die 185 Tests der App ohne Gerät über `sh scripts/jvm-tests.sh`, gegen den Host-Build der Bibliothek |
 | `android` | NDK-Bibliothek für `arm64-v8a` und `x86_64`; `./android/gradlew -p android :bindings:test`; dann `:app:testDebugUnitTest :app:assembleDebug` und eine Prüfung, dass beide ABIs in der APK liegen |
 
 Der Android-Job baut über den Wrapper, nicht über ein vom Runner gestelltes
@@ -189,25 +189,24 @@ Befehlen auf dieser Maschine:
 sh scripts/ci-lokal.sh
 ```
 
-Gemessen am 17.11.2026, 16:15 UTC in dieser VM (rustc 1.100.0, cargo 1.100.0,
+Gemessen am 17.11.2026, 16:39 UTC in dieser VM (rustc 1.100.0, cargo 1.100.0,
 OpenJDK 17.0.21, Linux 6.1.102 x86_64) — alle fünf Jobs grün in zusammen 37 s.
-Gegenüber dem Lauf um 15:58 UTC sind neun Tests dazugekommen, alle für `0x27`
-über die Sprachgrenze: vier in der FFI-Schicht (Schlüssel des Anbieters, offene
-Ebene ohne Schlüssel, Anbieter ohne Antwort, NRC `0x35`) und fünf in der App
-(ein Kotlin-`SchluesselAnbieter` wird vom Kern zurückgerufen; dazu der Fall
-einer Ebene außerhalb eines Bytes). Der `rust`-Job brauchte diesmal 1 s, weil
-die Übersetzung schon stand; Dauern und Umfang der Läufe sind deshalb nur
-bedingt vergleichbar. Die Läufe davor (15:58, 15:34, 15:18 und 14:42 UTC)
-hatten 224, 209, 200 bzw. 184 Tests — damals kamen `0x27` im Kern, `0x2E` und
-`0x31` dazu.
+Gegenüber dem Lauf um 16:15 UTC sind sechs Tests dazugekommen, alle in der App:
+die Ebenen-Prüfung des neuen SecurityAccess-Abschnitts (Hex, gerade Zahl,
+ein Byte), der Anbieter, der Ebene und Seed mitschreibt, die Seed-Texte (kein
+Seed, leer, nur Nullbytes, Hex) und die Meldung bei fehlendem Schlüssel —
+damit 185. Der `rust`-Job brauchte diesmal 0 s, weil die Übersetzung schon
+stand; Dauern und Umfang der Läufe sind deshalb nur bedingt vergleichbar. Die
+Läufe davor sind die Stationen dieser Sitzung: `0x27` im Kern und über die
+Sprachgrenze, `0x2E` und `0x31` im Kern.
 
 | Job | Ergebnis | Dauer | Was im Log steht |
 | --- | --- | --- | --- |
 | `c` | grün | 0 s | 165 `PASS`-Zeilen, Korpus byteweise unverändert |
-| `rust` | grün | 1 s | 224 Tests im Kern, 4 Korpus-Tests, 19 in der FFI-Schicht |
+| `rust` | grün | 0 s | 224 Tests im Kern, 4 Korpus-Tests, 19 in der FFI-Schicht |
 | `clippy` | grün | 1 s | keine Warnung in `core` und `core-ffi` |
 | `fmt` | grün | 0 s | `--check` für `core`, `core-ffi`, `core/fuzz` |
-| `jvm-tests` | grün | 36 s | `OK (179 tests)` |
+| `jvm-tests` | grün | 36 s | `OK (185 tests)` |
 
 Die Dauern sind **mit warmem Build-Verzeichnis** gemessen — `target/` war vom
 vorigen Lauf gefüllt. Ein kalter Lauf braucht Minuten; die Zahl sagt deshalb
@@ -232,7 +231,7 @@ die es nicht gibt.
 
 Solange 0 von 147 Läufen erfolgreich sind, stützt sich keine Aussage in der
 Dokumentation auf die CI. Belegt ist, was lokal gelaufen ist: `make -C j2534
-test`, `cargo test` für beide Crates, `sh scripts/jvm-tests.sh` (179 Tests), der
+test`, `cargo test` für beide Crates, `sh scripts/jvm-tests.sh` (185 Tests), der
 Fuzz-Lauf über `sh scripts/fuzz.sh` (604 s, siehe oben) und der Android-Build
 über den Wrapper
 (`./android/gradlew -p android :app:testDebugUnitTest :app:assembleDebug`).
