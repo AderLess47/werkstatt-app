@@ -34,6 +34,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import uniffi.vci_ffi.Audit
 import uniffi.vci_ffi.Sicherheit
 import uniffi.vci_ffi.SicherheitFfi
 
@@ -64,10 +65,20 @@ private const val SICHERHEIT_FRIST_MS = 5_000u
  * solange ein Gerät geöffnet ist, kann es kein zweiter Abschnitt gleichzeitig
  * öffnen. Wer beides braucht, schließt den einen vorher.
  *
+ * Der Vorgang geht **durch die Audit-Kette**: [audit] kommt beim Bauen des
+ * `Sicherheit`-Objekts mit, nicht je Aufruf — damit gibt es keinen Weg an der
+ * Kette vorbei. Der Eintrag nennt Ebene und Ausgang; Seed und Schlüssel stehen
+ * dort nicht, weil die Kette weitergereicht wird (Support, Datei, Ticket).
+ * [onNeu] sagt dem Audit-Abschnitt, dass neu gezeichnet werden muss.
+ *
  * [onSchritt] meldet den angekündigten Schritt nach oben (Selbsttest-Bericht).
  */
 @Composable
-internal fun SicherheitAbschnitt(onSchritt: (String) -> Unit = {}) {
+internal fun SicherheitAbschnitt(
+    audit: Audit,
+    onSchritt: (String) -> Unit = {},
+    onNeu: () -> Unit = {},
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val verbindung = remember { UsbDongleVerbindung(context) }
@@ -164,7 +175,7 @@ internal fun SicherheitAbschnitt(onSchritt: (String) -> Unit = {}) {
         scope.launch {
             try {
                 val zugriff = withContext(Dispatchers.IO) {
-                    val sicherheit = Sicherheit()
+                    val sicherheit = Sicherheit(audit, "unbekannt")
                     try {
                         sicherheit.securityAccess(
                             offen,
@@ -191,6 +202,9 @@ internal fun SicherheitAbschnitt(onSchritt: (String) -> Unit = {}) {
             } finally {
                 schritt = null
                 sperre.freigeben()
+                // Auch der Fehlversuch steht jetzt in der Kette — der Abschnitt
+                // daneben soll ihn zeigen, ohne dass jemand neu startet.
+                onNeu()
             }
         }
     }
