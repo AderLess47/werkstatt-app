@@ -373,10 +373,7 @@ impl LoopbackTransport {
 
 impl CanTransport for LoopbackTransport {
     fn send(&self, frame: CanFrameFfi) -> Result<(), VciError> {
-        let mut l = self
-            .inner
-            .lock()
-            .map_err(|_| VciError::Io)?;
+        let mut l = self.inner.lock().map_err(|_| VciError::Io)?;
         l.send(&frame.to_core()).map_err(VciError::from)
     }
 
@@ -590,9 +587,9 @@ impl Sfd {
     ) -> Result<(), VciError> {
         let mut t = ForeignTransport::new(transport.as_ref());
         let mut kette = self.audit.inner.lock().map_err(|_| VciError::Io)?;
-        let res = self
-            .inner
-            .sperren_protokolliert(&mut t, timeout_ms, &self.vin, &mut kette, jetzt_ms());
+        let res =
+            self.inner
+                .sperren_protokolliert(&mut t, timeout_ms, &self.vin, &mut kette, jetzt_ms());
         drop(kette);
         t.finish_sfd(res)
     }
@@ -692,6 +689,15 @@ impl Audit {
             Ok(kette) => kette.len() as u32,
             Err(_) => 0,
         }
+    }
+
+    /// Leer heißt: noch kein Vorgang protokolliert.
+    ///
+    /// Steht neben `len`, weil Clippy sonst zu Recht fragt, warum es nur die
+    /// eine Hälfte gibt — und weil die App die leere Kette unterscheiden muss
+    /// von einer, die nicht gelesen werden konnte.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn eintraege(&self) -> Vec<AuditEintragFfi> {
@@ -856,23 +862,27 @@ impl Funktion {
     }
 
     pub fn pruefe_schema(&self) -> Result<(), VciError> {
-        self.inner.pruefe_schema().map_err(|fehler| VciError::Protocol {
-            detail: fehler
-                .iter()
-                .map(|f| f.to_string())
-                .collect::<Vec<_>>()
-                .join("; "),
-        })
+        self.inner
+            .pruefe_schema()
+            .map_err(|fehler| VciError::Protocol {
+                detail: fehler
+                    .iter()
+                    .map(|f| f.to_string())
+                    .collect::<Vec<_>>()
+                    .join("; "),
+            })
     }
 
     pub fn pruefe_freigabe(&self) -> Result<(), VciError> {
-        self.inner.pruefe_freigabe().map_err(|fehler| VciError::Protocol {
-            detail: fehler
-                .iter()
-                .map(|f| f.to_string())
-                .collect::<Vec<_>>()
-                .join("; "),
-        })
+        self.inner
+            .pruefe_freigabe()
+            .map_err(|fehler| VciError::Protocol {
+                detail: fehler
+                    .iter()
+                    .map(|f| f.to_string())
+                    .collect::<Vec<_>>()
+                    .join("; "),
+            })
     }
 
     /// Führt den Ablauf aus; jeder Schritt landet in `audit`.
@@ -892,13 +902,19 @@ impl Funktion {
         };
         let client = vci_core::UdsClient::new();
         let mut kette = audit.inner.lock().map_err(|_| VciError::Io)?;
-        let ergebnis = self.inner.ausfuehren(&client, &mut t, &ctx, &mut kette, zeit_ms);
+        let ergebnis = self
+            .inner
+            .ausfuehren(&client, &mut t, &ctx, &mut kette, zeit_ms);
 
         t.finish_funktion(ergebnis).map(|a| AusfuehrungFfi {
             funktion: a.funktion,
             schritte: a.schritte as u32,
             backup_dids: a.backup.iter().map(|(did, _)| *did as u32).collect(),
-            backup_hex: a.backup.iter().map(|(_, daten)| vci_core::sfd::hex(daten)).collect(),
+            backup_hex: a
+                .backup
+                .iter()
+                .map(|(_, daten)| vci_core::sfd::hex(daten))
+                .collect(),
             audit_laufnummern: a.audit_laufnummern,
         })
     }
