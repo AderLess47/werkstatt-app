@@ -5,7 +5,7 @@
 | Job | Was er prüft |
 | --- | --- |
 | `c` | `make -C j2534 test` (165 Prüfungen) und dass `core/tests/corpus/isotp.txt` unverändert aus dem Erzeuger hervorgeht |
-| `rust` | `cargo test` für `core` (184 Tests, dazu 4 Korpus-Tests aus `core/tests/corpus/isotp.txt`) und für `core-ffi` (15 Tests) |
+| `rust` | `cargo test` für `core` (200 Tests, dazu 4 Korpus-Tests aus `core/tests/corpus/isotp.txt`) und für `core-ffi` (15 Tests) |
 | `clippy` | `cargo clippy --all-targets -- -D warnings` für `core` und `core-ffi`; `--all-targets` schließt die Tests ein, und genau dort lagen die zwei Warnungen, die den Job sonst nie erreicht hätten |
 | `fmt` | `cargo fmt --check` für `core`, `core-ffi` und `core/fuzz` — eigener Job, weil ein Formatfehler nichts über das Verhalten sagt |
 | `bindings` | erzeugt Kotlin- und Swift-Bindings neu, lädt sie als Artefakt hoch (`needs: rust`) |
@@ -47,9 +47,9 @@ liegen damit schon über dem Vorgabewert 100. Eine Konfiguration, die den alten
 Stand durchwinkt, gibt es also nicht — es bleibt beim Reformat.
 
 Die Änderung selbst ist rein mechanisch gefahren — der Kern danach weiter grün
-(184 Tests, Clippy sauber). Der Haken war der Weg ins Repository: es gibt von
+(damals 184 Tests, Clippy sauber). Der Haken war der Weg ins Repository: es gibt von
 dieser Maschine keinen `git push`, jede Datei geht einzeln durch die API, und
-`sfd.rs` allein hat 38 KB. Ein einzelnes verrutschtes Zeichen wäre ein
+`sfd.rs` allein hat 39 KB. Ein einzelnes verrutschtes Zeichen wäre ein
 Programmierfehler in getestetem Code — deshalb stand der Job erst im Workflow,
 als alle Dateien übertragen und jede gegen `git hash-object` geprüft war. Ein
 Job, der beim ersten Lauf rot ist, prüft nichts.
@@ -70,11 +70,11 @@ Repository, jede per Blob-Hash bestätigt:
 | `core/src/function/tests.rs` | 16 KB |
 | `core/src/isotp.rs` | 17 KB |
 | `core/src/lib.rs` | 1,5 KB |
-| `core/src/sfd.rs` | 38 KB |
-| `core/src/uds.rs` | 31 KB |
+| `core/src/sfd.rs` | 39 KB |
+| `core/src/uds.rs` | 56 KB |
 
 `cargo fmt --check` ist danach für alle drei Crates lokal grün (Exit 0), und
-`sh scripts/kern-tests.sh` läuft durch (184 Rust-Tests).
+`sh scripts/kern-tests.sh` läuft durch (200 Rust-Tests).
 
 ## Fuzzing — lokal belegt, nicht in der CI
 
@@ -189,19 +189,22 @@ Befehlen auf dieser Maschine:
 sh scripts/ci-lokal.sh
 ```
 
-Gemessen am 17.11.2026, 14:42 UTC in dieser VM (rustc 1.100.0, cargo 1.100.0,
-OpenJDK 17.0.21, Linux 6.1.102 x86_64) — alle fünf Jobs grün in zusammen 38 s.
-Die beiden Läufe davor am selben Tag (13:36 und 14:12 UTC) hatten denselben
-Umfang, aber 163 Tests im Kern; die 21 seitdem gekommenen Tests sind die Dienste
-`11`, `14` und `3E` aus `core/src/uds.rs`.
+Gemessen am 17.11.2026, 15:18 UTC in dieser VM (rustc 1.100.0, cargo 1.100.0,
+OpenJDK 17.0.21, Linux 6.1.102 x86_64) — alle fünf Jobs grün in zusammen 47 s.
+Der Lauf davor am selben Tag (14:42 UTC) hatte denselben Umfang, aber 184 Tests
+im Kern; die 16 seitdem gekommenen Tests sind `0x31` (RoutineControl) in
+`core/src/uds.rs` — Start, Stop, Ergebnis und der Statusrecord —, samt der
+SFD-Nachrichten, die jetzt über denselben Baukasten laufen. Der `rust`-Job
+brauchte diesmal 5 s statt 1 s, weil die Test-Binärdatei neu übersetzt wurde;
+die 47 s sind deshalb nur bedingt mit den 38 s davor vergleichbar.
 
 | Job | Ergebnis | Dauer | Was im Log steht |
 | --- | --- | --- | --- |
 | `c` | grün | 0 s | 165 `PASS`-Zeilen, Korpus byteweise unverändert |
-| `rust` | grün | 1 s | 184 Tests im Kern, 4 Korpus-Tests, 15 in der FFI-Schicht |
-| `clippy` | grün | 1 s | keine Warnung in `core` und `core-ffi` |
+| `rust` | grün | 5 s | 200 Tests im Kern, 4 Korpus-Tests, 15 in der FFI-Schicht |
+| `clippy` | grün | 2 s | keine Warnung in `core` und `core-ffi` |
 | `fmt` | grün | 0 s | `--check` für `core`, `core-ffi`, `core/fuzz` |
-| `jvm-tests` | grün | 36 s | `OK (174 tests)` |
+| `jvm-tests` | grün | 40 s | `OK (174 tests)` |
 
 Die Dauern sind **mit warmem Build-Verzeichnis** gemessen — `target/` war vom
 vorigen Lauf gefüllt. Ein kalter Lauf braucht Minuten; die Zahl sagt deshalb
@@ -222,7 +225,9 @@ neu erzeugte Fassung verglichen statt über `git diff`: der Arbeitsbaum kann vom
 Index abweichen, und ein Vergleich gegen den Index meldete dann eine Änderung,
 die es nicht gibt.
 
-## Was das für den Stand der Verifikation heißt
+## Erster Lauf nach der Sperre
+
+### Was das für den Stand der Verifikation heißt
 
 Solange 0 von 147 Läufen erfolgreich sind, stützt sich keine Aussage in der
 Dokumentation auf die CI. Belegt ist, was lokal gelaufen ist: `make -C j2534
