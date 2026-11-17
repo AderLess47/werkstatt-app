@@ -24,6 +24,20 @@ cargo build         # ohne Warnungen
 Keine Abhängigkeiten — der Kern baut offline. Für Android/iOS kommen später
 `cargo-ndk` bzw. ein XCFramework dazu (siehe ADR-001 §5).
 
+## Fuzzing
+
+Die beiden Parser haben Ziele in `fuzz/`: ISO-TP (Empfangs- und Sendeweg) und
+UDS (Sitzung, Kennung, Fehlerspeicher, NRC-Erkennung).
+
+```bash
+sh ../scripts/fuzz.sh        # 300 s je Ziel, die 10 Minuten der Definition of Done
+sh ../scripts/fuzz.sh 30     # Rauchprobe nach einer Änderung
+```
+
+Braucht `nightly` und `cargo-fuzz`. Der Pre-Push-Haken fährt 20 s je Ziel, wenn
+`src/isotp.rs`, `src/uds.rs` oder `fuzz/` geändert wurden. Lauf und Ergebnis des
+letzten vollen Durchgangs: [docs/ci.md](../docs/ci.md#fuzzing--lokal-belegt-nicht-in-der-ci).
+
 ## Der Konformitätskorpus
 
 `tests/corpus/isotp.txt` wird **nicht von Hand geschrieben**, sondern aus der
