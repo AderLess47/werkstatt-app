@@ -23,10 +23,10 @@ jobs:
           git diff --exit-code -- core/tests/corpus/isotp.txt
 
   rust:
-    # Die Zahlen im Namen sind die lokal belegten: 143 Tests im Kern, 4 aus dem
+    # Die Zahlen im Namen sind die lokal belegten: 163 Tests im Kern, 4 aus dem
     # Konformitätskorpus, 15 in der FFI-Schicht. Sie stehen hier, damit ein
     # Blick auf den Lauf genügt, um zu sehen, ob noch alle da sind.
-    name: Rust-Kern (143 Kern, 4 Korpus, 15 FFI)
+    name: Rust-Kern (163 Kern, 4 Korpus, 15 FFI)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -98,7 +98,7 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - uses: android-actions/setup-android@v3
+      - uses: actions/setup-android@v3
 
       - name: NDK installieren
         # `yes |` beantwortet die Lizenzfrage; ohne das kann der Schritt auf
