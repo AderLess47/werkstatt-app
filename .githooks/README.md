@@ -59,8 +59,8 @@ Komponente fehlt: rustup legt seine Proxy-Binaries unabhängig davon in
 ungeformatiert, mit einer Reparaturanleitung, die selbst scheitert. Bei
 unbekannter Vergleichsbasis (neuer Branch, Force-Push) gibt es keine Dateiliste;
 dann wird auch die Formatprüfung ausgelassen, und der Hook schreibt es hin.
-Fehlt `rustfmt`, kündigt auch der Trockenlauf die Prüfung als ausgelassen an statt
-sie anzukündigen.
+Fehlt `rustfmt` oder das Fuzz-Werkzeug, nennt auch der Trockenlauf den Schritt als
+ausgelassen statt ihn anzukündigen.
 
 Die Einordnung ist bewusst grob: ein Pfad, den die Tabelle nicht kennt, lässt
 alle Läufe starten. Im Zweifel wird geprüft, nicht geraten. Alle Läufe werden
