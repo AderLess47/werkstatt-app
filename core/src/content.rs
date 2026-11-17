@@ -300,8 +300,10 @@ pub fn laden(datei: &str, text: &str) -> std::result::Result<FunctionDef, Inhalt
             (0, _) => {
                 // Neue Top-Level-Anweisung: vorherigen Abschnitt abschließen.
                 if let Some((min, max)) = bordspannung.take() {
-                    def.preconditions
-                        .push(Precondition::Bordspannung { min_mv: min, max_mv: max });
+                    def.preconditions.push(Precondition::Bordspannung {
+                        min_mv: min,
+                        max_mv: max,
+                    });
                 }
                 match schluessel {
                     "id" => {
@@ -327,44 +329,64 @@ pub fn laden(datei: &str, text: &str) -> std::result::Result<FunctionDef, Inhalt
                     }
                     "match" => {
                         if !wert.is_empty() {
-                            return Err(fehler(datei, zeile, Art::LeererBlock {
-                                schluessel: "match".to_string(),
-                            }));
+                            return Err(fehler(
+                                datei,
+                                zeile,
+                                Art::LeererBlock {
+                                    schluessel: "match".to_string(),
+                                },
+                            ));
                         }
                         match_gesehen = true;
                         abschnitt = Abschnitt::Match;
                     }
                     "preconditions" => {
                         if !wert.is_empty() {
-                            return Err(fehler(datei, zeile, Art::LeererBlock {
-                                schluessel: "preconditions".to_string(),
-                            }));
+                            return Err(fehler(
+                                datei,
+                                zeile,
+                                Art::LeererBlock {
+                                    schluessel: "preconditions".to_string(),
+                                },
+                            ));
                         }
                         preconditions_gesehen = true;
                         abschnitt = Abschnitt::Preconditions;
                     }
                     "backup" => {
                         if !wert.is_empty() {
-                            return Err(fehler(datei, zeile, Art::LeererBlock {
-                                schluessel: "backup".to_string(),
-                            }));
+                            return Err(fehler(
+                                datei,
+                                zeile,
+                                Art::LeererBlock {
+                                    schluessel: "backup".to_string(),
+                                },
+                            ));
                         }
                         def.backup = Some(BackupSpec::default());
                         abschnitt = Abschnitt::Backup;
                     }
                     "steps" => {
                         if !wert.is_empty() {
-                            return Err(fehler(datei, zeile, Art::LeererBlock {
-                                schluessel: "steps".to_string(),
-                            }));
+                            return Err(fehler(
+                                datei,
+                                zeile,
+                                Art::LeererBlock {
+                                    schluessel: "steps".to_string(),
+                                },
+                            ));
                         }
                         abschnitt = Abschnitt::Steps;
                     }
                     "provenance" => {
                         if !wert.is_empty() {
-                            return Err(fehler(datei, zeile, Art::LeererBlock {
-                                schluessel: "provenance".to_string(),
-                            }));
+                            return Err(fehler(
+                                datei,
+                                zeile,
+                                Art::LeererBlock {
+                                    schluessel: "provenance".to_string(),
+                                },
+                            ));
                         }
                         provenance_gesehen = true;
                         abschnitt = Abschnitt::Provenance;
@@ -386,9 +408,13 @@ pub fn laden(datei: &str, text: &str) -> std::result::Result<FunctionDef, Inhalt
                 "tsn" => def.match_rule.tsn = Some(wert.to_string()),
                 "steuergeraete" => {
                     if !wert.is_empty() {
-                        return Err(fehler(datei, zeile, Art::LeererBlock {
-                            schluessel: "steuergeraete".to_string(),
-                        }));
+                        return Err(fehler(
+                            datei,
+                            zeile,
+                            Art::LeererBlock {
+                                schluessel: "steuergeraete".to_string(),
+                            },
+                        ));
                     }
                     abschnitt = Abschnitt::MatchSteuergeraete;
                 }
@@ -405,9 +431,13 @@ pub fn laden(datei: &str, text: &str) -> std::result::Result<FunctionDef, Inhalt
             (2, Abschnitt::Backup) => match schluessel {
                 "dids" => {
                     if !wert.is_empty() {
-                        return Err(fehler(datei, zeile, Art::LeererBlock {
-                            schluessel: "dids".to_string(),
-                        }));
+                        return Err(fehler(
+                            datei,
+                            zeile,
+                            Art::LeererBlock {
+                                schluessel: "dids".to_string(),
+                            },
+                        ));
                     }
                     abschnitt = Abschnitt::BackupDids;
                 }
@@ -449,20 +479,28 @@ pub fn laden(datei: &str, text: &str) -> std::result::Result<FunctionDef, Inhalt
             (6, Abschnitt::Preconditions) => match schluessel {
                 "min_mv" => {
                     let min = zahl_u32(wert).ok_or_else(|| {
-                        fehler(datei, zeile, Art::WertUngueltig {
-                            schluessel: "min_mv".to_string(),
-                            wert: wert.to_string(),
-                        })
+                        fehler(
+                            datei,
+                            zeile,
+                            Art::WertUngueltig {
+                                schluessel: "min_mv".to_string(),
+                                wert: wert.to_string(),
+                            },
+                        )
                     })?;
                     let max = bordspannung.map(|b| b.1).unwrap_or(0);
                     bordspannung = Some((min, max));
                 }
                 "max_mv" => {
                     let max = zahl_u32(wert).ok_or_else(|| {
-                        fehler(datei, zeile, Art::WertUngueltig {
-                            schluessel: "max_mv".to_string(),
-                            wert: wert.to_string(),
-                        })
+                        fehler(
+                            datei,
+                            zeile,
+                            Art::WertUngueltig {
+                                schluessel: "max_mv".to_string(),
+                                wert: wert.to_string(),
+                            },
+                        )
                     })?;
                     let min = bordspannung.map(|b| b.0).unwrap_or(0);
                     bordspannung = Some((min, max));
@@ -484,25 +522,37 @@ pub fn laden(datei: &str, text: &str) -> std::result::Result<FunctionDef, Inhalt
                 match schluessel {
                     "erwartet" => {
                         def.steps[i].erwartet = hex_bytes(wert).ok_or_else(|| {
-                            fehler(datei, zeile, Art::WertUngueltig {
-                                schluessel: "erwartet".to_string(),
-                                wert: wert.to_string(),
-                            })
+                            fehler(
+                                datei,
+                                zeile,
+                                Art::WertUngueltig {
+                                    schluessel: "erwartet".to_string(),
+                                    wert: wert.to_string(),
+                                },
+                            )
                         })?;
                     }
                     "timeout_ms" => {
                         def.steps[i].timeout_ms = zahl_u32(wert).ok_or_else(|| {
-                            fehler(datei, zeile, Art::WertUngueltig {
-                                schluessel: "timeout_ms".to_string(),
-                                wert: wert.to_string(),
-                            })
+                            fehler(
+                                datei,
+                                zeile,
+                                Art::WertUngueltig {
+                                    schluessel: "timeout_ms".to_string(),
+                                    wert: wert.to_string(),
+                                },
+                            )
                         })?;
                     }
                     "recovery" => {
                         if !wert.is_empty() {
-                            return Err(fehler(datei, zeile, Art::LeererBlock {
-                                schluessel: "recovery".to_string(),
-                            }));
+                            return Err(fehler(
+                                datei,
+                                zeile,
+                                Art::LeererBlock {
+                                    schluessel: "recovery".to_string(),
+                                },
+                            ));
                         }
                         abschnitt = Abschnitt::Recovery;
                     }
@@ -521,26 +571,45 @@ pub fn laden(datei: &str, text: &str) -> std::result::Result<FunctionDef, Inhalt
                 let eltern = schritt_offen.ok_or_else(|| {
                     fehler(datei, zeile, Art::AbschnittFehlt { abschnitt: "steps" })
                 })?;
-                let i = def.steps[eltern].recovery.len().checked_sub(1).ok_or_else(|| {
-                    fehler(datei, zeile, Art::AbschnittFehlt { abschnitt: "recovery" })
-                })?;
+                let i = def.steps[eltern]
+                    .recovery
+                    .len()
+                    .checked_sub(1)
+                    .ok_or_else(|| {
+                        fehler(
+                            datei,
+                            zeile,
+                            Art::AbschnittFehlt {
+                                abschnitt: "recovery",
+                            },
+                        )
+                    })?;
                 match schluessel {
                     "erwartet" => {
                         def.steps[eltern].recovery[i].erwartet =
                             hex_bytes(wert).ok_or_else(|| {
-                                fehler(datei, zeile, Art::WertUngueltig {
-                                    schluessel: "erwartet".to_string(),
-                                    wert: wert.to_string(),
-                                })
+                                fehler(
+                                    datei,
+                                    zeile,
+                                    Art::WertUngueltig {
+                                        schluessel: "erwartet".to_string(),
+                                        wert: wert.to_string(),
+                                    },
+                                )
                             })?;
                     }
                     "timeout_ms" => {
-                        def.steps[eltern].recovery[i].timeout_ms = zahl_u32(wert).ok_or_else(|| {
-                            fehler(datei, zeile, Art::WertUngueltig {
-                                schluessel: "timeout_ms".to_string(),
-                                wert: wert.to_string(),
-                            })
-                        })?;
+                        def.steps[eltern].recovery[i].timeout_ms =
+                            zahl_u32(wert).ok_or_else(|| {
+                                fehler(
+                                    datei,
+                                    zeile,
+                                    Art::WertUngueltig {
+                                        schluessel: "timeout_ms".to_string(),
+                                        wert: wert.to_string(),
+                                    },
+                                )
+                            })?;
                     }
                     other => {
                         return Err(fehler(
@@ -568,8 +637,10 @@ pub fn laden(datei: &str, text: &str) -> std::result::Result<FunctionDef, Inhalt
 
     // Offene Blöcke abschließen.
     if let Some((min, max)) = bordspannung.take() {
-        def.preconditions
-            .push(Precondition::Bordspannung { min_mv: min, max_mv: max });
+        def.preconditions.push(Precondition::Bordspannung {
+            min_mv: min,
+            max_mv: max,
+        });
     }
 
     // Pflichtfelder prüfen — mit Zeilenangabe 0, weil das Feld über die ganze
@@ -578,17 +649,19 @@ pub fn laden(datei: &str, text: &str) -> std::result::Result<FunctionDef, Inhalt
         return Err(fehler(datei, 0, Art::Fehlt { schluessel: "id" }));
     }
     if def.titel.is_empty() {
-        return Err(fehler(datei, 0, Art::Fehlt { schluessel: "titel" }));
+        return Err(fehler(
+            datei,
+            0,
+            Art::Fehlt {
+                schluessel: "titel",
+            },
+        ));
     }
     if !risk_gesetzt {
         return Err(fehler(datei, 0, Art::Fehlt { schluessel: "risk" }));
     }
     if !match_gesehen {
-        return Err(fehler(
-            datei,
-            0,
-            Art::AbschnittFehlt { abschnitt: "match" },
-        ));
+        return Err(fehler(datei, 0, Art::AbschnittFehlt { abschnitt: "match" }));
     }
     if !preconditions_gesehen && def.preconditions.is_empty() {
         // Vorbedingungen dürfen fehlen, aber nicht stillschweigend: ein
