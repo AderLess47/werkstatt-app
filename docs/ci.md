@@ -45,7 +45,7 @@ danach weiter grün (163 Tests, Clippy sauber). Der Haken ist der Weg ins
 Repository: es gibt von dieser Maschine keinen `git push`, jede Datei geht
 einzeln durch die API, und `sfd.rs` allein hat 38 KB. Ein einzelnes verrutschtes
 Zeichen wäre ein Programmierfehler in getestetem Code — deshalb steht der Job
- erst im Workflow, wenn alle Dateien übertragen und jede gegen `git hash-object`
+erst im Workflow, wenn alle Dateien übertragen und jede gegen `git hash-object`
 geprüft ist. Ein Job, der beim ersten Lauf rot ist, prüft nichts.
 
 **Stand am 17.11.2026.** Sauber und im Repository: `core/tests/corpus.rs`,
