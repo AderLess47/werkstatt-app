@@ -98,7 +98,7 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - uses: actions/setup-android@v3
+      - uses: android-actions/setup-android@v3
 
       - name: NDK installieren
         # `yes |` beantwortet die Lizenzfrage; ohne das kann der Schritt auf
