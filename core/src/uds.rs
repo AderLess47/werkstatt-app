@@ -29,11 +29,11 @@ use std::fmt;
 use crate::isotp::IsotpChannel;
 use crate::transport::{Result as TransportResult, Transport, TransportError};
 
-/// Dienst „DiagnosticSessionControl“.
+/// Dienst „DiagnosticSessionControl".
 pub const DIENST_SITZUNG: u8 = 0x10;
 /// Positive Antwort auf DiagnosticSessionControl.
 pub const ANTWORT_SITZUNG: u8 = 0x50;
-/// Dienst „ReadDataByIdentifier“.
+/// Dienst „ReadDataByIdentifier".
 pub const DIENST_READ_DID: u8 = 0x22;
 /// Positive Antwort auf ReadDataByIdentifier.
 pub const ANTWORT_READ_DID: u8 = 0x62;
@@ -43,17 +43,17 @@ pub const ANTWORT_NEGATIV: u8 = 0x7F;
 pub const NRC_RESPONSE_PENDING: u8 = 0x78;
 /// Subfunktion `extendedDiagnosticSession`.
 pub const SITZUNG_EXTENDED: u8 = 0x03;
-/// Dienst „ReadDTCInformation“.
+/// Dienst „ReadDTCInformation".
 pub const DIENST_READ_DTC: u8 = 0x19;
 /// Positive Antwort auf ReadDTCInformation.
 pub const ANTWORT_READ_DTC: u8 = 0x59;
 /// Unterfunktion `reportDTCByStatusMask`.
 pub const READ_DTC_BY_STATUS_MASK: u8 = 0x02;
-/// Statusmaske „alle unterstützten Fehler“.
+/// Statusmaske „alle unterstützten Fehler".
 pub const DTC_MASKE_ALLE: u8 = 0xFF;
 /// Bit 7 einer Unterfunktion: positive Antwort unterdrücken.
 pub const UNTERDRUECKUNGS_BIT: u8 = 0x80;
-/// Dienst „ECUReset“.
+/// Dienst „ECUReset".
 pub const DIENST_RESET: u8 = 0x11;
 /// Positive Antwort auf ECUReset.
 pub const ANTWORT_RESET: u8 = 0x51;
@@ -63,13 +63,13 @@ pub const RESET_HART: u8 = 0x01;
 pub const RESET_ZUENDUNG: u8 = 0x02;
 /// Reset-Art `softReset`.
 pub const RESET_WEICH: u8 = 0x03;
-/// Dienst „ClearDiagnosticInformation“.
+/// Dienst „ClearDiagnosticInformation".
 pub const DIENST_CLEAR_DTC: u8 = 0x14;
 /// Positive Antwort auf ClearDiagnosticInformation.
 pub const ANTWORT_CLEAR_DTC: u8 = 0x54;
 /// Gruppe „alle Fehlergruppen“ (`FF FF FF`).
 pub const DTC_GRUPPE_ALLE: u32 = 0x00FF_FFFF;
-/// Dienst „TesterPresent“.
+/// Dienst „TesterPresent".
 pub const DIENST_TESTER_PRESENT: u8 = 0x3E;
 /// Positive Antwort auf TesterPresent.
 pub const ANTWORT_TESTER_PRESENT: u8 = 0x7E;
@@ -91,6 +91,10 @@ pub const ROUTINE_ERGEBNIS: u8 = 0x03;
 /// herstellerspezifisch. Deshalb wird der Status roh durchgereicht und nur
 /// hier verglichen — eine Deutung der übrigen Werte wäre geraten.
 pub const ROUTINE_OK: u8 = 0x00;
+/// Dienst „WriteDataByIdentifier".
+pub const DIENST_WRITE_DID: u8 = 0x2E;
+/// Positive Antwort auf WriteDataByIdentifier.
+pub const ANTWORT_WRITE_DID: u8 = 0x6E;
 
 /// Höchstzahl an Aufschüben (`NRC 0x78`), die ein Aufruf abwartet.
 pub const MAX_AUFSCHUB: usize = 3;
@@ -305,6 +309,20 @@ pub fn routine_stop_anfrage(routine: u16) -> Vec<u8> {
 /// `31 03 <Routine>` — Ergebnis einer gestarteten Routine abholen.
 pub fn routine_ergebnis_anfrage(routine: u16) -> Vec<u8> {
     routine_anfrage(ROUTINE_ERGEBNIS, routine, &[])
+}
+
+/// `2E <DID> <Daten>` — Kennung schreiben.
+///
+/// Die Daten bleiben roh und ungeprüft: welches Layout eine Kennung erwartet,
+/// steht in der Diagnosebeschreibung des Steuergeräts, nicht in der Norm. Eine
+/// zweite Längenprüfung hier wäre eine zweite Wahrheit — was in eine
+/// ISO-TP-Nachricht passt, entscheidet der Kanal. Leere Daten sind erlaubt; ob
+/// das Steuergerät sie annimmt, sagt es im NRC (`0x13`).
+pub fn write_did_anfrage(did: u16, daten: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(3 + daten.len());
+    out.extend_from_slice(&[DIENST_WRITE_DID, (did >> 8) as u8, did as u8]);
+    out.extend_from_slice(daten);
+    out
 }
 
 /// Antwort auf einen Sitzungswechsel.
@@ -655,6 +673,38 @@ pub fn parse_routine(
     })
 }
 
+/// Wertet `6E <DID>` aus.
+///
+/// Die positive Antwort ist ein Echo ohne Nutzlast. Sie belegt nur, dass das
+/// Steuergerät **diese** Kennung angenommen hat; ob der Wert danach wirklich
+/// steht, beantwortet erst ein `22 <DID>` — und nur das.
+pub fn parse_write_did(antwort: &[u8], did: u16) -> std::result::Result<(), UdsFehler> {
+    if let Some((dienst, code)) = pruefe_nrc(antwort) {
+        return Err(UdsFehler::Nrc { dienst, code });
+    }
+    const KOPF: usize = 3;
+    if antwort.len() < KOPF {
+        return Err(UdsFehler::ZuKurz {
+            gelesen: antwort.len(),
+            mindestens: KOPF,
+        });
+    }
+    if antwort[0] != ANTWORT_WRITE_DID {
+        return Err(UdsFehler::FalscherDienst {
+            erwartet: ANTWORT_WRITE_DID,
+            gesehen: antwort[0],
+        });
+    }
+    let erwartet = [(did >> 8) as u8, did as u8];
+    if antwort[1..3] != erwartet {
+        return Err(UdsFehler::FalscheDid {
+            erwartet,
+            gesehen: [antwort[1], antwort[2]],
+        });
+    }
+    Ok(())
+}
+
 /// UDS-Client über einen ISO-TP-Kanal.
 ///
 /// Zustandslos wie [`IsotpChannel`]: Sitzung und Sicherheitszugriff sind
@@ -746,6 +796,24 @@ impl UdsClient {
     ) -> std::result::Result<Vec<u8>, UdsFehler> {
         let antwort = self.runde(t, &read_did_anfrage(did), timeout_ms)?;
         parse_read_did(&antwort, did)
+    }
+
+    /// `2E <DID>` — Kennung schreiben.
+    ///
+    /// Ein **Schreibvorgang**: danach steht ein anderer Wert im Steuergerät.
+    /// Die Audit-Kette ([`crate::audit`]) gehört wie bei [`UdsClient::clear_dtc`]
+    /// in die Funktions-Runtime — dieses Modul kennt keine Aufträge und weiß
+    /// nicht, in wessen Namen geschrieben wird. Deshalb eine eigene Methode und
+    /// nicht „Lesen mit anderem Dienstbyte".
+    pub fn write_did<T: Transport>(
+        &self,
+        t: &mut T,
+        did: u16,
+        daten: &[u8],
+        timeout_ms: u32,
+    ) -> std::result::Result<(), UdsFehler> {
+        let antwort = self.runde(t, &write_did_anfrage(did, daten), timeout_ms)?;
+        parse_write_did(&antwort, did)
     }
 
     /// `19 02 <Maske>` — Fehlerspeicher lesen, Einträge roh.
@@ -1696,5 +1764,116 @@ mod tests {
             4 + optionen.len()
         );
         assert_eq!(&gesendet[0].data[2..6], &[0x31, 0x01, 0x02, 0x03]);
+    }
+
+    // --- Kennung schreiben ------------------------------------------------
+
+    #[test]
+    fn write_did_anfrage_traegt_kennung_und_daten() {
+        assert_eq!(
+            write_did_anfrage(0xF190, &[0x01, 0x02, 0x03]),
+            vec![0x2E, 0xF1, 0x90, 0x01, 0x02, 0x03]
+        );
+        // Ohne Daten bleibt es beim reinen Kopf — ein leeres Schreiben ist
+        // erlaubt; das Steuergerät entscheidet, ob es das annimmt.
+        assert_eq!(write_did_anfrage(0xF1A1, &[]), vec![0x2E, 0xF1, 0xA1]);
+    }
+
+    #[test]
+    fn write_did_bestaetigt_mit_echo() {
+        assert_eq!(parse_write_did(&[0x6E, 0xF1, 0x90], 0xF190), Ok(()));
+    }
+
+    #[test]
+    fn write_did_mit_anderer_kennung_wird_abgelehnt() {
+        // Ein Echo auf eine andere Kennung heißt: geschrieben wurde etwas
+        // anderes als verlangt — den Vorgang als Erfolg zu melden wäre falsch.
+        assert_eq!(
+            parse_write_did(&[0x6E, 0xF1, 0x8A], 0xF190).unwrap_err(),
+            UdsFehler::FalscheDid {
+                erwartet: [0xF1, 0x90],
+                gesehen: [0xF1, 0x8A]
+            }
+        );
+    }
+
+    #[test]
+    fn write_did_nrc_wird_benannt() {
+        // 0x31 heißt „requestOutOfRange“ — etwa ein Wert außerhalb der Grenzen.
+        let err = parse_write_did(&[0x7F, 0x2E, 0x31], 0xF190).unwrap_err();
+        assert_eq!(
+            err,
+            UdsFehler::Nrc {
+                dienst: 0x2E,
+                code: 0x31
+            }
+        );
+        assert!(err.to_string().contains("requestOutOfRange"), "{err}");
+    }
+
+    #[test]
+    fn write_did_zu_kurz_wird_abgelehnt() {
+        assert_eq!(
+            parse_write_did(&[0x6E, 0xF1], 0xF190).unwrap_err(),
+            UdsFehler::ZuKurz {
+                gelesen: 2,
+                mindestens: 3
+            }
+        );
+    }
+
+    #[test]
+    fn write_did_mit_falschem_dienst_wird_abgelehnt() {
+        assert_eq!(
+            parse_write_did(&[0x62, 0xF1, 0x90], 0xF190).unwrap_err(),
+            UdsFehler::FalscherDienst {
+                erwartet: 0x6E,
+                gesehen: 0x62
+            }
+        );
+    }
+
+    #[test]
+    fn write_did_am_simulator() {
+        let mut t = Loopback::new(vec![antwort(&[0x6E, 0xF1, 0x90])]);
+        UdsClient::new()
+            .write_did(&mut t, 0xF190, &[0x0A, 0x0B, 0x0C], 100)
+            .unwrap();
+
+        assert_eq!(
+            &t.sent()[0].data[..7],
+            &[0x06, 0x2E, 0xF1, 0x90, 0x0A, 0x0B, 0x0C]
+        );
+    }
+
+    #[test]
+    fn write_did_wartet_aufschub_ab() {
+        // Ein Schreiben darf dauern: 0x78 ist kein Ergebnis. Der Aufschubpfad
+        // ist derselbe wie bei den Lesern, und es wird nicht neu gesendet.
+        let mut t = Loopback::new(vec![aufschub(0x2E), antwort(&[0x6E, 0xF1, 0x90])]);
+        UdsClient::new()
+            .write_did(&mut t, 0xF190, &[0x01], 100)
+            .unwrap();
+
+        assert_eq!(t.sent().len(), 1);
+    }
+
+    #[test]
+    fn write_did_mit_langen_daten_geht_als_multi_frame() {
+        // Kennungen wie ein Codierindex sind länger als sieben Byte und müssen
+        // als Folgenachrichten raus — derselbe Sendeweg, kein Sonderpfad.
+        let daten = vec![0x11; 300];
+        let mut t = Loopback::new(vec![flusskontrolle(), antwort(&[0x6E, 0xF1, 0x90])]);
+        UdsClient::new()
+            .write_did(&mut t, 0xF190, &daten, 100)
+            .unwrap();
+
+        let gesendet = t.sent();
+        assert_eq!(gesendet[0].data[0] & 0xF0, 0x10, "First Frame");
+        assert_eq!(
+            ((gesendet[0].data[0] as usize & 0x0F) << 8) | gesendet[0].data[1] as usize,
+            3 + daten.len()
+        );
+        assert_eq!(&gesendet[0].data[2..5], &[0x2E, 0xF1, 0x90]);
     }
 }
