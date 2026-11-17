@@ -208,6 +208,7 @@ derselben Begründung wie hier:
 | `StnKennung` | 1 500 ms | `STI` | eine Textzeile; Obergrenze, nicht Erwartungswert |
 | `UsbDongleVerbindung` / `FtdiStnVerbindung` | 30 000 ms | USB-Freigabedialog | menschliche Reaktion am Gerät, kein Protokoll |
 | `P2_STERN_MS` / `StnKonfiguration.p2SternTimeoutMs` | 5 000 ms **je Aufschub** | beide Wege: Warten nach einer Negative Response 0x78 | ISO 14229-2: P2\* = 5 000 ms; höchstens `MAX_AUFSCHUB` = 3 Aufschübe, also 15 s zusätzlich |
+| `SicherheitAbschnitt` (`SICHERHEIT_FRIST_MS`) | 5 000 ms | `27` je Richtung: Seed fragen, Schlüssel schicken | zwei kurze Nachrichten, beide ein einzelner Rahmen; P2 (50 ms) plus Reserve für einen trägen Dongle — für 0x78 verlängert der Kern selbst |
 
 **Wichtig für Weg A:** die 1 500 ms gelten **je Rahmen**. `IsotpChannel::recv`
 reicht die Frist an jedes `recv` weiter; eine Antwort über 20 Byte (First Frame
@@ -339,6 +340,22 @@ Zwei Eigenheiten von BLE stecken im Transport:
   hat, gehört dem System, nicht der App — sie liest sie nur auf Knopfdruck (in
   die Zwischenablage schreibt sie ausschließlich die empfangene Challenge,
   nie den Token).
+- **Sicherheitszugriff (27)** — eigener Abschnitt (`SicherheitAbschnitt.kt`), die
+  Logik daneben in `SicherheitBedienung.kt`: Ebene als Chips (1, 3, 5) oder frei
+  eingegeben, der **eingetragene** Schlüssel, darunter eine Karte mit Ebene, Seed
+  und Ergebnis. Die Ebenen-Prüfung liest Hex und lehnt gerade Zahlen ab — `27 02`
+  ist die Schlüssel-Unterfunktion, keine Ebene, und ein Senden dorthin endet am
+  Steuergerät als Längenfehler. Der **Schlüssel wird eingetragen, nicht
+  gerechnet**: ein Seed/Key-Algorithmus liegt bewusst nicht im Repository
+  (Plan §1.1), er kommt aus einem Portal oder einem lizenzierten Baustein.
+  Ohne eingetragenen Schlüssel geht nur die Seed-Anfrage raus; der Kern meldet
+  den fehlenden Schlüssel, und der Hinweis zeigt auf das Eingabefeld statt auf
+  Kabel und Zündung — ein geratener Schlüssel wäre am Steuergerät ein
+  Fehlversuch mit Wartezeit (NRC 0x36/0x37). Der Seed steht so da, wie er auf
+  dem Bus lag, und leer bzw. lauter Nullbytes werden **benannt** („Ebene war
+  bereits offen“): ein „00 00“ ohne diesen Satz würde als Challenge
+  missverstanden. „Bereits offen“ und „entsperrt“ sind zwei verschiedene
+  Ergebnisse und stehen deshalb als zwei Sätze da.
 - **Service-Funktionen** — eigener Abschnitt (`FunktionenAbschnitt.kt`) mit den
   fünf Kataloginhalten aus `content/funktionen`: Risikoklasse als Wort (`R1`,
   `R2`), die Vorbedingungen mit **gemessener** Bordspannung („12,30 V (Soll
@@ -397,15 +414,15 @@ gefunden“ bzw. „kein Dongle gefunden“.
 ## Geprüft / nicht geprüft
 
 Geprüft: `:bindings:test` (drei Linktests gegen die echte Rust-Bibliothek).
-`:app` enthält **179 `@Test`** in zwanzig Dateien — `VciCheck` 3,
+`:app` enthält **185 `@Test`** in einundzwanzig Dateien — `VciCheck` 3,
 `DonglePruefung` 3, `Wire` 9, `BleCanTransport` 7, `BleSerielleStrecke` 9,
 `UsbSerielleStrecke` 8, `StnKanal` 18, `StnKennung` 10, `Zeilenpuffer` 11,
 `VciBericht` 13, `BerichtDatei` 6, `AppBericht` 10, `DienstAntwort` 8, `Frist` 5,
-`SfdBedienung` 32, `SfdFfi` 7, `SicherheitFfi` 5, `FunktionFfi` 3, `ServiceFunktionen` 7,
+`SfdBedienung` 32, `SicherheitBedienung` 6, `SfdFfi` 7, `SicherheitFfi` 5, `FunktionFfi` 3, `ServiceFunktionen` 7,
 `AuditAnzeige` 4.
 
-Alle **179 sind in dieser Umgebung gelaufen** — `sh scripts/jvm-tests.sh` endet
-mit `OK (179 tests)`. Die letzten fünf Klassen sind Linktests gegen die echte
+Alle **185 sind in dieser Umgebung gelaufen** — `sh scripts/jvm-tests.sh` endet
+mit `OK (185 tests)`. Die letzten fünf Klassen sind Linktests gegen die echte
 Rust-Bibliothek: sie prüfen die erzeugten Bindings, nicht nur Kotlin-Code. Übersetzt wird mit `kotlinc 2.0.21` gegen JDK 17,
 gestartet über `org.junit.runner.JUnitCore`.
 
@@ -424,7 +441,7 @@ Dafür brauchte es zwei Handgriffe, die das Skript festhält:
 
 Ein Gradle-Lauf ist inzwischen **gelaufen** — JDK 17, Gradle 8.9, SDK 34, NDK
 26.1.10909125: `./android/gradlew -p android :app:testDebugUnitTest :app:assembleDebug`
-endet mit `BUILD SUCCESSFUL`, und `:app:testDebugUnitTest` sieht dieselben 179
+endet mit `BUILD SUCCESSFUL`, und `:app:testDebugUnitTest` sieht dieselben 185
 Tests grün wie `scripts/jvm-tests.sh`. Geprüft ist damit auch die
 Gradle-Verdrahtung.
 
@@ -452,6 +469,13 @@ ohne Bildschirm prüfbar ist. **Die beiden Wege sind verdrahtet, aber nicht
 erprobt** — kein FTDI-Gerät, kein VCI, kein Fahrzeug, kein Emulator in dieser
 Umgebung. Die Wartezeiten sind aus Normwerten hergeleitet (siehe
 [Wartezeiten](#wartezeiten)), aber **nicht am Bus nachgemessen**.
+
+`SicherheitAbschnitt.kt` übersetzt seit dem ersten `:app:compileDebugKotlin`
+mit (Exit 0, gegen SDK 34) — damit sind Typen und Aufrufe geprüft, nicht die
+Anzeige. `SicherheitBedienung.kt` läuft dagegen auf der JVM: **sechs** Tests
+(Ebenen-Prüfung, Anbieter, Seed-Texte, Meldung ohne Schlüssel). Was fehlt, ist
+der Ablauf am Gerät: kein Steuergerät, das auf `27 01` antwortet, und kein
+Schlüssel — ohne ihn geht nur die Seed-Anfrage raus.
 
 Nicht geprüft: **Start auf einem Gerät oder Emulator**. In dieser VM ist
 `/dev/kvm` für den Benutzer nicht zugänglich, ein Emulator wäre ohne
