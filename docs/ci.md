@@ -180,6 +180,45 @@ Prüfbar über `GET /repos/AderLess47/werkstatt-app/actions/runs/{id}/jobs`:
 Danach ist der erste grüne Lauf die eigentliche Prüfung — bis dahin ist in
 diesem Repository **kein** CI-Ergebnis belegt.
 
+## Lokaler Ersatz: `scripts/ci-lokal.sh`
+
+Weil die Jobs nicht starten, fährt ein Skript dieselben fünf Jobs mit denselben
+Befehlen auf dieser Maschine:
+
+```
+sh scripts/ci-lokal.sh
+```
+
+Gemessen am 17.11.2026, 13:36 UTC in dieser VM (rustc 1.100.0, cargo 1.100.0,
+OpenJDK 17.0.21, Linux 6.1.102 x86_64):
+
+| Job | Ergebnis | Dauer | Was im Log steht |
+| --- | --- | --- | --- |
+| `c` | grün | 0 s | 165 `PASS`-Zeilen, Korpus byteweise unverändert |
+| `rust` | grün | 1 s | 163 Tests im Kern, 4 Korpus-Tests, 15 in der FFI-Schicht |
+| `clippy` | grün | 0 s | keine Warnung in `core` und `core-ffi` |
+| `fmt` | grün | 1 s | `--check` für `core`, `core-ffi`, `core/fuzz` |
+| `jvm-tests` | grün | 35 s | `OK (174 tests)` |
+
+Die Dauern sind **mit warmem Build-Verzeichnis** gemessen — `target/` war vom
+vorigen Lauf gefüllt. Ein kalter Lauf braucht Minuten; die Zahl sagt deshalb
+nichts über die Laufzeit auf einem Runner, nur dass dieselben Prüfungen hier
+durchlaufen.
+
+Was der Lauf **nicht** belegt, damit die Aussage klein bleibt: geprüft wird der
+Arbeitsbaum, kein frischer Klon; es laufen die Werkzeuge dieser Maschine, nicht
+die der Runner-Images; ohne Artefakt-Upload und ohne Cache. `android` (SDK,
+NDK) und `bindings` (Artefakt-Upload, Swift-Bindings brauchen macOS) fehlen
+ganz und stehen in der Übersicht nicht als grün. Fehlt das JDK, steht
+`jvm-tests` als „nicht gelaufen“ da und das Skript endet mit 1 — ein nicht
+gefahrener Job ist kein bestandener.
+
+Die Ausgaben liegen je Job in `dist/ci-lokal/<Zeitstempel>/` (ignoriert), die
+Übersicht daneben in `uebersicht.txt`. Der Korpus wird dort byteweise gegen die
+neu erzeugte Fassung verglichen statt über `git diff`: der Arbeitsbaum kann vom
+Index abweichen, und ein Vergleich gegen den Index meldete dann eine Änderung,
+die es nicht gibt.
+
 ## Was das für den Stand der Verifikation heißt
 
 Solange 0 von 147 Läufen erfolgreich sind, stützt sich keine Aussage in der
