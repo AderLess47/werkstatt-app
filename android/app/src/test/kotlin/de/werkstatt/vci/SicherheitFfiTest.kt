@@ -67,9 +67,7 @@ class SicherheitFfiTest {
         val t = Speicher()
         t.push(antwort(0x67, 0x01, 0xA1, 0xB2))
         t.push(antwort(0x67, 0x02))
-        val anbieter = Anbieter { _, seed ->
-            ByteArray(seed.size) { (seed[it].toInt() xor 0xFF).toByte() }
-        }
+        val anbieter = Anbieter { _, seed -> ByteArray(seed.size) { (seed[it].toInt() xor 0xFF).toByte() } }
 
         val ergebnis = Sicherheit().securityAccess(t, 0x01u, anbieter, 200u)
 
@@ -77,18 +75,12 @@ class SicherheitFfiTest {
         // Der Anbieter bekam Ebene 1 und den Seed, wie er auf dem Bus lag.
         assertEquals(1, anbieter.gesehen.size)
         assertEquals(0x01u, anbieter.gesehen[0].first)
-        assertEquals(
-            listOf(0xA1.toByte(), 0xB2.toByte()),
-            anbieter.gesehen[0].second.toList(),
-        )
+        assertEquals(listOf(0xA1.toByte(), 0xB2.toByte()), anbieter.gesehen[0].second.toList())
 
         assertEquals(2, t.gesendet.size)
         assertEquals(0x7E0u, t.gesendet[0].id)
         // Seed-Anfrage `02 27 01`, Schlüssel `04 27 02 5E 4D`.
-        assertEquals(
-            listOf(0x02, 0x27, 0x01),
-            t.gesendet[0].data.take(3).map { it.toInt() and 0xFF },
-        )
+        assertEquals(listOf(0x02, 0x27, 0x01), t.gesendet[0].data.take(3).map { it.toInt() and 0xFF })
         assertEquals(
             listOf(0x04, 0x27, 0x02, 0x5E, 0x4D),
             t.gesendet[1].data.take(5).map { it.toInt() and 0xFF },
@@ -99,10 +91,7 @@ class SicherheitFfiTest {
     fun `leerer Seed bedeutet bereits offen und sendet keinen Schluessel`() {
         val t = Speicher()
         t.push(antwort(0x67, 0x01, 0x00, 0x00))
-        val anbieter = Anbieter { _, _ ->
-            fail("Anbieter darf nicht gefragt werden")
-            ByteArray(0)
-        }
+        val anbieter = Anbieter { _, _ -> fail("Anbieter darf nicht gefragt werden"); ByteArray(0) }
 
         val ergebnis = Sicherheit().securityAccess(t, 0x01u, anbieter, 200u)
 
