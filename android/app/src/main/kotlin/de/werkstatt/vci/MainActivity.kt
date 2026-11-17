@@ -257,6 +257,8 @@ private fun WerkstattStatus() {
             onNeu = { auditZaehler++ },
         )
 
+        SicherheitAbschnitt { letzterSchritt = it }
+
         ObdLinkAbschnitt { letzterSchritt = it }
 
         FunktionenAbschnitt(
