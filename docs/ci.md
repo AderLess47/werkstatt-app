@@ -5,11 +5,11 @@
 | Job | Was er prüft |
 | --- | --- |
 | `c` | `make -C j2534 test` (165 Prüfungen) und dass `core/tests/corpus/isotp.txt` unverändert aus dem Erzeuger hervorgeht |
-| `rust` | `cargo test` für `core` (224 Tests, dazu 4 Korpus-Tests aus `core/tests/corpus/isotp.txt`) und für `core-ffi` (15 Tests) |
+| `rust` | `cargo test` für `core` (224 Tests, dazu 4 Korpus-Tests aus `core/tests/corpus/isotp.txt`) und für `core-ffi` (19 Tests) |
 | `clippy` | `cargo clippy --all-targets -- -D warnings` für `core` und `core-ffi`; `--all-targets` schließt die Tests ein, und genau dort lagen die zwei Warnungen, die den Job sonst nie erreicht hätten |
 | `fmt` | `cargo fmt --check` für `core`, `core-ffi` und `core/fuzz` — eigener Job, weil ein Formatfehler nichts über das Verhalten sagt |
 | `bindings` | erzeugt Kotlin- und Swift-Bindings neu, lädt sie als Artefakt hoch (`needs: rust`) |
-| `jvm-tests` | die 174 Tests der App ohne Gerät über `sh scripts/jvm-tests.sh`, gegen den Host-Build der Bibliothek |
+| `jvm-tests` | die 179 Tests der App ohne Gerät über `sh scripts/jvm-tests.sh`, gegen den Host-Build der Bibliothek |
 | `android` | NDK-Bibliothek für `arm64-v8a` und `x86_64`; `./android/gradlew -p android :bindings:test`; dann `:app:testDebugUnitTest :app:assembleDebug` und eine Prüfung, dass beide ABIs in der APK liegen |
 
 Der Android-Job baut über den Wrapper, nicht über ein vom Runner gestelltes
@@ -189,24 +189,25 @@ Befehlen auf dieser Maschine:
 sh scripts/ci-lokal.sh
 ```
 
-Gemessen am 17.11.2026, 15:58 UTC in dieser VM (rustc 1.100.0, cargo 1.100.0,
-OpenJDK 17.0.21, Linux 6.1.102 x86_64) — alle fünf Jobs grün in zusammen 45 s.
-Gegenüber dem Lauf um 15:34 UTC sind fünfzehn Tests dazugekommen, alle für
-`0x27` (SecurityAccess): Anfragen für Seed und Schlüssel, Seed-Auswertung
-inklusive der beiden Formen „schon offen“, NRC im Klartext, zu kurze Antwort,
-falsche Ebene, ein Anbieter ohne Schlüssel (dann geht nichts raus) und der
-vollständige Ablauf am Simulator. Der `rust`-Job brauchte diesmal 4 s, weil die
-Test-Binärdatei neu übersetzt wurde; Dauern und Umfang der Läufe sind deshalb
-nur bedingt vergleichbar. Die Läufe davor (15:18 und 14:42 UTC) hatten 200 bzw.
-184 Tests — damals kamen `0x2E` und `0x31` dazu.
+Gemessen am 17.11.2026, 16:15 UTC in dieser VM (rustc 1.100.0, cargo 1.100.0,
+OpenJDK 17.0.21, Linux 6.1.102 x86_64) — alle fünf Jobs grün in zusammen 37 s.
+Gegenüber dem Lauf um 15:58 UTC sind neun Tests dazugekommen, alle für `0x27`
+über die Sprachgrenze: vier in der FFI-Schicht (Schlüssel des Anbieters, offene
+Ebene ohne Schlüssel, Anbieter ohne Antwort, NRC `0x35`) und fünf in der App
+(ein Kotlin-`SchluesselAnbieter` wird vom Kern zurückgerufen; dazu der Fall
+einer Ebene außerhalb eines Bytes). Der `rust`-Job brauchte diesmal 1 s, weil
+die Übersetzung schon stand; Dauern und Umfang der Läufe sind deshalb nur
+bedingt vergleichbar. Die Läufe davor (15:58, 15:34, 15:18 und 14:42 UTC)
+hatten 224, 209, 200 bzw. 184 Tests — damals kamen `0x27` im Kern, `0x2E` und
+`0x31` dazu.
 
 | Job | Ergebnis | Dauer | Was im Log steht |
 | --- | --- | --- | --- |
 | `c` | grün | 0 s | 165 `PASS`-Zeilen, Korpus byteweise unverändert |
-| `rust` | grün | 4 s | 224 Tests im Kern, 4 Korpus-Tests, 15 in der FFI-Schicht |
-| `clippy` | grün | 2 s | keine Warnung in `core` und `core-ffi` |
+| `rust` | grün | 1 s | 224 Tests im Kern, 4 Korpus-Tests, 19 in der FFI-Schicht |
+| `clippy` | grün | 1 s | keine Warnung in `core` und `core-ffi` |
 | `fmt` | grün | 0 s | `--check` für `core`, `core-ffi`, `core/fuzz` |
-| `jvm-tests` | grün | 40 s | `OK (174 tests)` |
+| `jvm-tests` | grün | 36 s | `OK (179 tests)` |
 
 Die Dauern sind **mit warmem Build-Verzeichnis** gemessen — `target/` war vom
 vorigen Lauf gefüllt. Ein kalter Lauf braucht Minuten; die Zahl sagt deshalb
@@ -231,7 +232,7 @@ die es nicht gibt.
 
 Solange 0 von 147 Läufen erfolgreich sind, stützt sich keine Aussage in der
 Dokumentation auf die CI. Belegt ist, was lokal gelaufen ist: `make -C j2534
-test`, `cargo test` für beide Crates, `sh scripts/jvm-tests.sh` (174 Tests), der
+test`, `cargo test` für beide Crates, `sh scripts/jvm-tests.sh` (179 Tests), der
 Fuzz-Lauf über `sh scripts/fuzz.sh` (604 s, siehe oben) und der Android-Build
 über den Wrapper
 (`./android/gradlew -p android :app:testDebugUnitTest :app:assembleDebug`).
