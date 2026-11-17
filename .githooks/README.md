@@ -14,8 +14,8 @@ und kann nicht veralten — eine Kopie in `.git/hooks` tut beides nicht.
 
 ## `pre-push`
 
-Fährt die Tests, die zu den **gepushten Dateien** passen, und bricht den Push ab,
-wenn einer rot ist:
+Fährt die Prüfungen, die zu den **gepushten Dateien** passen, und bricht den Push
+ab, wenn eine rot ist:
 
 | geänderte Pfade | was läuft |
 | --- | --- |
@@ -23,6 +23,7 @@ wenn einer rot ist:
 | `core/`, `core-ffi/`, `j2534/`, `scripts/kern-tests.sh` | `scripts/kern-tests.sh` |
 | `android/`, `scripts/jvm-tests.sh` | `scripts/jvm-tests.sh` |
 | `core/src/isotp.rs`, `core/src/uds.rs`, `core/fuzz/` | `scripts/kern-tests.sh` und `scripts/fuzz.sh` (Rauchlauf) |
+| jede `*.rs` in der Dateiliste | zusätzlich `rustfmt --check` für genau diese Dateien |
 | alles andere: Workflows, `.githooks/`, andere Skripte | alle |
 | neuer Branch oder unbekannte Vergleichsbasis | alle |
 
@@ -34,6 +35,26 @@ of Done: 20 Sekunden je Ziel, und nur, wenn Parser-Code angefasst wurde. Er
 braucht `nightly` und `cargo-fuzz`, die nicht zur normalen Werkzeugkette gehören;
 fehlen sie, sagt der Hook das und lässt den Schritt aus — sichtbar, nicht still.
 Die Länge stellt `VCI_FUZZ_SEKUNDEN` ein.
+
+## Formatprüfung
+
+`rustfmt --check` läuft für die **Rust-Dateien, die der Push anfasst** — nicht für
+das ganze Crate. Grund: das Crate ist überwiegend von Hand formatiert, und ein
+Lauf über alles würde jeden Push blockieren, bis der Reformat übertragen ist
+(acht Dateien, rund 184 KB, siehe [docs/ci.md](../docs/ci.md)). Durchsetzbar ist
+dagegen die Regel: wer eine Datei ändert, liefert sie formatiert ab.
+
+Geprüft wird jede Datei einzeln mit `rustfmt --check --edition 2021 <datei>`.
+Ist eine davon nicht sauber, nennt der Hook sie und bricht den Push ab. Beheben:
+
+```
+rustfmt --edition 2021 core/src/isotp.rs
+```
+
+`rustfmt` gehört zu den Rust-Komponenten. Fehlt es, sagt der Hook das und lässt
+den Schritt aus — sichtbar, wie beim Fuzz-Rauchlauf. Bei unbekannter
+Vergleichsbasis (neuer Branch, Force-Push) gibt es keine Dateiliste; dann wird
+auch die Formatprüfung ausgelassen, und der Hook schreibt es hin.
 
 Die Einordnung ist bewusst grob: ein Pfad, den die Tabelle nicht kennt, lässt
 alle Läufe starten. Im Zweifel wird geprüft, nicht geraten. Alle Läufe werden
@@ -59,6 +80,8 @@ Prüfungen laufen würden.
 
 - `make` und ein C-Compiler für den C-Kern,
 - `cargo` für Rust-Kern und FFI-Schicht,
+- `rustfmt` für die Formatprüfung (`rustup component add rustfmt`; fehlt es,
+  wird der Schritt benannt und ausgelassen),
 - JDK 17 oder neuer und der Host-Build der Bibliothek
   (`cargo build --release --manifest-path core-ffi/Cargo.toml`) für die JVM-Tests,
 - Compiler und Jars für die JVM-Tests: aus dem Gradle-Cache, sonst von Maven

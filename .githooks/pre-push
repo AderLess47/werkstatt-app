@@ -20,6 +20,12 @@
 # optionalen Werkzeug scheitern zu lassen. Ausgelassen heißt hier nicht grün:
 # die Zeile steht da.
 #
+# Die Formatprüfung fährt kein Skript, sondern `rustfmt --check` — und zwar nur
+# für die Rust-Dateien, die dieser Push anfasst, nicht für das ganze Crate. Das
+# Crate ist überwiegend von Hand formatiert; ein Lauf über alles würde jeden
+# Push blockieren, bis der Reformat übertragen ist (docs/ci.md). So gilt die
+# Regel, die durchsetzbar ist: wer eine Datei ändert, liefert sie formatiert ab.
+#
 # Trockenlauf, ohne zu pushen und ohne zu testen:
 #
 #   sh .githooks/pre-push --probe              (gegen den Upstream-Branch)
@@ -47,8 +53,9 @@ if [ "${1:-}" = "--probe" ]; then
     basis=${1:-}
 fi
 
-zuruecksetzen() { rm -f "$dateien"; }
+zuruecksetzen() { rm -f "$dateien" "$rustdateien"; }
 dateien=$(mktemp)
+rustdateien=$(mktemp)
 trap 'zuruecksetzen' EXIT INT TERM
 
 if [ "$modus" = "push" ]; then
@@ -140,12 +147,25 @@ done < "$dateien"
 
 anzahl=$(sort -u "$dateien" | wc -l | tr -d ' ')
 
+# Welche Rust-Dateien dieser Push anfasst — Grundlage der Formatprüfung. Der
+# Stern steht für „Dateiliste unbekannt“ (neuer Branch, Force-Push); dann lässt
+# sich keine Datei benennen, und die Prüfung sagt das, statt zu raten.
+rustliste_unbekannt=0
+: > "$rustdateien"
+while read -r f; do
+    case "$f" in
+        '') continue ;;
+        '*') rustliste_unbekannt=1 ;;
+        *.rs) [ -f "$f" ] && echo "$f" >> "$rustdateien" ;;
+    esac
+done < "$dateien"
+
 if [ "$modus" = "probe" ]; then
     if [ -n "$basis" ]; then
         echo "Geänderte Dateien:" >&2
         sort -u "$dateien" | sed 's/^/  /' >&2
     fi
-    if [ "$kern" -eq 0 ] && [ "$jvm" -eq 0 ] && [ "$fuzz" -eq 0 ]; then
+    if [ "$kern" -eq 0 ] && [ "$jvm" -eq 0 ] && [ "$fuzz" -eq 0 ] && [ ! -s "$rustdateien" ]; then
         if [ "$anzahl" -eq 0 ]; then
             echo "Auswahl: nichts — keine Änderungen gegenüber $basis." >&2
         else
@@ -163,10 +183,15 @@ if [ "$modus" = "probe" ]; then
     if [ "$fuzz" -eq 1 ]; then
         echo "  scripts/fuzz.sh        (Rauchlauf ISO-TP und UDS, ${VCI_FUZZ_SEKUNDEN:-20} s je Ziel)" >&2
     fi
+    if [ -s "$rustdateien" ]; then
+        echo "  rustfmt --check        (nur die geänderten Rust-Dateien: $(sort -u "$rustdateien" | wc -l | tr -d ' '))" >&2
+    elif [ "$rustliste_unbekannt" -eq 1 ]; then
+        echo "  rustfmt --check        (würde ausgelassen — Dateiliste unbekannt)" >&2
+    fi
     exit 0
 fi
 
-if [ "$kern" -eq 0 ] && [ "$jvm" -eq 0 ] && [ "$fuzz" -eq 0 ]; then
+if [ "$kern" -eq 0 ] && [ "$jvm" -eq 0 ] && [ "$fuzz" -eq 0 ] && [ ! -s "$rustdateien" ]; then
     if [ "$anzahl" -eq 0 ]; then
         echo "pre-push: nichts zu übertragen — keine Tests nötig." >&2
     else
@@ -177,6 +202,37 @@ fi
 
 fehlgeschlagen=0
 gesamt_start=$(date +%s)
+
+# Format zuerst: sie dauert Millisekunden, und wer ohnehin formatieren muss, soll
+# das vor den Tests erfahren. Fehlende `rustfmt` lassen den Schritt sichtbar aus
+# — wie beim Fuzz-Werkzeug, statt einen Push an einem Komponenten-Fehler zu
+# beenden.
+format_pruefen() {
+    if ! command -v rustfmt > /dev/null; then
+        echo "pre-push: Formatprüfung übersprungen — rustfmt fehlt (rustup component add rustfmt)." >&2
+        return 0
+    fi
+
+    unformatiert=""
+    while read -r f; do
+        rustfmt --check --edition 2021 "$f" > /dev/null 2>&1 || unformatiert="$unformatiert $f"
+    done < "$rustdateien"
+
+    if [ -n "$unformatiert" ]; then
+        fehlgeschlagen=1
+        echo "pre-push: Format rot — diese Dateien sind nicht rustfmt-sauber:" >&2
+        for f in $unformatiert; do
+            echo "    $f" >&2
+        done
+        echo "pre-push: beheben mit  rustfmt --edition 2021 <datei>" >&2
+    else
+        echo "pre-push: Format grün ($(sort -u "$rustdateien" | wc -l | tr -d ' ') Rust-Datei(en) geprüft)." >&2
+    fi
+
+    if [ "$rustliste_unbekannt" -eq 1 ]; then
+        echo "pre-push: Vergleichsbasis unbekannt — geprüft wurden nur die benannten Dateien." >&2
+    fi
+}
 
 # Alle Läufe werden gefahren, auch wenn der erste rot ist: wer ohnehin nicht
 # pushen kann, soll alle Befunde auf einmal sehen. Die Ausgabe kommt gesammelt,
@@ -218,6 +274,12 @@ fuzz_bereit() {
     return 0
 }
 
+if [ -s "$rustdateien" ]; then
+    format_pruefen
+elif [ "$rustliste_unbekannt" -eq 1 ]; then
+    echo "pre-push: Formatprüfung übersprungen — geänderte Dateien unbekannt (neuer Branch oder Force-Push)." >&2
+fi
+
 # Bewusst kein `[ … ] && pruefe …`: unter `set -e` beendet die fehlgeschlagene
 # Bedingung das Skript, statt die Prüfung zu überspringen.
 if [ "$kern" -eq 1 ]; then
@@ -237,7 +299,7 @@ if [ "$fuzz" -eq 1 ] && fuzz_bereit; then
 fi
 
 if [ "$fehlgeschlagen" -ne 0 ]; then
-    echo "pre-push: Tests rot — Push abgebrochen, nichts wurde übertragen." >&2
+    echo "pre-push: Prüfung rot — Push abgebrochen, nichts wurde übertragen." >&2
     echo "Ganze Ausgabe: sh scripts/kern-tests.sh, sh scripts/jvm-tests.sh bzw. sh scripts/fuzz.sh" >&2
     exit 1
 fi
