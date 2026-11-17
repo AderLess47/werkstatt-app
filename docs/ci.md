@@ -109,7 +109,7 @@ Ein Job **ohne Schritte und ohne Runner** ist nicht an einer Prüfung gescheiter
 > section in your settings.
 
 Das Bild ist in sich stimmig: die Rechte im Repository sind offen, die
-Workflow-Datei ist gültig (lokal mit einem YAML-Parser geladen, fünf Jobs,
+Workflow-Datei ist gültig (lokal mit einem YAML-Parser geladen, sechs Jobs,
 `android` mit 13 Schritten), und es wurden in diesem Monat Minuten verbraucht.
 Es fehlt also nicht an der Konfiguration, sondern an der Abrechnung.
 
