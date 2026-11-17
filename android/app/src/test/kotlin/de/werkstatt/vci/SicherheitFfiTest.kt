@@ -1,9 +1,11 @@
 package de.werkstatt.vci
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
+import uniffi.vci_ffi.Audit
 import uniffi.vci_ffi.CanFrameFfi
 import uniffi.vci_ffi.CanTransport
 import uniffi.vci_ffi.SchluesselAnbieter
@@ -69,7 +71,7 @@ class SicherheitFfiTest {
         t.push(antwort(0x67, 0x02))
         val anbieter = Anbieter { _, seed -> ByteArray(seed.size) { (seed[it].toInt() xor 0xFF).toByte() } }
 
-        val ergebnis = Sicherheit().securityAccess(t, 0x01u, anbieter, 200u)
+        val ergebnis = Sicherheit(Audit(), "unbekannt").securityAccess(t, 0x01u, anbieter, 200u)
 
         assertEquals(SicherheitFfi.ENTSPERRT, ergebnis)
         // Der Anbieter bekam Ebene 1 und den Seed, wie er auf dem Bus lag.
@@ -93,7 +95,7 @@ class SicherheitFfiTest {
         t.push(antwort(0x67, 0x01, 0x00, 0x00))
         val anbieter = Anbieter { _, _ -> fail("Anbieter darf nicht gefragt werden"); ByteArray(0) }
 
-        val ergebnis = Sicherheit().securityAccess(t, 0x01u, anbieter, 200u)
+        val ergebnis = Sicherheit(Audit(), "unbekannt").securityAccess(t, 0x01u, anbieter, 200u)
 
         assertEquals(SicherheitFfi.BEREITS_OFFEN, ergebnis)
         assertTrue("nur die Seed-Anfrage ging hinaus", t.gesendet.size == 1)
@@ -107,7 +109,7 @@ class SicherheitFfiTest {
         val anbieter = Anbieter { _, _ -> ByteArray(0) }
 
         try {
-            Sicherheit().securityAccess(t, 0x01u, anbieter, 200u)
+            Sicherheit(Audit(), "unbekannt").securityAccess(t, 0x01u, anbieter, 200u)
             fail("erwartet: VciException.Protocol")
         } catch (e: VciException.Protocol) {
             assertTrue("nennt den Grund: ${e.detail}", e.detail.contains("Schlüssel"))
@@ -123,7 +125,7 @@ class SicherheitFfiTest {
         val anbieter = Anbieter { _, seed -> seed.copyOf() }
 
         try {
-            Sicherheit().securityAccess(t, 0x01u, anbieter, 200u)
+            Sicherheit(Audit(), "unbekannt").securityAccess(t, 0x01u, anbieter, 200u)
             fail("erwartet: VciException.Nrc")
         } catch (e: VciException.Nrc) {
             assertEquals(0x27u, e.dienst)
@@ -137,11 +139,32 @@ class SicherheitFfiTest {
         val anbieter = Anbieter { _, seed -> seed.copyOf() }
 
         try {
-            Sicherheit().securityAccess(t, 0x100u, anbieter, 200u)
+            Sicherheit(Audit(), "unbekannt").securityAccess(t, 0x100u, anbieter, 200u)
             fail("erwartet: VciException.Protocol")
         } catch (e: VciException.Protocol) {
             assertTrue("nennt das Byte: ${e.detail}", e.detail.contains("Byte"))
         }
         assertTrue("nichts gesendet", t.gesendet.isEmpty())
+    }
+
+    @Test
+    fun `Zugriff steht in der Kette, aber ohne Seed und Schluessel`() {
+        val t = Speicher()
+        t.push(antwort(0x67, 0x01, 0xA1, 0xB2))
+        t.push(antwort(0x67, 0x02))
+        val audit = Audit()
+        val anbieter = Anbieter { _, seed -> ByteArray(seed.size) { (seed[it].toInt() xor 0xFF).toByte() } }
+
+        Sicherheit(audit, "unbekannt").securityAccess(t, 0x01u, anbieter, 200u)
+
+        val eintraege = audit.eintraege()
+        assertEquals(1, eintraege.size)
+        assertTrue(eintraege[0].dienst, eintraege[0].dienst.contains("Ebene 0x01"))
+        assertTrue(eintraege[0].dienst, eintraege[0].dienst.contains("entsperrt"))
+        assertEquals("Erfolg", eintraege[0].ergebnis)
+        assertEquals("unbekannt", eintraege[0].vin)
+        // Seed (A1 B2) und Schlüssel (5E 4D) stehen nicht im Eintrag.
+        assertFalse(eintraege[0].dienst.contains("A1 B2"))
+        assertFalse(eintraege[0].dienst.contains("5E 4D"))
     }
 }
