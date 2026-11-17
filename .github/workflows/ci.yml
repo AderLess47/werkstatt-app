@@ -56,9 +56,28 @@ jobs:
       - name: FFI-Schicht
         run: cargo clippy --locked --manifest-path core-ffi/Cargo.toml --all-targets -- -D warnings
 
-  # Kein `cargo fmt --check — noch nicht: das Crate ist von Hand formatiert und
-  # ein Lauf über alle Dateien bewegt rund 235 KB. Warum das ein eigener Schritt
-  # sein muss und nicht nebenbei passiert, steht in docs/ci.md.
+  fmt:
+    # Eigener Job und nicht ein Schritt in `rust`: ein Formatfehler sagt nichts
+    # über das Verhalten, und der Lauf soll zeigen, ob nur die Form abweicht —
+    # ohne dafür die Tests erneut zu fahren.
+    name: rustfmt (--check, Kern, FFI, Fuzz)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      # Drei Aufrufe statt einem: die Crates hängen nicht an einer gemeinsamen
+      # Workspace-Wurzel, und `cargo fmt` arbeitet je Paket.
+      - name: Kern
+        run: cargo fmt --manifest-path core/Cargo.toml --check
+
+      - name: FFI-Schicht
+        run: cargo fmt --manifest-path core-ffi/Cargo.toml --check
+
+      - name: Fuzz-Ziele
+        run: cargo fmt --manifest-path core/fuzz/Cargo.toml --check
 
   bindings:
     name: Kotlin- und Swift-Bindings
