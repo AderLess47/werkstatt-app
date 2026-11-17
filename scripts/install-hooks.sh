@@ -19,7 +19,8 @@ git config core.hooksPath .githooks
 chmod +x .githooks/pre-push
 
 echo "Hooks eingehängt: core.hooksPath=.githooks"
-echo "Vor jedem Push laufen die JVM-Tests (sh scripts/jvm-tests.sh, etwa 20 s)."
+echo "Vor jedem Push läuft der lokale CI-Lauf (sh scripts/ci-lokal.sh) mit den"
+echo "Jobs, die zu den geänderten Dateien passen — bei Kernänderungen rund 20 s."
 echo "Abschalten im Notfall: VCI_SKIP_HOOK=1 git push …"
 echo
 echo "Voraussetzung ist der Host-Build der Bibliothek, sonst bricht der Hook mit"
