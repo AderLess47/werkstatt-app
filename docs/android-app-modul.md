@@ -397,8 +397,9 @@ Zwei Eigenheiten von BLE stecken im Transport:
   mit Klartext-NRC („Fehler: abgelehnt (Dienst 0x27, NRC 0x35: invalidKey)“).
   Seed und Schlüssel stehen nicht drin: der Seed ist die Challenge des
   Steuergeräts, der Schlüssel das Geheimnis aus dem Portal — beides in einem
-  Nachweis, der weitergereicht wird, wäre derselbe Fehler wie beim Token. Ein
-  Test prüft es über `als_json()`.
+  Nachweis, der weitergereicht wird, wäre derselbe Fehler wie beim Token. Drei
+  Tests in der FFI-Schicht und einer in der App prüfen, dass der Eintrag Ebene
+  und Ausgang nennt und weder Seed noch Schlüssel enthält.
 
   Die Kette ist dabei keine Option, die man vergessen kann: sie geht beim
   Bauen des `Sfd`-Objekts mit (`Sfd.withIds(audit, vin, …)`), und beim
