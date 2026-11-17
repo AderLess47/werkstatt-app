@@ -89,10 +89,12 @@ Prüfungen laufen würden.
 
 Nach einem Sandbox-Restore (JDK und `target/` weg) stellt
 `sh scripts/vorbereiten.sh` beides wieder her: Temurin 17 von Adoptium, danach
-die Host-Bibliothek per `cargo build --release`. Dasselbe Skript holt auch
-Android SDK, NDK und Gradle 8.9 und baut die Bibliotheken für `jniLibs` — also
-alles, was den APK-Build braucht; `--probe` zeigt nur, was fehlen würde,
-`OHNE_ANDROID=1` lässt den Android-Teil aus.
+die Host-Bibliothek per `cargo build --release`. Fehlt `rustfmt`, holt dasselbe
+Skript die Komponente per `rustup component add rustfmt` — sonst würde die
+Formatprüfung beim ersten Push ausgelassen. Dasselbe Skript holt auch Android SDK,
+NDK und Gradle 8.9 und baut die Bibliotheken für `jniLibs` — also alles, was den
+APK-Build braucht; `--probe` zeigt nur, was fehlen würde, `OHNE_ANDROID=1` lässt
+den Android-Teil aus.
 
 Fehlt eines davon, bricht der Hook mit einer Anleitung ab, statt den Teil still
 zu überspringen.
