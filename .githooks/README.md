@@ -36,7 +36,7 @@ fehlen sie, sagt der Hook das und lässt den Schritt aus — sichtbar, nicht sti
 Die Länge stellt `VCI_FUZZ_SEKUNDEN` ein.
 
 Die Einordnung ist bewusst grob: ein Pfad, den die Tabelle nicht kennt, lässt
-beide Läufe starten. Im Zweifel wird geprüft, nicht geraten. Beide Läufe werden
+alle Läufe starten. Im Zweifel wird geprüft, nicht geraten. Alle Läufe werden
 auch dann gefahren, wenn der erste rot ist — wer ohnehin nicht pushen kann, soll
 alle Befunde auf einmal sehen.
 
@@ -68,7 +68,7 @@ Nach einem Sandbox-Restore (JDK und `target/` weg) stellt
 `sh scripts/vorbereiten.sh` beides wieder her: Temurin 17 von Adoptium, danach
 die Host-Bibliothek per `cargo build --release`. Dasselbe Skript holt auch
 Android SDK, NDK und Gradle 8.9 und baut die Bibliotheken für `jniLibs` — also
-alle, was den APK-Build braucht; `--probe` zeigt nur, was fehlen würde,
+alles, was den APK-Build braucht; `--probe` zeigt nur, was fehlen würde,
 `OHNE_ANDROID=1` lässt den Android-Teil aus.
 
 Fehlt eines davon, bricht der Hook mit einer Anleitung ab, statt den Teil still
