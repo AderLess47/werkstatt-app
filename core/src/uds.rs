@@ -52,6 +52,28 @@ pub const READ_DTC_BY_STATUS_MASK: u8 = 0x02;
 pub const DTC_MASKE_ALLE: u8 = 0xFF;
 /// Bit 7 einer Unterfunktion: positive Antwort unterdrücken.
 pub const UNTERDRUECKUNGS_BIT: u8 = 0x80;
+/// Dienst „ECUReset“.
+pub const DIENST_RESET: u8 = 0x11;
+/// Positive Antwort auf ECUReset.
+pub const ANTWORT_RESET: u8 = 0x51;
+/// Reset-Art `hardReset`.
+pub const RESET_HART: u8 = 0x01;
+/// Reset-Art `keyOffOnReset`.
+pub const RESET_ZUENDUNG: u8 = 0x02;
+/// Reset-Art `softReset`.
+pub const RESET_WEICH: u8 = 0x03;
+/// Dienst „ClearDiagnosticInformation“.
+pub const DIENST_CLEAR_DTC: u8 = 0x14;
+/// Positive Antwort auf ClearDiagnosticInformation.
+pub const ANTWORT_CLEAR_DTC: u8 = 0x54;
+/// Gruppe „alle Fehlergruppen“ (`FF FF FF`).
+pub const DTC_GRUPPE_ALLE: u32 = 0x00FF_FFFF;
+/// Dienst „TesterPresent“.
+pub const DIENST_TESTER_PRESENT: u8 = 0x3E;
+/// Positive Antwort auf TesterPresent.
+pub const ANTWORT_TESTER_PRESENT: u8 = 0x7E;
+/// Unterfunktion `zeroSubFunction` — die einzige, die TesterPresent definiert.
+pub const TESTER_PRESENT_SUBFUNKTION: u8 = 0x00;
 
 /// Höchstzahl an Aufschüben (`NRC 0x78`), die ein Aufruf abwartet.
 pub const MAX_AUFSCHUB: usize = 3;
@@ -194,6 +216,34 @@ pub fn sitzung_anfrage(sitzung: u8) -> Vec<u8> {
 /// `22 <DID>` — Kennung lesen.
 pub fn read_did_anfrage(did: u16) -> Vec<u8> {
     vec![DIENST_READ_DID, (did >> 8) as u8, did as u8]
+}
+
+/// `11 <Art>` — Reset.
+pub fn reset_anfrage(art: u8) -> Vec<u8> {
+    vec![DIENST_RESET, art]
+}
+
+/// `14 <Gruppe>` — Fehlerspeicher löschen.
+pub fn clear_dtc_anfrage(gruppe: u32) -> Vec<u8> {
+    vec![
+        DIENST_CLEAR_DTC,
+        (gruppe >> 16) as u8,
+        (gruppe >> 8) as u8,
+        gruppe as u8,
+    ]
+}
+
+/// `3E 00` — TesterPresent, das Steuergerät antwortet.
+pub fn tester_present_anfrage() -> Vec<u8> {
+    vec![DIENST_TESTER_PRESENT, TESTER_PRESENT_SUBFUNKTION]
+}
+
+/// `3E 80` — TesterPresent mit unterdrückter Antwort.
+pub fn tester_present_ohne_antwort_anfrage() -> Vec<u8> {
+    vec![
+        DIENST_TESTER_PRESENT,
+        TESTER_PRESENT_SUBFUNKTION | UNTERDRUECKUNGS_BIT,
+    ]
 }
 
 /// Antwort auf einen Sitzungswechsel.
@@ -367,6 +417,90 @@ pub fn parse_dtc_liste(antwort: &[u8]) -> std::result::Result<DtcListe, UdsFehle
     })
 }
 
+/// Wertet `51 <Art>` aus.
+///
+/// Es gibt nichts zurückzugeben: die Antwort bestätigt nur die Art. Dass das
+/// Steuergerät danach **nicht** mehr in der alten Sitzung ist und ein
+/// Sicherheitszugriff neu aufgebaut werden muss, ist Zustand des Steuergeräts —
+/// der Client spiegelt ihn nicht (siehe [`UdsClient`]).
+pub fn parse_reset(antwort: &[u8], art: u8) -> std::result::Result<(), UdsFehler> {
+    if let Some((dienst, code)) = pruefe_nrc(antwort) {
+        return Err(UdsFehler::Nrc { dienst, code });
+    }
+    if antwort.len() < 2 {
+        return Err(UdsFehler::ZuKurz {
+            gelesen: antwort.len(),
+            mindestens: 2,
+        });
+    }
+    if antwort[0] != ANTWORT_RESET {
+        return Err(UdsFehler::FalscherDienst {
+            erwartet: ANTWORT_RESET,
+            gesehen: antwort[0],
+        });
+    }
+    // Wie bei `19 02`: manche Steuergeräte spiegeln das Unterdrückungsbit.
+    let gesehen = antwort[1] & !UNTERDRUECKUNGS_BIT;
+    if gesehen != art {
+        return Err(UdsFehler::FalscheSubfunktion {
+            erwartet: art,
+            gesehen,
+        });
+    }
+    Ok(())
+}
+
+/// Wertet `54` aus.
+///
+/// Die positive Antwort hat keine Nutzlast: sie sagt nur, dass gelöscht wurde.
+/// Ob danach wirklich nichts mehr drinsteht, ist eine zweite Frage — die
+/// beantwortet `19 02`, nicht diese Antwort.
+pub fn parse_clear_dtc(antwort: &[u8]) -> std::result::Result<(), UdsFehler> {
+    if let Some((dienst, code)) = pruefe_nrc(antwort) {
+        return Err(UdsFehler::Nrc { dienst, code });
+    }
+    if antwort.is_empty() {
+        return Err(UdsFehler::ZuKurz {
+            gelesen: 0,
+            mindestens: 1,
+        });
+    }
+    if antwort[0] != ANTWORT_CLEAR_DTC {
+        return Err(UdsFehler::FalscherDienst {
+            erwartet: ANTWORT_CLEAR_DTC,
+            gesehen: antwort[0],
+        });
+    }
+    Ok(())
+}
+
+/// Wertet `7E 00` aus.
+pub fn parse_tester_present(antwort: &[u8]) -> std::result::Result<(), UdsFehler> {
+    if let Some((dienst, code)) = pruefe_nrc(antwort) {
+        return Err(UdsFehler::Nrc { dienst, code });
+    }
+    if antwort.len() < 2 {
+        return Err(UdsFehler::ZuKurz {
+            gelesen: antwort.len(),
+            mindestens: 2,
+        });
+    }
+    if antwort[0] != ANTWORT_TESTER_PRESENT {
+        return Err(UdsFehler::FalscherDienst {
+            erwartet: ANTWORT_TESTER_PRESENT,
+            gesehen: antwort[0],
+        });
+    }
+    let gesehen = antwort[1] & !UNTERDRUECKUNGS_BIT;
+    if gesehen != TESTER_PRESENT_SUBFUNKTION {
+        return Err(UdsFehler::FalscheSubfunktion {
+            erwartet: TESTER_PRESENT_SUBFUNKTION,
+            gesehen,
+        });
+    }
+    Ok(())
+}
+
 /// UDS-Client über einen ISO-TP-Kanal.
 ///
 /// Zustandslos wie [`IsotpChannel`]: Sitzung und Sicherheitszugriff sind
@@ -472,6 +606,65 @@ impl UdsClient {
     ) -> std::result::Result<DtcListe, UdsFehler> {
         let antwort = self.runde(t, &read_dtc_anfrage(maske), timeout_ms)?;
         parse_dtc_liste(&antwort)
+    }
+
+    /// `11 <Art>` — Reset.
+    ///
+    /// Nicht harmlos: ein Hard- oder Key-Off-On-Reset beendet die Sitzung und
+    /// verwirft einen aufgebauten Sicherheitszugriff. Deshalb ist das ein eigener
+    /// Dienst und keine Nebenwirkung eines anderen — wer danach weiterarbeitet,
+    /// baut Sitzung und Zugriff neu auf.
+    pub fn reset<T: Transport>(
+        &self,
+        t: &mut T,
+        art: u8,
+        timeout_ms: u32,
+    ) -> std::result::Result<(), UdsFehler> {
+        let antwort = self.runde(t, &reset_anfrage(art), timeout_ms)?;
+        parse_reset(&antwort, art)
+    }
+
+    /// `14 <Gruppe>` — Fehlerspeicher löschen.
+    ///
+    /// Ein **Schreibvorgang**: danach ist der Fehlerspeicher weg. Die Audit-Kette
+    /// ([`crate::audit`]) gehört in die Funktions-Runtime, nicht hierher — dieses
+    /// Modul kennt keine Aufträge und weiß nicht, in wessen Namen gelöscht wird.
+    /// Wer den Dienst direkt aufruft, schreibt den Eintrag selbst.
+    pub fn clear_dtc<T: Transport>(
+        &self,
+        t: &mut T,
+        gruppe: u32,
+        timeout_ms: u32,
+    ) -> std::result::Result<(), UdsFehler> {
+        let antwort = self.runde(t, &clear_dtc_anfrage(gruppe), timeout_ms)?;
+        parse_clear_dtc(&antwort)
+    }
+
+    /// `3E 00` — TesterPresent, Antwort wird geprüft.
+    ///
+    /// Hält die Sitzung im Steuergerät offen. Ohne diesen Ruf fällt es nach
+    /// seiner `S3`-Frist in die Standardsitzung zurück — und der nächste
+    /// Schreibversuch scheitert an einer Bedingung, die vorher erfüllt war.
+    pub fn tester_present<T: Transport>(
+        &self,
+        t: &mut T,
+        timeout_ms: u32,
+    ) -> std::result::Result<(), UdsFehler> {
+        let antwort = self.runde(t, &tester_present_anfrage(), timeout_ms)?;
+        parse_tester_present(&antwort)
+    }
+
+    /// `3E 80` — TesterPresent mit unterdrückter Antwort.
+    ///
+    /// Das Unterdrückungsbit heißt: das Steuergerät antwortet **nicht**. Wer hier
+    /// auf eine Antwort wartet, bekommt bei jedem Ruf einen Timeout, obwohl alles
+    /// in Ordnung ist — deshalb sendet diese Fassung nur.
+    pub fn tester_present_ohne_antwort<T: Transport>(
+        &self,
+        t: &mut T,
+    ) -> std::result::Result<(), UdsFehler> {
+        self.iso.send(t, &tester_present_ohne_antwort_anfrage())?;
+        Ok(())
     }
 
     pub fn iso(&self) -> &IsotpChannel {
@@ -919,5 +1112,205 @@ mod tests {
         assert_eq!(liste.eintraege.len(), 5);
         assert_eq!(liste.eintraege[4].dtc, [0x04, 0x01, 0x00]);
         assert_eq!(liste.eintraege[4].status, 0x2F);
+    }
+
+    // --- Reset ------------------------------------------------------------
+
+    #[test]
+    fn reset_anfrage_ist_11_mit_art() {
+        assert_eq!(reset_anfrage(RESET_WEICH), vec![0x11, 0x03]);
+        assert_eq!(reset_anfrage(RESET_HART), vec![0x11, 0x01]);
+    }
+
+    #[test]
+    fn reset_bestaetigt_die_art() {
+        assert_eq!(parse_reset(&[0x51, 0x03], RESET_WEICH), Ok(()));
+    }
+
+    #[test]
+    fn reset_mit_anderer_art_wird_abgelehnt() {
+        // Ein Steuergerät, das mit „softReset“ antwortet, obwohl „hardReset“
+        // gefragt war, hat etwas anderes getan als verlangt.
+        assert_eq!(
+            parse_reset(&[0x51, 0x01], RESET_WEICH).unwrap_err(),
+            UdsFehler::FalscheSubfunktion {
+                erwartet: 0x03,
+                gesehen: 0x01
+            }
+        );
+    }
+
+    #[test]
+    fn reset_mit_unterdrueckungsbit_in_der_antwort_stoert_nicht() {
+        // 0x83 = 0x03 mit gesetztem Bit 7.
+        assert_eq!(parse_reset(&[0x51, 0x83], RESET_WEICH), Ok(()));
+    }
+
+    #[test]
+    fn reset_nrc_wird_benannt() {
+        let err = parse_reset(&[0x7F, 0x11, 0x22], RESET_WEICH).unwrap_err();
+        assert_eq!(
+            err,
+            UdsFehler::Nrc {
+                dienst: 0x11,
+                code: 0x22
+            }
+        );
+        assert!(err.to_string().contains("conditionsNotCorrect"), "{err}");
+    }
+
+    #[test]
+    fn reset_zu_kurz_wird_abgelehnt() {
+        assert_eq!(
+            parse_reset(&[0x51], RESET_WEICH).unwrap_err(),
+            UdsFehler::ZuKurz {
+                gelesen: 1,
+                mindestens: 2
+            }
+        );
+    }
+
+    #[test]
+    fn reset_am_simulator() {
+        let mut t = Loopback::new(vec![antwort(&[0x51, 0x03])]);
+        UdsClient::new().reset(&mut t, RESET_WEICH, 100).unwrap();
+        assert_eq!(&t.sent()[0].data[..3], &[0x02, 0x11, 0x03]);
+    }
+
+    // --- Fehlerspeicher löschen -------------------------------------------
+
+    #[test]
+    fn clear_dtc_anfrage_traegt_die_gruppe_big_endian() {
+        assert_eq!(
+            clear_dtc_anfrage(DTC_GRUPPE_ALLE),
+            vec![0x14, 0xFF, 0xFF, 0xFF]
+        );
+        assert_eq!(clear_dtc_anfrage(0x00C0_0000), vec![0x14, 0xC0, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn clear_dtc_bestaetigt_ohne_nutzlast() {
+        assert_eq!(parse_clear_dtc(&[0x54]), Ok(()));
+    }
+
+    #[test]
+    fn clear_dtc_nrc_wird_benannt() {
+        // 0x22 heißt „conditionsNotCorrect“ — etwa Zündung aus. Der Fehlerspeicher
+        // ist dann nicht gelöscht, und die Werkstatt muss es erfahren.
+        let err = parse_clear_dtc(&[0x7F, 0x14, 0x22]).unwrap_err();
+        assert_eq!(
+            err,
+            UdsFehler::Nrc {
+                dienst: 0x14,
+                code: 0x22
+            }
+        );
+        assert!(err.to_string().contains("conditionsNotCorrect"), "{err}");
+    }
+
+    #[test]
+    fn clear_dtc_mit_falschem_dienst_wird_abgelehnt() {
+        assert_eq!(
+            parse_clear_dtc(&[0x55]).unwrap_err(),
+            UdsFehler::FalscherDienst {
+                erwartet: 0x54,
+                gesehen: 0x55
+            }
+        );
+    }
+
+    #[test]
+    fn clear_dtc_leere_antwort_wird_abgelehnt() {
+        assert_eq!(
+            parse_clear_dtc(&[]).unwrap_err(),
+            UdsFehler::ZuKurz {
+                gelesen: 0,
+                mindestens: 1
+            }
+        );
+    }
+
+    #[test]
+    fn clear_dtc_wartet_aufschuebe_ab() {
+        // Löschen dauert: das Steuergerät darf mit 0x78 antworten, bevor es
+        // bestätigt. Der Aufschubpfad ist derselbe wie bei den Lesern.
+        let mut t = Loopback::new(vec![aufschub(0x14), antwort(&[0x54])]);
+        UdsClient::new()
+            .clear_dtc(&mut t, DTC_GRUPPE_ALLE, 100)
+            .unwrap();
+
+        assert_eq!(&t.sent()[0].data[..5], &[0x04, 0x14, 0xFF, 0xFF, 0xFF]);
+        // Genau eine Anfrage: nach dem Aufschub wird nicht neu gesendet.
+        assert_eq!(t.sent().len(), 1);
+    }
+
+    // --- TesterPresent ----------------------------------------------------
+
+    #[test]
+    fn tester_present_anfrage_ist_3e_00() {
+        assert_eq!(tester_present_anfrage(), vec![0x3E, 0x00]);
+    }
+
+    #[test]
+    fn tester_present_ohne_antwort_setzt_das_unterdrueckungsbit() {
+        assert_eq!(tester_present_ohne_antwort_anfrage(), vec![0x3E, 0x80]);
+    }
+
+    #[test]
+    fn tester_present_bestaetigt_00() {
+        assert_eq!(parse_tester_present(&[0x7E, 0x00]), Ok(()));
+    }
+
+    #[test]
+    fn tester_present_mit_falscher_subfunktion_wird_abgelehnt() {
+        assert_eq!(
+            parse_tester_present(&[0x7E, 0x01]).unwrap_err(),
+            UdsFehler::FalscheSubfunktion {
+                erwartet: 0x00,
+                gesehen: 0x01
+            }
+        );
+    }
+
+    #[test]
+    fn tester_present_zu_kurz_wird_abgelehnt() {
+        assert_eq!(
+            parse_tester_present(&[0x7E]).unwrap_err(),
+            UdsFehler::ZuKurz {
+                gelesen: 1,
+                mindestens: 2
+            }
+        );
+    }
+
+    #[test]
+    fn tester_present_nrc_wird_benannt() {
+        assert_eq!(
+            parse_tester_present(&[0x7F, 0x3E, 0x11]).unwrap_err(),
+            UdsFehler::Nrc {
+                dienst: 0x3E,
+                code: 0x11
+            }
+        );
+    }
+
+    #[test]
+    fn tester_present_am_simulator() {
+        let mut t = Loopback::new(vec![antwort(&[0x7E, 0x00])]);
+        UdsClient::new().tester_present(&mut t, 100).unwrap();
+        assert_eq!(&t.sent()[0].data[..3], &[0x02, 0x3E, 0x00]);
+    }
+
+    #[test]
+    fn tester_present_ohne_antwort_wartet_nicht() {
+        // Leerer Simulator: gäbe es hier ein `recv`, endete der Aufruf im
+        // Timeout. Genau das ist der Unterschied zur Fassung mit Antwort — und
+        // der Grund, warum sie getrennt ist und nicht ein Flag bekommt.
+        let mut t = Loopback::empty();
+        UdsClient::new()
+            .tester_present_ohne_antwort(&mut t)
+            .unwrap();
+
+        assert_eq!(&t.sent()[0].data[..3], &[0x02, 0x3E, 0x80]);
     }
 }
