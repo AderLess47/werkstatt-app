@@ -133,7 +133,7 @@ fn security_access_ueber_die_grenze() {
     push_sf(&lb, &[0x67, 0x02]);
     let anbieter = XorAnbieter;
 
-    let ergebnis = Sicherheit::new()
+    let ergebnis = Sicherheit::new(Audit::new(), String::from("unbekannt"))
         .security_access(Box::new(lb.clone()), 0x01, Box::new(anbieter), 100)
         .unwrap();
 
@@ -150,7 +150,7 @@ fn security_access_bei_offener_ebene_sendet_keinen_schluessel() {
     let lb = LoopbackTransport::new();
     push_sf(&lb, &[0x67, 0x01, 0x00, 0x00]);
 
-    let ergebnis = Sicherheit::new()
+    let ergebnis = Sicherheit::new(Audit::new(), String::from("unbekannt"))
         .security_access(Box::new(lb.clone()), 0x01, Box::new(LeererAnbieter), 100)
         .unwrap();
 
@@ -164,7 +164,7 @@ fn security_access_ohne_schluessel_meldet_protokollfehler() {
     let lb = LoopbackTransport::new();
     push_sf(&lb, &[0x67, 0x01, 0xA1, 0xB2]);
 
-    let err = Sicherheit::new()
+    let err = Sicherheit::new(Audit::new(), String::from("unbekannt"))
         .security_access(Box::new(lb.clone()), 0x01, Box::new(LeererAnbieter), 100)
         .unwrap_err();
 
@@ -182,7 +182,7 @@ fn security_access_nrc_kommt_als_eigener_fehlerfall() {
     push_sf(&lb, &[0x7F, 0x27, 0x35]);
     let anbieter = XorAnbieter;
 
-    let err = Sicherheit::new()
+    let err = Sicherheit::new(Audit::new(), String::from("unbekannt"))
         .security_access(Box::new(lb), 0x01, Box::new(anbieter), 100)
         .unwrap_err();
 
@@ -194,6 +194,92 @@ fn security_access_nrc_kommt_als_eigener_fehlerfall() {
         }
     );
     assert!(err.to_string().contains("invalidKey"), "{err}");
+}
+
+#[test]
+fn security_access_haengt_den_vorgang_an_die_kette() {
+    let lb = LoopbackTransport::new();
+    push_sf(&lb, &[0x67, 0x01, 0xA1, 0xB2]);
+    push_sf(&lb, &[0x67, 0x02]);
+    let kette = Audit::new();
+    let anbieter = XorAnbieter;
+
+    Sicherheit::new(kette.clone(), String::from("unbekannt"))
+        .security_access(Box::new(lb), 0x01, Box::new(anbieter), 100)
+        .unwrap();
+
+    assert_eq!(kette.len(), 1);
+    let eintraege = kette.eintraege();
+    assert!(
+        eintraege[0].dienst.contains("Ebene 0x01"),
+        "{}",
+        eintraege[0].dienst
+    );
+    assert!(
+        eintraege[0].dienst.contains("entsperrt"),
+        "{}",
+        eintraege[0].dienst
+    );
+    assert_eq!(eintraege[0].ergebnis, "Erfolg");
+    assert_eq!(eintraege[0].vin, "unbekannt");
+    // Der Eintrag nennt den Vorgang, nicht seine Geheimnisse.
+    assert!(!eintraege[0].dienst.contains("A1 B2"));
+    assert!(!eintraege[0].dienst.contains("5E 4D"));
+}
+
+#[test]
+fn bereits_offene_ebene_steht_als_eigener_satz_in_der_kette() {
+    let lb = LoopbackTransport::new();
+    push_sf(&lb, &[0x67, 0x03, 0x00, 0x00]);
+    let kette = Audit::new();
+
+    Sicherheit::new(kette.clone(), String::from("unbekannt"))
+        .security_access(Box::new(lb), 0x03, Box::new(LeererAnbieter), 100)
+        .unwrap();
+
+    let eintraege = kette.eintraege();
+    assert_eq!(eintraege.len(), 1);
+    assert!(
+        eintraege[0].dienst.contains("bereits offen"),
+        "{}",
+        eintraege[0].dienst
+    );
+    assert!(
+        eintraege[0].dienst.contains("0x03"),
+        "{}",
+        eintraege[0].dienst
+    );
+    assert_eq!(eintraege[0].ergebnis, "Erfolg");
+}
+
+#[test]
+fn abgelehnter_zugriff_wird_als_fehler_protokolliert() {
+    let lb = LoopbackTransport::new();
+    push_sf(&lb, &[0x67, 0x01, 0xA1, 0xB2]);
+    push_sf(&lb, &[0x7F, 0x27, 0x35]);
+    let kette = Audit::new();
+
+    Sicherheit::new(kette.clone(), String::from("unbekannt"))
+        .security_access(Box::new(lb), 0x01, Box::new(XorAnbieter), 100)
+        .unwrap_err();
+
+    let eintraege = kette.eintraege();
+    assert_eq!(
+        eintraege.len(),
+        1,
+        "auch der Fehlversuch gehört in die Kette"
+    );
+    assert!(
+        eintraege[0].ergebnis.contains("invalidKey"),
+        "{}",
+        eintraege[0].ergebnis
+    );
+    assert!(
+        eintraege[0].dienst.contains("0x01"),
+        "{}",
+        eintraege[0].dienst
+    );
+    assert!(!eintraege[0].dienst.contains("A1 B2"));
 }
 
 #[test]
