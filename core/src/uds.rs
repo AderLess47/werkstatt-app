@@ -29,11 +29,11 @@ use std::fmt;
 use crate::isotp::IsotpChannel;
 use crate::transport::{Result as TransportResult, Transport, TransportError};
 
-/// Dienst „DiagnosticSessionControl".
+/// Dienst „DiagnosticSessionControl“.
 pub const DIENST_SITZUNG: u8 = 0x10;
 /// Positive Antwort auf DiagnosticSessionControl.
 pub const ANTWORT_SITZUNG: u8 = 0x50;
-/// Dienst „ReadDataByIdentifier".
+/// Dienst „ReadDataByIdentifier“.
 pub const DIENST_READ_DID: u8 = 0x22;
 /// Positive Antwort auf ReadDataByIdentifier.
 pub const ANTWORT_READ_DID: u8 = 0x62;
@@ -43,17 +43,17 @@ pub const ANTWORT_NEGATIV: u8 = 0x7F;
 pub const NRC_RESPONSE_PENDING: u8 = 0x78;
 /// Subfunktion `extendedDiagnosticSession`.
 pub const SITZUNG_EXTENDED: u8 = 0x03;
-/// Dienst „ReadDTCInformation".
+/// Dienst „ReadDTCInformation“.
 pub const DIENST_READ_DTC: u8 = 0x19;
 /// Positive Antwort auf ReadDTCInformation.
 pub const ANTWORT_READ_DTC: u8 = 0x59;
 /// Unterfunktion `reportDTCByStatusMask`.
 pub const READ_DTC_BY_STATUS_MASK: u8 = 0x02;
-/// Statusmaske „alle unterstützten Fehler".
+/// Statusmaske „alle unterstützten Fehler“.
 pub const DTC_MASKE_ALLE: u8 = 0xFF;
 /// Bit 7 einer Unterfunktion: positive Antwort unterdrücken.
 pub const UNTERDRUECKUNGS_BIT: u8 = 0x80;
-/// Dienst „ECUReset".
+/// Dienst „ECUReset“.
 pub const DIENST_RESET: u8 = 0x11;
 /// Positive Antwort auf ECUReset.
 pub const ANTWORT_RESET: u8 = 0x51;
@@ -63,19 +63,19 @@ pub const RESET_HART: u8 = 0x01;
 pub const RESET_ZUENDUNG: u8 = 0x02;
 /// Reset-Art `softReset`.
 pub const RESET_WEICH: u8 = 0x03;
-/// Dienst „ClearDiagnosticInformation".
+/// Dienst „ClearDiagnosticInformation“.
 pub const DIENST_CLEAR_DTC: u8 = 0x14;
 /// Positive Antwort auf ClearDiagnosticInformation.
 pub const ANTWORT_CLEAR_DTC: u8 = 0x54;
 /// Gruppe „alle Fehlergruppen“ (`FF FF FF`).
 pub const DTC_GRUPPE_ALLE: u32 = 0x00FF_FFFF;
-/// Dienst „TesterPresent".
+/// Dienst „TesterPresent“.
 pub const DIENST_TESTER_PRESENT: u8 = 0x3E;
 /// Positive Antwort auf TesterPresent.
 pub const ANTWORT_TESTER_PRESENT: u8 = 0x7E;
 /// Unterfunktion `zeroSubFunction` — die einzige, die TesterPresent definiert.
 pub const TESTER_PRESENT_SUBFUNKTION: u8 = 0x00;
-/// Dienst „RoutineControl".
+/// Dienst „RoutineControl“.
 pub const DIENST_ROUTINE: u8 = 0x31;
 /// Positive Antwort auf RoutineControl.
 pub const ANTWORT_ROUTINE: u8 = 0x71;
@@ -85,13 +85,13 @@ pub const ROUTINE_START: u8 = 0x01;
 pub const ROUTINE_STOP: u8 = 0x02;
 /// Subfunktion `requestRoutineResults`.
 pub const ROUTINE_ERGEBNIS: u8 = 0x03;
-/// Statuswert „Routine ohne Fehler abgeschlossen".
+/// Statuswert „Routine ohne Fehler abgeschlossen“.
 ///
 /// Nur dieser eine Wert ist in ISO 14229-1 festgelegt; alles andere ist
 /// herstellerspezifisch. Deshalb wird der Status roh durchgereicht und nur
 /// hier verglichen — eine Deutung der übrigen Werte wäre geraten.
 pub const ROUTINE_OK: u8 = 0x00;
-/// Dienst „WriteDataByIdentifier".
+/// Dienst „WriteDataByIdentifier“.
 pub const DIENST_WRITE_DID: u8 = 0x2E;
 /// Positive Antwort auf WriteDataByIdentifier.
 pub const ANTWORT_WRITE_DID: u8 = 0x6E;
@@ -599,10 +599,10 @@ pub struct RoutineAntwort {
 }
 
 impl RoutineAntwort {
-    /// Meldet das Steuergerät „Routine ohne Fehler abgeschlossen"?
+    /// Meldet das Steuergerät „Routine ohne Fehler abgeschlossen“?
     ///
     /// Nur `0x00` zählt. Ein fehlender Status ist **kein** Erfolg: „hat nichts
-    /// gesagt" und „ist durchgelaufen" sind zwei verschiedene Befunde.
+    /// gesagt“ und „ist durchgelaufen“ sind zwei verschiedene Befunde.
     pub fn erfolgreich(&self) -> bool {
         self.status == Some(ROUTINE_OK)
     }
@@ -804,7 +804,7 @@ impl UdsClient {
     /// Die Audit-Kette ([`crate::audit`]) gehört wie bei [`UdsClient::clear_dtc`]
     /// in die Funktions-Runtime — dieses Modul kennt keine Aufträge und weiß
     /// nicht, in wessen Namen geschrieben wird. Deshalb eine eigene Methode und
-    /// nicht „Lesen mit anderem Dienstbyte".
+    /// nicht „Lesen mit anderem Dienstbyte“.
     pub fn write_did<T: Transport>(
         &self,
         t: &mut T,
