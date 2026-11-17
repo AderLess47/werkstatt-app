@@ -5,7 +5,7 @@
 | Job | Was er prüft |
 | --- | --- |
 | `c` | `make -C j2534 test` (165 Prüfungen) und dass `core/tests/corpus/isotp.txt` unverändert aus dem Erzeuger hervorgeht |
-| `rust` | `cargo test` für `core` (200 Tests, dazu 4 Korpus-Tests aus `core/tests/corpus/isotp.txt`) und für `core-ffi` (15 Tests) |
+| `rust` | `cargo test` für `core` (209 Tests, dazu 4 Korpus-Tests aus `core/tests/corpus/isotp.txt`) und für `core-ffi` (15 Tests) |
 | `clippy` | `cargo clippy --all-targets -- -D warnings` für `core` und `core-ffi`; `--all-targets` schließt die Tests ein, und genau dort lagen die zwei Warnungen, die den Job sonst nie erreicht hätten |
 | `fmt` | `cargo fmt --check` für `core`, `core-ffi` und `core/fuzz` — eigener Job, weil ein Formatfehler nichts über das Verhalten sagt |
 | `bindings` | erzeugt Kotlin- und Swift-Bindings neu, lädt sie als Artefakt hoch (`needs: rust`) |
@@ -71,10 +71,10 @@ Repository, jede per Blob-Hash bestätigt:
 | `core/src/isotp.rs` | 17 KB |
 | `core/src/lib.rs` | 1,5 KB |
 | `core/src/sfd.rs` | 39 KB |
-| `core/src/uds.rs` | 56 KB |
+| `core/src/uds.rs` | 62 KB |
 
 `cargo fmt --check` ist danach für alle drei Crates lokal grün (Exit 0), und
-`sh scripts/kern-tests.sh` läuft durch (200 Rust-Tests).
+`sh scripts/kern-tests.sh` läuft durch (209 Rust-Tests).
 
 ## Fuzzing — lokal belegt, nicht in der CI
 
@@ -189,19 +189,22 @@ Befehlen auf dieser Maschine:
 sh scripts/ci-lokal.sh
 ```
 
-Gemessen am 17.11.2026, 15:18 UTC in dieser VM (rustc 1.100.0, cargo 1.100.0,
-OpenJDK 17.0.21, Linux 6.1.102 x86_64) — alle fünf Jobs grün in zusammen 47 s.
-Der Lauf davor am selben Tag (14:42 UTC) hatte denselben Umfang, aber 184 Tests
-im Kern; die 16 seitdem gekommenen Tests sind `0x31` (RoutineControl) in
-`core/src/uds.rs` — Start, Stop, Ergebnis und der Statusrecord —, samt der
-SFD-Nachrichten, die jetzt über denselben Baukasten laufen. Der `rust`-Job
-brauchte diesmal 5 s statt 1 s, weil die Test-Binärdatei neu übersetzt wurde;
-die 47 s sind deshalb nur bedingt mit den 38 s davor vergleichbar.
+Gemessen am 17.11.2026, 15:34 UTC in dieser VM (rustc 1.100.0, cargo 1.100.0,
+OpenJDK 17.0.21, Linux 6.1.102 x86_64) — alle fünf Jobs grün in zusammen 45 s.
+Gegenüber dem Lauf um 15:18 UTC (47 s) sind neun Tests dazugekommen, alle für
+`0x2E` (WriteDataByIdentifier): Anfrageaufbau, Echo-Prüfung gegen die Kennung,
+NRC im Klartext, zu kurze und falsche Antwort, 0x78-Aufschub und ein Schreiben
+mit 300 Byte Daten als Folgenachrichten. Der `rust`-Job brauchte 3 s statt 5 s,
+weil die Test-Binärdatei schon übersetzt war; die Dauern der Läufe sind deshalb
+nur bedingt miteinander vergleichbar. Der erste Lauf dieser Reihe (14:42 UTC)
+hatte denselben Umfang, aber 184 Tests im Kern — die damals 16 neuen waren
+`0x31` (RoutineControl) samt den SFD-Nachrichten, die seitdem über denselben
+Baukasten laufen.
 
 | Job | Ergebnis | Dauer | Was im Log steht |
 | --- | --- | --- | --- |
 | `c` | grün | 0 s | 165 `PASS`-Zeilen, Korpus byteweise unverändert |
-| `rust` | grün | 5 s | 200 Tests im Kern, 4 Korpus-Tests, 15 in der FFI-Schicht |
+| `rust` | grün | 3 s | 209 Tests im Kern, 4 Korpus-Tests, 15 in der FFI-Schicht |
 | `clippy` | grün | 2 s | keine Warnung in `core` und `core-ffi` |
 | `fmt` | grün | 0 s | `--check` für `core`, `core-ffi`, `core/fuzz` |
 | `jvm-tests` | grün | 40 s | `OK (174 tests)` |
