@@ -19,7 +19,7 @@ ab, wenn eine rot ist:
 
 | geänderte Pfade | was läuft |
 | --- | --- |
-| `docs/`, `*.md`, `artifacts/`, `model/` | nichts — „nur Doku geändert“ |
+| `docs/`, `*.md`, `artifacts/`, `model/` | alle fünf Jobs |
 | `core/`, `core-ffi/`, `j2534/`, `scripts/kern-tests.sh`, `scripts/ci-lokal.sh` | Jobs `c`, `rust`, `clippy`, `fmt` |
 | `android/`, `scripts/jvm-tests.sh` | Job `jvm-tests` |
 | `core/src/isotp.rs`, `core/src/uds.rs`, `core/fuzz/` | Jobs `c`, `rust`, `clippy`, `fmt` und `scripts/fuzz.sh` (Rauchlauf) |
@@ -40,6 +40,14 @@ sh scripts/ci-lokal.sh fmt    # nur die Formatprüfung
 Der Hook ruft dieses Skript statt der einzelnen Skripte, weil der Workflow in
 diesem Repository nicht startet (kein Runner, [docs/ci.md](../docs/ci.md)) — was
 der Hook prüft, soll dasselbe sein, was in der CI angekündigt ist.
+
+Reine Doku fährt seit dem 17.11.2026 ebenfalls alle fünf Jobs. Vorher
+übersprang sie der Hook mit „nur Doku geändert“; damit war ein Doku-Push der
+einzige Fall, in dem der Hook gar nichts über den Push sagte. Ein warm
+gerechneter Lauf dauert rund 40 s — das ist zu wenig, um dafür eine zweite
+Regel im Kopf behalten zu müssen. Die Auswahl nach Pfaden beschränkt sich
+jetzt auf das, was wirklich teuer oder unmöglich wäre: eine Änderung an
+`j2534/` startet keine JVM-Tests, eine an `android/` keine Cargo-Prüfungen.
 
 Der Fuzz-Rauchlauf ist der kurze Bruder des Zehn-Minuten-Laufs aus der Definition
 of Done: 20 Sekunden je Ziel, und nur, wenn Parser-Code angefasst wurde. Er
