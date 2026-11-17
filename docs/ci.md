@@ -31,12 +31,21 @@ lokal: die Jobs selbst werden ja nicht gestartet (siehe unten).
 formatiert worden; ein Lauf mit rustfmt ändert am 17.11.2026 **zwölf Dateien mit
 rund 235 KB** Quelltext.
 
+Ein eigener Versuch, die Handformatierung per `rustfmt.toml` als Soll zu erklären
+(`max_width = 110`, `use_small_heuristics = "Max"`, `reorder_imports = false`),
+ist am 17.11.2026 gemessen gescheitert: rustfmt löst `=> { Ausdruck }` in einem
+Match-Arm immer zu `=> Ausdruck,` auf, und dafür gibt es keine stabile Option
+(`match_arm_blocks = false` ändert daran nichts). Genau diese Form steht in
+`sfd.rs` und `isotp.rs`; außerdem sind Signaturen im Repo 101 Zeichen lang und
+liegen damit schon über dem Vorgabewert 100. Eine Konfiguration, die den alten
+Stand durchwinkt, gibt es also nicht — es bleibt beim Reformat.
+
 Die Änderung selbst ist rein mechanisch und lokal bereits gefahren — der Kern
 danach weiter grün (163 Tests, Clippy sauber). Der Haken ist der Weg ins
 Repository: es gibt von dieser Maschine keinen `git push`, jede Datei geht
 einzeln durch die API, und `sfd.rs` allein hat 38 KB. Ein einzelnes verrutschtes
 Zeichen wäre ein Programmierfehler in getestetem Code — deshalb steht der Job
-erst im Workflow, wenn alle Dateien übertragen und jede gegen `git hash-object`
+ erst im Workflow, wenn alle Dateien übertragen und jede gegen `git hash-object`
 geprüft ist. Ein Job, der beim ersten Lauf rot ist, prüft nichts.
 
 **Stand am 17.11.2026.** Sauber und im Repository: `core/tests/corpus.rs`,
