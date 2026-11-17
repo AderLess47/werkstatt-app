@@ -139,7 +139,7 @@ Ein Modul gilt als fertig, wenn **alle** Punkte erfüllt sind:
 Build-Matrix | Rust für `aarch64-linux-android` und `aarch64-apple-ios` (`x86_64-pc-windows-msvc` erst für einen Desktop-Worker); C für Windows (MSVC) und Linux (gcc) — die DLL bleibt C, siehe [ADR-001](adr-001-kernsprache.md) |
 Kern-Jobs | `cargo test`, `cargo clippy -D warnings`, `cargo fmt --check`, `cargo deny` (Lizenzen, CVEs) |
 C-Jobs | `gcc -Wall -Wextra -Wpedantic`, Exportliste gegen `win/j2534.def` prüfen (wie lokal: 16 Symbole) |
-Fuzzing | `cargo-fuzz` für ISO-TP/UDS-Parser, nightly, 30 Minuten |
+Fuzzing | `sh scripts/fuzz.sh` — `cargo-fuzz` und nightly, zwei Ziele (ISO-TP, UDS), 300 s je Ziel wie in §6.4; ein CI-Job dafür fehlt, solange die Jobs nicht starten ([ci.md](ci.md)) |
 HIL | nächtlich am Prüfstand: 20 Funktionen × 3 Steuergeräte, Golden-Log-Vergleich |
 Artefakte | signierte Builds, SBOM (CycloneDX), reproduzierbar (`--locked`, feste Toolchain) |
 Release | DLL mit EV-Zertifikat signieren, Hash im Content-Manifest, Rollback-Paket |
