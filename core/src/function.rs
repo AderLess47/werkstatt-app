@@ -32,8 +32,8 @@ use std::fmt;
 
 use crate::audit::{AuditKette, Ergebnis};
 use crate::sfd::aus_hex;
-use crate::uds::pruefe_nrc;
 use crate::transport::{Transport, TransportError};
+use crate::uds::pruefe_nrc;
 use crate::uds::{UdsClient, UdsFehler};
 
 /// Risikoklasse einer Funktion.
@@ -250,42 +250,19 @@ pub struct FunctionDef {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValidierungsFehler {
     IdLeer,
-    IdNichtKlein {
-        id: String,
-    },
+    IdNichtKlein { id: String },
     TitelLeer,
     KeineSchritte,
     MatchRegelLeer,
-    SchrittOhneAnfrage {
-        schritt: usize,
-    },
-    ErwartungLeer {
-        schritt: usize,
-    },
-    TimeoutNull {
-        schritt: usize,
-    },
-    AnfrageZuLang {
-        schritt: usize,
-        laenge: usize,
-    },
-    RecoveryZuTief {
-        schritt: usize,
-    },
-    BordspannungUngueltig {
-        min_mv: u32,
-        max_mv: u32,
-    },
-    FreigabeFehltFuerRisiko {
-        risk: Risk,
-        freigabe: Freigabe,
-    },
-    EvidenceFehlt {
-        freigabe: Freigabe,
-    },
-    EvidenceKeinHex {
-        evidence_hash: String,
-    },
+    SchrittOhneAnfrage { schritt: usize },
+    ErwartungLeer { schritt: usize },
+    TimeoutNull { schritt: usize },
+    AnfrageZuLang { schritt: usize, laenge: usize },
+    RecoveryZuTief { schritt: usize },
+    BordspannungUngueltig { min_mv: u32, max_mv: u32 },
+    FreigabeFehltFuerRisiko { risk: Risk, freigabe: Freigabe },
+    EvidenceFehlt { freigabe: Freigabe },
+    EvidenceKeinHex { evidence_hash: String },
 }
 
 impl fmt::Display for ValidierungsFehler {
@@ -335,10 +312,9 @@ impl fmt::Display for ValidierungsFehler {
                 "Freigabe „{}\" ohne evidence_hash — ohne Nachweis keine Freigabe",
                 freigabe.als_text()
             ),
-            ValidierungsFehler::EvidenceKeinHex { evidence_hash } => write!(
-                f,
-                "evidence_hash „{evidence_hash}\" ist kein Hex-Text"
-            ),
+            ValidierungsFehler::EvidenceKeinHex { evidence_hash } => {
+                write!(f, "evidence_hash „{evidence_hash}\" ist kein Hex-Text")
+            }
         }
     }
 }
@@ -579,10 +555,16 @@ impl fmt::Display for AusfuehrungsFehler {
                 write!(f, "Backup von Kennung {did:04X} fehlgeschlagen: {grund}")
             }
             AusfuehrungsFehler::RecoveryFehlgeschlagen { schritt, grund } => {
-                write!(f, "Notausstieg nach Schritt {schritt} fehlgeschlagen: {grund}")
+                write!(
+                    f,
+                    "Notausstieg nach Schritt {schritt} fehlgeschlagen: {grund}"
+                )
             }
             AusfuehrungsFehler::NichtProtokolliert => {
-                write!(f, "Ablauf ohne vollständigen Audit-Eintrag — nicht abgeschlossen")
+                write!(
+                    f,
+                    "Ablauf ohne vollständigen Audit-Eintrag — nicht abgeschlossen"
+                )
             }
         }
     }
@@ -737,9 +719,7 @@ impl FunctionDef {
                     // eine Ablehnung — die App soll sie als NRC sehen
                     // (Dienst und Code), nicht als Protokollfehler.
                     if let Some((dienst, code)) = pruefe_nrc(&antwort) {
-                        let grund = format!(
-                            "abgelehnt (Dienst 0x{dienst:02X}, NRC 0x{code:02X})"
-                        );
+                        let grund = format!("abgelehnt (Dienst 0x{dienst:02X}, NRC 0x{code:02X})");
                         laufnummern.push(kette.anhaengen(
                             zeit_ms,
                             &kontext.vin,
@@ -797,7 +777,10 @@ impl FunctionDef {
                             grund: grund.clone(),
                         },
                     ));
-                    if self.notausstieg(client, t, schritt, kontext, kette, zeit_ms).is_err() {
+                    if self
+                        .notausstieg(client, t, schritt, kontext, kette, zeit_ms)
+                        .is_err()
+                    {
                         return Err(AusfuehrungsFehler::RecoveryFehlgeschlagen {
                             schritt: nummer,
                             grund,
