@@ -8,8 +8,9 @@
 //!
 //! ## Verhältnis zu [`crate::sfd`]
 //!
-//! `sfd` ist der erste Aufrufer: es baut nur noch seine eigenen Nachrichten
-//! (`22 01 74`, `31 01 C0 …`) und schickt sie durch [`UdsClient::runde`].
+//! `sfd` ist der erste Aufrufer: es baut seine Nachrichten mit den Baukästen
+//! aus diesem Modul (`read_did_anfrage`, `routine_start_anfrage`) und schickt
+//! sie durch [`UdsClient::runde`].
 //! NRC-Texte, Aufschub-Grenze und Sitzungsauswertung liegen hier, damit es
 //! **eine** Sendestelle und **eine** NRC-Tabelle gibt. Neue Dienste entstehen
 //! in diesem Modul, nie dort.
@@ -74,6 +75,22 @@ pub const DIENST_TESTER_PRESENT: u8 = 0x3E;
 pub const ANTWORT_TESTER_PRESENT: u8 = 0x7E;
 /// Unterfunktion `zeroSubFunction` — die einzige, die TesterPresent definiert.
 pub const TESTER_PRESENT_SUBFUNKTION: u8 = 0x00;
+/// Dienst „RoutineControl".
+pub const DIENST_ROUTINE: u8 = 0x31;
+/// Positive Antwort auf RoutineControl.
+pub const ANTWORT_ROUTINE: u8 = 0x71;
+/// Subfunktion `startRoutine`.
+pub const ROUTINE_START: u8 = 0x01;
+/// Subfunktion `stopRoutine`.
+pub const ROUTINE_STOP: u8 = 0x02;
+/// Subfunktion `requestRoutineResults`.
+pub const ROUTINE_ERGEBNIS: u8 = 0x03;
+/// Statuswert „Routine ohne Fehler abgeschlossen".
+///
+/// Nur dieser eine Wert ist in ISO 14229-1 festgelegt; alles andere ist
+/// herstellerspezifisch. Deshalb wird der Status roh durchgereicht und nur
+/// hier verglichen — eine Deutung der übrigen Werte wäre geraten.
+pub const ROUTINE_OK: u8 = 0x00;
 
 /// Höchstzahl an Aufschüben (`NRC 0x78`), die ein Aufruf abwartet.
 pub const MAX_AUFSCHUB: usize = 3;
@@ -107,6 +124,12 @@ pub enum UdsFehler {
     /// Antwort — die Kennung stimmt nicht, und die Nutzlast gehört zu etwas
     /// anderem.
     FalscheDid { erwartet: [u8; 2], gesehen: [u8; 2] },
+    /// Antwort gehört zu einer anderen Routine.
+    ///
+    /// Eigener Fall neben [`UdsFehler::FalscheDid`], weil die Folgen andere
+    /// sind: eine fremde Routinenkennung heißt, dass der Schritt nicht gelaufen
+    /// ist — die Nutzlast als Ergebnis zu lesen wäre schlimmer als ein Fehler.
+    FalscheRoutine { erwartet: [u8; 2], gesehen: [u8; 2] },
     /// Antwort ist kürzer als ihr eigener Kopf.
     ZuKurz { gelesen: usize, mindestens: usize },
     /// Die DTC-Liste endet mitten im Eintrag.
@@ -137,6 +160,11 @@ impl fmt::Display for UdsFehler {
             UdsFehler::FalscheDid { erwartet, gesehen } => write!(
                 f,
                 "unerwartete Kennung: erwartet {:02X}{:02X}, gesehen {:02X}{:02X}",
+                erwartet[0], erwartet[1], gesehen[0], gesehen[1]
+            ),
+            UdsFehler::FalscheRoutine { erwartet, gesehen } => write!(
+                f,
+                "unerwartete Routine: erwartet {:02X}{:02X}, gesehen {:02X}{:02X}",
                 erwartet[0], erwartet[1], gesehen[0], gesehen[1]
             ),
             UdsFehler::ZuKurz {
@@ -244,6 +272,39 @@ pub fn tester_present_ohne_antwort_anfrage() -> Vec<u8> {
         DIENST_TESTER_PRESENT,
         TESTER_PRESENT_SUBFUNKTION | UNTERDRUECKUNGS_BIT,
     ]
+}
+
+/// `31 <Subfunktion> <Routine> [<Optionen>]` — gemeinsamer Aufbau.
+///
+/// Die Kennung ist zwei Byte breit und Big Endian; die Optionen sind
+/// subfunktionsabhängig und bleiben roh. Sie werden **nicht** auf eine
+/// Höchstlänge geprüft: was in eine ISO-TP-Nachricht passt, entscheidet der
+/// Kanal, und ein zweiter Grenzwert hier wäre eine zweite Wahrheit.
+fn routine_anfrage(subfunktion: u8, routine: u16, optionen: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(4 + optionen.len());
+    out.extend_from_slice(&[
+        DIENST_ROUTINE,
+        subfunktion,
+        (routine >> 8) as u8,
+        routine as u8,
+    ]);
+    out.extend_from_slice(optionen);
+    out
+}
+
+/// `31 01 <Routine> [<Optionen>]` — Routine starten.
+pub fn routine_start_anfrage(routine: u16, optionen: &[u8]) -> Vec<u8> {
+    routine_anfrage(ROUTINE_START, routine, optionen)
+}
+
+/// `31 02 <Routine>` — Routine anhalten.
+pub fn routine_stop_anfrage(routine: u16) -> Vec<u8> {
+    routine_anfrage(ROUTINE_STOP, routine, &[])
+}
+
+/// `31 03 <Routine>` — Ergebnis einer gestarteten Routine abholen.
+pub fn routine_ergebnis_anfrage(routine: u16) -> Vec<u8> {
+    routine_anfrage(ROUTINE_ERGEBNIS, routine, &[])
 }
 
 /// Antwort auf einen Sitzungswechsel.
@@ -501,6 +562,99 @@ pub fn parse_tester_present(antwort: &[u8]) -> std::result::Result<(), UdsFehler
     Ok(())
 }
 
+/// Antwort auf RoutineControl.
+///
+/// `status` ist das erste Byte des Statusrecords — `None`, wenn das
+/// Steuergerät gar keinen geschickt hat. Das ist bei `startRoutine` erlaubt:
+/// der Start bestätigt den Beginn, nicht das Ergebnis. Der Rest bleibt roh,
+/// weil nur der Wert `0x00` genormt ist.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoutineAntwort {
+    /// Die bestätigte Subfunktion (`01`, `02` oder `03`).
+    pub subfunktion: u8,
+    /// Die bestätigte Routinenkennung.
+    pub routine: u16,
+    /// Erstes Byte des Statusrecords, falls vorhanden.
+    pub status: Option<u8>,
+    /// Bytes hinter dem Status.
+    pub daten: Vec<u8>,
+}
+
+impl RoutineAntwort {
+    /// Meldet das Steuergerät „Routine ohne Fehler abgeschlossen"?
+    ///
+    /// Nur `0x00` zählt. Ein fehlender Status ist **kein** Erfolg: „hat nichts
+    /// gesagt" und „ist durchgelaufen" sind zwei verschiedene Befunde.
+    pub fn erfolgreich(&self) -> bool {
+        self.status == Some(ROUTINE_OK)
+    }
+}
+
+/// Prüft `71 <Subfunktion> <Routine>` und liefert die Nutzlast dahinter.
+///
+/// Eigene Funktion, weil es zwei Arten von Aufrufern gibt: [`parse_routine`]
+/// deutet die Nutzlast als Statusrecord, `sfd` legt seine eigene Bedeutung
+/// hinein (Challenge-Bytes, Token-Bestätigung). Der Kopf wird deshalb nur
+/// einmal geprüft.
+pub fn routine_kopf(
+    antwort: &[u8],
+    subfunktion: u8,
+    routine: u16,
+) -> std::result::Result<&[u8], UdsFehler> {
+    if let Some((dienst, code)) = pruefe_nrc(antwort) {
+        return Err(UdsFehler::Nrc { dienst, code });
+    }
+    const KOPF: usize = 4;
+    if antwort.len() < KOPF {
+        return Err(UdsFehler::ZuKurz {
+            gelesen: antwort.len(),
+            mindestens: KOPF,
+        });
+    }
+    if antwort[0] != ANTWORT_ROUTINE {
+        return Err(UdsFehler::FalscherDienst {
+            erwartet: ANTWORT_ROUTINE,
+            gesehen: antwort[0],
+        });
+    }
+    // Wie bei `19 02`, `11` und `3E`: manche Steuergeräte spiegeln das
+    // Unterdrückungsbit der Anfrage.
+    let gesehen = antwort[1] & !UNTERDRUECKUNGS_BIT;
+    if gesehen != subfunktion {
+        return Err(UdsFehler::FalscheSubfunktion {
+            erwartet: subfunktion,
+            gesehen,
+        });
+    }
+    let erwartet = [(routine >> 8) as u8, routine as u8];
+    if antwort[2..4] != erwartet {
+        return Err(UdsFehler::FalscheRoutine {
+            erwartet,
+            gesehen: [antwort[2], antwort[3]],
+        });
+    }
+    Ok(&antwort[KOPF..])
+}
+
+/// Wertet `71 <Subfunktion> <Routine> [<Status> [<Daten>]]` aus.
+pub fn parse_routine(
+    antwort: &[u8],
+    subfunktion: u8,
+    routine: u16,
+) -> std::result::Result<RoutineAntwort, UdsFehler> {
+    let nutzlast = routine_kopf(antwort, subfunktion, routine)?;
+    let (status, daten) = match nutzlast.split_first() {
+        Some((status, rest)) => (Some(*status), rest.to_vec()),
+        None => (None, Vec::new()),
+    };
+    Ok(RoutineAntwort {
+        subfunktion,
+        routine,
+        status,
+        daten,
+    })
+}
+
 /// UDS-Client über einen ISO-TP-Kanal.
 ///
 /// Zustandslos wie [`IsotpChannel`]: Sitzung und Sicherheitszugriff sind
@@ -665,6 +819,51 @@ impl UdsClient {
     ) -> std::result::Result<(), UdsFehler> {
         self.iso.send(t, &tester_present_ohne_antwort_anfrage())?;
         Ok(())
+    }
+
+    /// `31 01 <Routine> [<Optionen>]` — Routine starten.
+    ///
+    /// Die Optionen bleiben roh: welches Byte eine Routine erwartet, steht in
+    /// der Diagnosebeschreibung des Steuergeräts, nicht in der Norm. Ein
+    /// Start ohne Optionen ist der Normalfall und deshalb erlaubt.
+    pub fn routine_start<T: Transport>(
+        &self,
+        t: &mut T,
+        routine: u16,
+        optionen: &[u8],
+        timeout_ms: u32,
+    ) -> std::result::Result<RoutineAntwort, UdsFehler> {
+        let antwort = self.runde(t, &routine_start_anfrage(routine, optionen), timeout_ms)?;
+        parse_routine(&antwort, ROUTINE_START, routine)
+    }
+
+    /// `31 02 <Routine>` — Routine anhalten.
+    ///
+    /// Ein angehaltener Lauf hat kein Ergebnis: was bis dahin gemessen wurde,
+    /// ist unvollständig. Wer den Zwischenstand braucht, holt ihn vorher mit
+    /// [`UdsClient::routine_ergebnis`].
+    pub fn routine_stop<T: Transport>(
+        &self,
+        t: &mut T,
+        routine: u16,
+        timeout_ms: u32,
+    ) -> std::result::Result<RoutineAntwort, UdsFehler> {
+        let antwort = self.runde(t, &routine_stop_anfrage(routine), timeout_ms)?;
+        parse_routine(&antwort, ROUTINE_STOP, routine)
+    }
+
+    /// `31 03 <Routine>` — Ergebnis einer gestarteten Routine abholen.
+    ///
+    /// Der Statusrecord ist hier die eigentliche Antwort; fehlt er, meldet
+    /// [`RoutineAntwort::erfolgreich`] `false` statt eines geratenen Erfolgs.
+    pub fn routine_ergebnis<T: Transport>(
+        &self,
+        t: &mut T,
+        routine: u16,
+        timeout_ms: u32,
+    ) -> std::result::Result<RoutineAntwort, UdsFehler> {
+        let antwort = self.runde(t, &routine_ergebnis_anfrage(routine), timeout_ms)?;
+        parse_routine(&antwort, ROUTINE_ERGEBNIS, routine)
     }
 
     pub fn iso(&self) -> &IsotpChannel {
@@ -1312,5 +1511,190 @@ mod tests {
             .unwrap();
 
         assert_eq!(&t.sent()[0].data[..3], &[0x02, 0x3E, 0x80]);
+    }
+
+    // --- RoutineControl ---------------------------------------------------
+
+    /// Flow-Control-Rahmen, den der Tester auf eine Multi-Frame-Anfrage erwartet.
+    fn flusskontrolle() -> CanFrame {
+        CanFrame::new(RSP_ID, &[0x30, 0x00, 0x00])
+    }
+
+    #[test]
+    fn routine_start_anfrage_traegt_kennung_und_optionen() {
+        assert_eq!(
+            routine_start_anfrage(0xC004, &[0x05]),
+            vec![0x31, 0x01, 0xC0, 0x04, 0x05]
+        );
+        // Ohne Optionen bleibt es beim reinen Kopf — das ist der Normalfall.
+        assert_eq!(
+            routine_start_anfrage(0xC009, &[]),
+            vec![0x31, 0x01, 0xC0, 0x09]
+        );
+    }
+
+    #[test]
+    fn routine_stop_und_ergebnis_anfragen_sind_eigenstaendig() {
+        assert_eq!(routine_stop_anfrage(0x0203), vec![0x31, 0x02, 0x02, 0x03]);
+        assert_eq!(
+            routine_ergebnis_anfrage(0x0203),
+            vec![0x31, 0x03, 0x02, 0x03]
+        );
+    }
+
+    #[test]
+    fn routine_antwort_liest_status_und_daten() {
+        let a = parse_routine(
+            &[0x71, 0x03, 0x02, 0x03, 0x00, 0x2A],
+            ROUTINE_ERGEBNIS,
+            0x0203,
+        )
+        .unwrap();
+        assert_eq!(a.subfunktion, 0x03);
+        assert_eq!(a.routine, 0x0203);
+        assert_eq!(a.status, Some(0x00));
+        assert_eq!(a.daten, vec![0x2A]);
+        assert!(a.erfolgreich());
+    }
+
+    #[test]
+    fn routine_ohne_statusrecord_hat_keinen_status() {
+        // `71 01 02 03`: Start bestätigt, aber nichts zum Ergebnis gesagt.
+        let a = parse_routine(&[0x71, 0x01, 0x02, 0x03], ROUTINE_START, 0x0203).unwrap();
+        assert_eq!(a.status, None);
+        assert!(a.daten.is_empty());
+        assert!(!a.erfolgreich(), "kein Status ist kein Erfolg");
+    }
+
+    #[test]
+    fn routine_ist_nur_bei_status_null_erfolgreich() {
+        let a = parse_routine(&[0x71, 0x03, 0x02, 0x03, 0x01], ROUTINE_ERGEBNIS, 0x0203).unwrap();
+        assert_eq!(a.status, Some(0x01));
+        assert!(!a.erfolgreich());
+    }
+
+    #[test]
+    fn routine_mit_falscher_kennung_wird_abgelehnt() {
+        assert_eq!(
+            parse_routine(&[0x71, 0x01, 0xC0, 0x08], ROUTINE_START, 0xC004).unwrap_err(),
+            UdsFehler::FalscheRoutine {
+                erwartet: [0xC0, 0x04],
+                gesehen: [0xC0, 0x08]
+            }
+        );
+    }
+
+    #[test]
+    fn routine_mit_falscher_subfunktion_wird_abgelehnt() {
+        assert_eq!(
+            parse_routine(&[0x71, 0x02, 0x02, 0x03], ROUTINE_START, 0x0203).unwrap_err(),
+            UdsFehler::FalscheSubfunktion {
+                erwartet: 0x01,
+                gesehen: 0x02
+            }
+        );
+    }
+
+    #[test]
+    fn routine_mit_unterdrueckungsbit_in_der_antwort_stoert_nicht() {
+        // 0x81 = 0x01 mit gesetztem Bit 7.
+        let a = parse_routine(&[0x71, 0x81, 0x02, 0x03], ROUTINE_START, 0x0203).unwrap();
+        assert_eq!(a.subfunktion, ROUTINE_START);
+    }
+
+    #[test]
+    fn routine_nrc_wird_benannt() {
+        let err = parse_routine(&[0x7F, 0x31, 0x24], ROUTINE_START, 0x0203).unwrap_err();
+        assert_eq!(
+            err,
+            UdsFehler::Nrc {
+                dienst: 0x31,
+                code: 0x24
+            }
+        );
+        assert!(err.to_string().contains("requestSequenceError"), "{err}");
+    }
+
+    #[test]
+    fn routine_zu_kurz_wird_abgelehnt() {
+        assert_eq!(
+            parse_routine(&[0x71, 0x01], ROUTINE_START, 0x0203).unwrap_err(),
+            UdsFehler::ZuKurz {
+                gelesen: 2,
+                mindestens: 4
+            }
+        );
+    }
+
+    #[test]
+    fn routine_mit_falschem_dienst_wird_abgelehnt() {
+        assert_eq!(
+            parse_routine(&[0x70, 0x01, 0x02, 0x03], ROUTINE_START, 0x0203).unwrap_err(),
+            UdsFehler::FalscherDienst {
+                erwartet: 0x71,
+                gesehen: 0x70
+            }
+        );
+    }
+
+    #[test]
+    fn routine_start_am_simulator() {
+        let mut t = Loopback::new(vec![antwort(&[0x71, 0x01, 0xC0, 0x04, 0x11, 0x22])]);
+        let a = UdsClient::new()
+            .routine_start(&mut t, 0xC004, &[], 100)
+            .unwrap();
+
+        assert_eq!(a.routine, 0xC004);
+        assert_eq!(a.status, Some(0x11));
+        assert_eq!(a.daten, vec![0x22]);
+        assert_eq!(&t.sent()[0].data[..5], &[0x04, 0x31, 0x01, 0xC0, 0x04]);
+    }
+
+    #[test]
+    fn routine_stop_am_simulator() {
+        let mut t = Loopback::new(vec![antwort(&[0x71, 0x02, 0x02, 0x03])]);
+        let a = UdsClient::new().routine_stop(&mut t, 0x0203, 100).unwrap();
+
+        assert_eq!(a.subfunktion, ROUTINE_STOP);
+        assert_eq!(&t.sent()[0].data[..5], &[0x04, 0x31, 0x02, 0x02, 0x03]);
+    }
+
+    #[test]
+    fn routine_ergebnis_wartet_aufschub_ab() {
+        // Ein Ergebnis liegt selten sofort vor; das Steuergerät darf mit 0x78
+        // antworten. Der Aufschubpfad ist derselbe wie bei den Lesern.
+        let mut t = Loopback::new(vec![
+            aufschub(0x31),
+            antwort(&[0x71, 0x03, 0x02, 0x03, 0x00]),
+        ]);
+        let a = UdsClient::new()
+            .routine_ergebnis(&mut t, 0x0203, 100)
+            .unwrap();
+
+        assert!(a.erfolgreich());
+        assert_eq!(
+            t.sent().len(),
+            1,
+            "nach dem Aufschub wird nicht neu gesendet"
+        );
+    }
+
+    #[test]
+    fn routine_start_mit_langen_optionen_geht_als_multi_frame() {
+        // Routinen mit Messauftrag tragen ihre Parameter in der Anfrage; die
+        // passen nicht in einen Rahmen und müssen als Folgenachrichten raus.
+        let optionen = vec![0xAA; 300];
+        let mut t = Loopback::new(vec![flusskontrolle(), antwort(&[0x71, 0x01, 0x02, 0x03])]);
+        UdsClient::new()
+            .routine_start(&mut t, 0x0203, &optionen, 100)
+            .unwrap();
+
+        let gesendet = t.sent();
+        assert_eq!(gesendet[0].data[0] & 0xF0, 0x10, "First Frame");
+        assert_eq!(
+            ((gesendet[0].data[0] as usize & 0x0F) << 8) | gesendet[0].data[1] as usize,
+            4 + optionen.len()
+        );
+        assert_eq!(&gesendet[0].data[2..6], &[0x31, 0x01, 0x02, 0x03]);
     }
 }
