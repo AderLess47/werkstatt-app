@@ -3,6 +3,9 @@ name: CI
 on:
   push:
   pull_request:
+  # Von Hand anstoßbar: ein Lauf lässt sich wiederholen, ohne dafür einen
+  # leeren Commit zu brauchen.
+  workflow_dispatch:
 
 jobs:
   c:
