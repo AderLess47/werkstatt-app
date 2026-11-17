@@ -38,6 +38,28 @@ jobs:
       - name: FFI-Schicht
         run: cargo test --locked --manifest-path core-ffi/Cargo.toml
 
+  clippy:
+    name: Clippy (-D warnings, Kern und FFI)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      # `--all-targets` schließt die Tests ein: genau dort lagen die beiden
+      # Warnungen, die ein Lauf ohne dieses Flag nie gefunden hätte
+      # (`Scenario` per `Default::default()` gebaut, `len()` ohne `is_empty()`).
+      - name: Kern
+        run: cargo clippy --locked --manifest-path core/Cargo.toml --all-targets -- -D warnings
+
+      - name: FFI-Schicht
+        run: cargo clippy --locked --manifest-path core-ffi/Cargo.toml --all-targets -- -D warnings
+
+  # Kein `cargo fmt --check — noch nicht: das Crate ist von Hand formatiert und
+  # ein Lauf über alle Dateien bewegt rund 235 KB. Warum das ein eigener Schritt
+  # sein muss und nicht nebenbei passiert, steht in docs/ci.md.
+
   bindings:
     name: Kotlin- und Swift-Bindings
     needs: rust

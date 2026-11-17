@@ -6,6 +6,7 @@
 | --- | --- |
 | `c` | `make -C j2534 test` (165 Prüfungen) und dass `core/tests/corpus/isotp.txt` unverändert aus dem Erzeuger hervorgeht |
 | `rust` | `cargo test` für `core` (163 Tests, dazu 4 Korpus-Tests aus `core/tests/corpus/isotp.txt`) und für `core-ffi` (15 Tests) |
+| `clippy` | `cargo clippy --all-targets -- -D warnings` für `core` und `core-ffi`; `--all-targets` schließt die Tests ein, und genau dort lagen die zwei Warnungen, die den Job sonst nie erreicht hätten |
 | `bindings` | erzeugt Kotlin- und Swift-Bindings neu, lädt sie als Artefakt hoch (`needs: rust`) |
 | `jvm-tests` | die 174 Tests der App ohne Gerät über `sh scripts/jvm-tests.sh`, gegen den Host-Build der Bibliothek |
 | `android` | NDK-Bibliothek für `arm64-v8a` und `x86_64`; `./android/gradlew -p android :bindings:test`; dann `:app:testDebugUnitTest :app:assembleDebug` und eine Prüfung, dass beide ABIs in der APK liegen |
@@ -23,6 +24,25 @@ abdriften, zählt `sh scripts/zahlen-pruefen.sh` alle fünf lokal nach —
 sobald eine Zahl von der im Workflow genannten abweicht (Exit 1). Es zählt, was
 die Suiten melden, nicht was im Quelltext deklariert ist. Laufen kann es nur
 lokal: die Jobs selbst werden ja nicht gestartet (siehe unten).
+
+## Formatierung — bewusst noch nicht im Workflow
+
+`cargo fmt --check` fehlt hier mit Absicht. Das Crate ist über die Zeit von Hand
+formatiert worden; ein Lauf mit rustfmt ändert am 17.11.2026 **zwölf Dateien mit
+rund 235 KB** Quelltext (`audit`, `content`, `function`, `isotp`, `sfd`, `uds`,
+`lib`, `content/tests`, `function/tests` in `core/src/`, dazu `core-ffi/src/lib`,
+`core-ffi/src/tests` und `core/tests/corpus.rs`).
+
+Die Änderung selbst ist rein mechanisch und lokal bereits gefahren — der Kern
+danach weiter grün (163 Tests, Clippy sauber). Der Haken ist der Weg ins
+Repository: es gibt von dieser Maschine keinen `git push`, jede Datei geht
+einzeln durch die API, und `sfd.rs` allein hat 38 KB. Ein einzelnes verrutschtes
+Zeichen wäre ein Programmierfehler in getestetem Code — deshalb steht der Job
+erst im Workflow, wenn die Dateien übertragen und jede gegen `git hash-object`
+geprüft ist. Ein Job, der beim ersten Lauf rot ist, prüft nichts.
+
+Stand der Formatierung: `core/src/j1979.rs`, `core/fuzz/` und die beiden oben
+genannten Clippy-Dateien sind fmt-sauber; der Rest noch nicht.
 
 ## Fuzzing — lokal belegt, nicht in der CI
 
