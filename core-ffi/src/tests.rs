@@ -125,6 +125,11 @@ impl SchluesselAnbieter for LeererAnbieter {
     }
 }
 
+/// Was in keinem Nachweis stehen darf: der Seed der Testantwort `A1 B2` und
+/// der daraus abgeleitete Schlüssel `5E 4D` — in beiden üblichen
+/// Schreibweisen, damit auch ein anders formatierter Export auffällt.
+const GEHEIMNISSE: [&str; 4] = ["A1B2", "A1 B2", "5E4D", "5E 4D"];
+
 #[test]
 fn security_access_ueber_die_grenze() {
     let lb = LoopbackTransport::new();
@@ -132,8 +137,9 @@ fn security_access_ueber_die_grenze() {
     push_sf(&lb, &[0x67, 0x01, 0xA1, 0xB2]);
     push_sf(&lb, &[0x67, 0x02]);
     let anbieter = XorAnbieter;
+    let kette = Audit::new();
 
-    let ergebnis = Sicherheit::new(Audit::new(), String::from("unbekannt"))
+    let ergebnis = Sicherheit::new(kette.clone(), String::from("unbekannt"))
         .security_access(Box::new(lb.clone()), 0x01, Box::new(anbieter), 100)
         .unwrap();
 
@@ -143,6 +149,11 @@ fn security_access_ueber_die_grenze() {
     assert_eq!(&sent[0].data[..3], &[0x02, 0x27, 0x01]);
     // `A1 B2` invertiert, hinter `27 02`.
     assert_eq!(&sent[1].data[..5], &[0x04, 0x27, 0x02, 0x5E, 0x4D]);
+    // Auch der Export der Kette trägt weder Seed noch Schlüssel.
+    let json = kette.als_json();
+    for geheim in GEHEIMNISSE {
+        assert!(!json.contains(geheim), "{geheim} steht im Nachweis: {json}");
+    }
 }
 
 #[test]
@@ -150,13 +161,20 @@ fn security_access_bei_offener_ebene_sendet_keinen_schluessel() {
     let lb = LoopbackTransport::new();
     push_sf(&lb, &[0x67, 0x01, 0x00, 0x00]);
 
-    let ergebnis = Sicherheit::new(Audit::new(), String::from("unbekannt"))
+    let kette = Audit::new();
+
+    let ergebnis = Sicherheit::new(kette.clone(), String::from("unbekannt"))
         .security_access(Box::new(lb.clone()), 0x01, Box::new(LeererAnbieter), 100)
         .unwrap();
 
     assert_eq!(ergebnis, SicherheitFfi::BereitsOffen);
     // Nur die Seed-Anfrage ging hinaus — der Anbieter wurde nicht gebraucht.
     assert_eq!(lb.sent().len(), 1);
+    // Auch der Export der Kette trägt hier kein Geheimnis.
+    let json = kette.als_json();
+    for geheim in GEHEIMNISSE {
+        assert!(!json.contains(geheim), "{geheim} steht im Nachweis: {json}");
+    }
 }
 
 #[test]
@@ -164,7 +182,8 @@ fn security_access_ohne_schluessel_meldet_protokollfehler() {
     let lb = LoopbackTransport::new();
     push_sf(&lb, &[0x67, 0x01, 0xA1, 0xB2]);
 
-    let err = Sicherheit::new(Audit::new(), String::from("unbekannt"))
+    let kette = Audit::new();
+    let err = Sicherheit::new(kette.clone(), String::from("unbekannt"))
         .security_access(Box::new(lb.clone()), 0x01, Box::new(LeererAnbieter), 100)
         .unwrap_err();
 
@@ -173,6 +192,11 @@ fn security_access_ohne_schluessel_meldet_protokollfehler() {
         other => panic!("erwartet: Protocol, war: {other}"),
     }
     assert_eq!(lb.sent().len(), 1, "kein Schlüsselrahmen");
+    // Auch der Export der Kette trägt weder Seed noch Schlüssel.
+    let json = kette.als_json();
+    for geheim in GEHEIMNISSE {
+        assert!(!json.contains(geheim), "{geheim} steht im Nachweis: {json}");
+    }
 }
 
 #[test]
@@ -182,7 +206,8 @@ fn security_access_nrc_kommt_als_eigener_fehlerfall() {
     push_sf(&lb, &[0x7F, 0x27, 0x35]);
     let anbieter = XorAnbieter;
 
-    let err = Sicherheit::new(Audit::new(), String::from("unbekannt"))
+    let kette = Audit::new();
+    let err = Sicherheit::new(kette.clone(), String::from("unbekannt"))
         .security_access(Box::new(lb), 0x01, Box::new(anbieter), 100)
         .unwrap_err();
 
@@ -194,6 +219,11 @@ fn security_access_nrc_kommt_als_eigener_fehlerfall() {
         }
     );
     assert!(err.to_string().contains("invalidKey"), "{err}");
+    // Auch der Fehlersatz im Export trägt weder Seed noch Schlüssel.
+    let json = kette.als_json();
+    for geheim in GEHEIMNISSE {
+        assert!(!json.contains(geheim), "{geheim} steht im Nachweis: {json}");
+    }
 }
 
 #[test]
