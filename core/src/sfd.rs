@@ -248,9 +248,13 @@ pub fn parse_sitzung(antwort: &[u8], sitzung: u8) -> std::result::Result<(), Sfd
         Err(UdsFehler::FalscheSubfunktion { erwartet, gesehen }) => {
             Err(SfdError::FalscherModus { erwartet, gesehen })
         }
-        Err(UdsFehler::ZuKurz { gelesen, mindestens }) => {
-            Err(SfdError::ZuKurz { gelesen, mindestens })
-        }
+        Err(UdsFehler::ZuKurz {
+            gelesen,
+            mindestens,
+        }) => Err(SfdError::ZuKurz {
+            gelesen,
+            mindestens,
+        }),
         // Eine Sitzungsantwort trägt keine Kennung und keine DTC-Liste, und
         // gesendet wird hier nichts — diese Fälle kann der Parser nicht
         // liefern. Als Dienstfehler gemeldet, damit nichts als Erfolg durchgeht.
@@ -452,9 +456,13 @@ impl From<UdsFehler> for SfdFehler {
             UdsFehler::FalscheSubfunktion { erwartet, gesehen } => {
                 SfdFehler::Sfd(SfdError::FalscherModus { erwartet, gesehen })
             }
-            UdsFehler::ZuKurz { gelesen, mindestens } => {
-                SfdFehler::Sfd(SfdError::ZuKurz { gelesen, mindestens })
-            }
+            UdsFehler::ZuKurz {
+                gelesen,
+                mindestens,
+            } => SfdFehler::Sfd(SfdError::ZuKurz {
+                gelesen,
+                mindestens,
+            }),
             // `runde` wertet nur Kopf und Aufschub aus; eine Kennung oder eine
             // DTC-Liste kann es nicht liefern. Landet so ein Fehler hier, ist
             // die Verdrahtung falsch — gemeldet wird er als Protokollfehler,
@@ -644,7 +652,9 @@ pub fn pruefe_laenge(antwort: &[u8], hoechstens: usize) -> std::result::Result<(
 /// Wandelt das Ergebnis eines ISO-TP-Empfangs in einen SFD-Fehler um.
 ///
 /// Hilft Aufrufern, die selbst senden und nur auswerten wollen.
-pub fn aus_transport(ergebnis: TransportResult<Vec<u8>>) -> std::result::Result<Vec<u8>, SfdFehler> {
+pub fn aus_transport(
+    ergebnis: TransportResult<Vec<u8>>,
+) -> std::result::Result<Vec<u8>, SfdFehler> {
     Ok(ergebnis?)
 }
 
@@ -1005,7 +1015,9 @@ mod tests {
             antwort(&[0x7F, 0x31, 0x78]),
             antwort(&[0x71, 0x01, 0xC0, 0x08]),
         ]);
-        SfdClient::new().entsperren(&mut t, &[0x01, 0x02], 100).unwrap();
+        SfdClient::new()
+            .entsperren(&mut t, &[0x01, 0x02], 100)
+            .unwrap();
         // Genau eine Anfrage: nach dem Aufschub wird nicht erneut gesendet.
         assert_eq!(t.sent().len(), 1);
     }
@@ -1069,7 +1081,10 @@ mod tests {
 
         // Der Nachweis belegt den Vorgang, ohne den Schlüssel zu verraten.
         let json = kette.als_json();
-        assert!(!json.contains("DEAD"), "Token darf nicht im Nachweis stehen");
+        assert!(
+            !json.contains("DEAD"),
+            "Token darf nicht im Nachweis stehen"
+        );
         assert!(json.contains("31 01 C0 08"), "{json}");
     }
 
@@ -1079,14 +1094,7 @@ mod tests {
         let mut kette = AuditKette::neu();
 
         let fehler = SfdClient::new()
-            .entsperren_protokolliert(
-                &mut t,
-                &[0x01, 0x02],
-                100,
-                "VIN",
-                &mut kette,
-                5,
-            )
+            .entsperren_protokolliert(&mut t, &[0x01, 0x02], 100, "VIN", &mut kette, 5)
             .unwrap_err();
         assert!(fehler.to_string().contains("invalidKey"), "{fehler}");
 
