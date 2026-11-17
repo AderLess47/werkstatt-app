@@ -390,8 +390,19 @@ Zwei Eigenheiten von BLE stecken im Transport:
   Fahrzeug „unbekannt“, solange die App keine VIN kennt — eine erfundene
   Nummer wäre schlimmer als eine ehrliche Lücke.
 
+  Dasselbe gilt für den Sicherheitszugriff (`27`): das Objekt `Sicherheit`
+  bekommt die Kette beim Bauen mit (`Sicherheit(audit, vin)`), der Eintrag
+  nennt die **Ebene** und den **Ausgang** — „SecurityAccess Ebene 0x01
+  entsperrt (27 01)“, „… war bereits offen (27 01)“, bei Ablehnung den Dienst
+  mit Klartext-NRC („Fehler: abgelehnt (Dienst 0x27, NRC 0x35: invalidKey)“).
+  Seed und Schlüssel stehen nicht drin: der Seed ist die Challenge des
+  Steuergeräts, der Schlüssel das Geheimnis aus dem Portal — beides in einem
+  Nachweis, der weitergereicht wird, wäre derselbe Fehler wie beim Token. Ein
+  Test prüft es über `als_json()`.
+
   Die Kette ist dabei keine Option, die man vergessen kann: sie geht beim
-  Bauen des `Sfd`-Objekts mit (`Sfd.withIds(audit, vin, …)`), es gibt also
+  Bauen des `Sfd`-Objekts mit (`Sfd.withIds(audit, vin, …)`), und beim
+  `Sicherheit`-Objekt ebenso (`Sicherheit(audit, vin)`); es gibt also
   keinen Aufruf, der entsperrt und nichts protokolliert. Der Zeitstempel
   entsteht an der Sprachgrenze, weil der Kern die Zeit übergeben bekommt und
   dadurch ohne Uhr prüfbar bleibt.
@@ -414,15 +425,15 @@ gefunden“ bzw. „kein Dongle gefunden“.
 ## Geprüft / nicht geprüft
 
 Geprüft: `:bindings:test` (drei Linktests gegen die echte Rust-Bibliothek).
-`:app` enthält **185 `@Test`** in einundzwanzig Dateien — `VciCheck` 3,
+`:app` enthält **186 `@Test`** in einundzwanzig Dateien — `VciCheck` 3,
 `DonglePruefung` 3, `Wire` 9, `BleCanTransport` 7, `BleSerielleStrecke` 9,
 `UsbSerielleStrecke` 8, `StnKanal` 18, `StnKennung` 10, `Zeilenpuffer` 11,
 `VciBericht` 13, `BerichtDatei` 6, `AppBericht` 10, `DienstAntwort` 8, `Frist` 5,
 `SfdBedienung` 32, `SicherheitBedienung` 6, `SfdFfi` 7, `SicherheitFfi` 5, `FunktionFfi` 3, `ServiceFunktionen` 7,
 `AuditAnzeige` 4.
 
-Alle **185 sind in dieser Umgebung gelaufen** — `sh scripts/jvm-tests.sh` endet
-mit `OK (185 tests)`. Die letzten fünf Klassen sind Linktests gegen die echte
+Alle **186 sind in dieser Umgebung gelaufen** — `sh scripts/jvm-tests.sh` endet
+mit `OK (186 tests)`. Die letzten fünf Klassen sind Linktests gegen die echte
 Rust-Bibliothek: sie prüfen die erzeugten Bindings, nicht nur Kotlin-Code. Übersetzt wird mit `kotlinc 2.0.21` gegen JDK 17,
 gestartet über `org.junit.runner.JUnitCore`.
 
@@ -441,7 +452,7 @@ Dafür brauchte es zwei Handgriffe, die das Skript festhält:
 
 Ein Gradle-Lauf ist inzwischen **gelaufen** — JDK 17, Gradle 8.9, SDK 34, NDK
 26.1.10909125: `./android/gradlew -p android :app:testDebugUnitTest :app:assembleDebug`
-endet mit `BUILD SUCCESSFUL`, und `:app:testDebugUnitTest` sieht dieselben 185
+endet mit `BUILD SUCCESSFUL`, und `:app:testDebugUnitTest` sieht dieselben 186
 Tests grün wie `scripts/jvm-tests.sh`. Geprüft ist damit auch die
 Gradle-Verdrahtung.
 
