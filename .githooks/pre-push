@@ -81,11 +81,11 @@ rustfmt_bereit() {
 # in `$fuzz_grund`, damit Trockenlauf und Ernstfall denselben Text zeigen.
 fuzz_bereit() {
     if ! command -v cargo-fuzz > /dev/null; then
-        fuzz_grund="cargo-fuzz fehlt (cargo install cargo-fuzz --locked)"
+        fuzz_grund="cargo-fuzz fehlt: cargo install cargo-fuzz --locked"
         return 1
     fi
     if ! rustc +nightly --version > /dev/null 2>&1; then
-        fuzz_grund="nightly fehlt (rustup toolchain install nightly)"
+        fuzz_grund="nightly fehlt: rustup toolchain install nightly"
         return 1
     fi
     return 0
