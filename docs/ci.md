@@ -7,6 +7,7 @@
 | `c` | `make -C j2534 test` (165 Prüfungen) und dass `core/tests/corpus/isotp.txt` unverändert aus dem Erzeuger hervorgeht |
 | `rust` | `cargo test` für `core` (163 Tests, dazu 4 Korpus-Tests aus `core/tests/corpus/isotp.txt`) und für `core-ffi` (15 Tests) |
 | `clippy` | `cargo clippy --all-targets -- -D warnings` für `core` und `core-ffi`; `--all-targets` schließt die Tests ein, und genau dort lagen die zwei Warnungen, die den Job sonst nie erreicht hätten |
+| `fmt` | `cargo fmt --check` für `core`, `core-ffi` und `core/fuzz` — eigener Job, weil ein Formatfehler nichts über das Verhalten sagt |
 | `bindings` | erzeugt Kotlin- und Swift-Bindings neu, lädt sie als Artefakt hoch (`needs: rust`) |
 | `jvm-tests` | die 174 Tests der App ohne Gerät über `sh scripts/jvm-tests.sh`, gegen den Host-Build der Bibliothek |
 | `android` | NDK-Bibliothek für `arm64-v8a` und `x86_64`; `./android/gradlew -p android :bindings:test`; dann `:app:testDebugUnitTest :app:assembleDebug` und eine Prüfung, dass beide ABIs in der APK liegen |
@@ -25,11 +26,16 @@ sobald eine Zahl von der im Workflow genannten abweicht (Exit 1). Es zählt, was
 die Suiten melden, nicht was im Quelltext deklariert ist. Laufen kann es nur
 lokal: die Jobs selbst werden ja nicht gestartet (siehe unten).
 
-## Formatierung — bewusst noch nicht im Workflow
+## Formatierung
 
-`cargo fmt --check` fehlt hier mit Absicht. Das Crate ist über die Zeit von Hand
-formatiert worden; ein Lauf mit rustfmt ändert am 17.11.2026 **zwölf Dateien mit
-rund 235 KB** Quelltext.
+`cargo fmt --check` läuft als eigener Job `fmt` für die drei Crates (`core`,
+`core-ffi`, `core/fuzz`). Eigener Job und nicht ein Schritt in `rust`: ein
+Formatfehler sagt nichts über das Verhalten, und der Lauf soll zeigen, ob nur
+die Form abweicht — ohne die Tests dafür erneut zu fahren.
+
+Der Weg dahin war der schwierige Teil. Das Crate ist über die Zeit von Hand
+formatiert worden; ein Lauf mit rustfmt änderte am 17.11.2026 **zwölf Dateien
+mit rund 235 KB** Quelltext.
 
 Ein eigener Versuch, die Handformatierung per `rustfmt.toml` als Soll zu erklären
 (`max_width = 110`, `use_small_heuristics = "Max"`, `reorder_imports = false`),
@@ -40,28 +46,35 @@ Match-Arm immer zu `=> Ausdruck,` auf, und dafür gibt es keine stabile Option
 liegen damit schon über dem Vorgabewert 100. Eine Konfiguration, die den alten
 Stand durchwinkt, gibt es also nicht — es bleibt beim Reformat.
 
-Die Änderung selbst ist rein mechanisch und lokal bereits gefahren — der Kern
-danach weiter grün (163 Tests, Clippy sauber). Der Haken ist der Weg ins
-Repository: es gibt von dieser Maschine keinen `git push`, jede Datei geht
-einzeln durch die API, und `sfd.rs` allein hat 38 KB. Ein einzelnes verrutschtes
-Zeichen wäre ein Programmierfehler in getestetem Code — deshalb steht der Job
-erst im Workflow, wenn alle Dateien übertragen und jede gegen `git hash-object`
-geprüft ist. Ein Job, der beim ersten Lauf rot ist, prüft nichts.
+Die Änderung selbst ist rein mechanisch gefahren — der Kern danach weiter grün
+(163 Tests, Clippy sauber). Der Haken war der Weg ins Repository: es gibt von
+dieser Maschine keinen `git push`, jede Datei geht einzeln durch die API, und
+`sfd.rs` allein hat 38 KB. Ein einzelnes verrutschtes Zeichen wäre ein
+Programmierfehler in getestetem Code — deshalb stand der Job erst im Workflow,
+als alle Dateien übertragen und jede gegen `git hash-object` geprüft war. Ein
+Job, der beim ersten Lauf rot ist, prüft nichts.
 
-**Stand am 17.11.2026.** Sauber und im Repository: `core/tests/corpus.rs`,
-`core/src/content/tests.rs`, `core-ffi/src/lib.rs`, `core-ffi/src/tests.rs`,
-`core/src/j1979.rs` und `core/fuzz/`.
+Bei `core/src/uds.rs` hat diese Prüfung gegriffen: der Blob im Repository
+(`20309ff3`) wich vom lokal formatierten (`856f4d5a`) ab, weil die
+typografischen Schlusszeichen („…“) als gerade Anführungszeichen übertragen
+worden waren. Commit `7a1c601` korrigiert das; erst danach stimmte der Blob.
 
-Offen sind acht Dateien mit zusammen rund 184 KB. Sie liegen **lokal** formatiert
-vor, im Repository steht noch die alte Fassung: `core/src/audit.rs` (20 KB),
-`core/src/content.rs` (28), `core/src/function.rs` (32),
-`core/src/function/tests.rs` (16), `core/src/isotp.rs` (17),
-`core/src/lib.rs` (1,5), `core/src/sfd.rs` (38), `core/src/uds.rs` (31).
+**Stand am 17.11.2026.** Alle acht vorher offenen Dateien sind formatiert und im
+Repository, jede per Blob-Hash bestätigt:
 
-Wer sie überträgt, prüft jede Datei gegen `git hash-object`, bevor er den Job
-aufnimmt; die Reihenfolge ist beliebig, weil keine Datei von der anderen
-abhängt. Ein Reformat auf einer Maschine mit `git push` erledigt dasselbe in
-einer Minute — das ist der kürzere Weg, wenn es ihn gibt.
+| Datei | Größe |
+| --- | --- |
+| `core/src/audit.rs` | 20 KB |
+| `core/src/content.rs` | 28 KB |
+| `core/src/function.rs` | 32 KB |
+| `core/src/function/tests.rs` | 16 KB |
+| `core/src/isotp.rs` | 17 KB |
+| `core/src/lib.rs` | 1,5 KB |
+| `core/src/sfd.rs` | 38 KB |
+| `core/src/uds.rs` | 31 KB |
+
+`cargo fmt --check` ist danach für alle drei Crates lokal grün (Exit 0), und
+`sh scripts/kern-tests.sh` läuft durch (163 Rust-Tests).
 
 ## Fuzzing — lokal belegt, nicht in der CI
 
@@ -128,7 +141,7 @@ Ein Job **ohne Schritte und ohne Runner** ist nicht an einer Prüfung gescheiter
 > section in your settings.
 
 Das Bild ist in sich stimmig: die Rechte im Repository sind offen, die
-Workflow-Datei ist gültig (lokal mit einem YAML-Parser geladen, sechs Jobs,
+Workflow-Datei ist gültig (lokal mit einem YAML-Parser geladen, sieben Jobs,
 `android` mit 13 Schritten), und es wurden in diesem Monat Minuten verbraucht.
 Es fehlt also nicht an der Konfiguration, sondern an der Abrechnung.
 
