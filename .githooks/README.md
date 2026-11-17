@@ -22,11 +22,18 @@ wenn einer rot ist:
 | `docs/`, `*.md`, `artifacts/`, `model/` | nichts — „nur Doku geändert“ |
 | `core/`, `core-ffi/`, `j2534/`, `scripts/kern-tests.sh` | `scripts/kern-tests.sh` |
 | `android/`, `scripts/jvm-tests.sh` | `scripts/jvm-tests.sh` |
-| alles andere: Workflows, `.githooks/`, andere Skripte | beide |
-| neuer Branch oder unbekannte Vergleichsbasis | beide |
+| `core/src/isotp.rs`, `core/src/uds.rs`, `core/fuzz/` | `scripts/kern-tests.sh` und `scripts/fuzz.sh` (Rauchlauf) |
+| alles andere: Workflows, `.githooks/`, andere Skripte | alle |
+| neuer Branch oder unbekannte Vergleichsbasis | alle |
 
 `scripts/kern-tests.sh` prüft C-Kern (165 Prüfungen), Korpus-Aktualität,
 Rust-Kern und FFI-Schicht; `scripts/jvm-tests.sh` die 174 JVM-Tests der App.
+
+Der Fuzz-Rauchlauf ist der kurze Bruder des Zehn-Minuten-Laufs aus der Definition
+of Done: 20 Sekunden je Ziel, und nur, wenn Parser-Code angefasst wurde. Er
+braucht `nightly` und `cargo-fuzz`, die nicht zur normalen Werkzeugkette gehören;
+fehlen sie, sagt der Hook das und lässt den Schritt aus — sichtbar, nicht still.
+Die Länge stellt `VCI_FUZZ_SEKUNDEN` ein.
 
 Die Einordnung ist bewusst grob: ein Pfad, den die Tabelle nicht kennt, lässt
 beide Läufe starten. Im Zweifel wird geprüft, nicht geraten. Beide Läufe werden
@@ -61,7 +68,7 @@ Nach einem Sandbox-Restore (JDK und `target/` weg) stellt
 `sh scripts/vorbereiten.sh` beides wieder her: Temurin 17 von Adoptium, danach
 die Host-Bibliothek per `cargo build --release`. Dasselbe Skript holt auch
 Android SDK, NDK und Gradle 8.9 und baut die Bibliotheken für `jniLibs` — also
-alles, was den APK-Build braucht; `--probe` zeigt nur, was fehlen würde,
+alle, was den APK-Build braucht; `--probe` zeigt nur, was fehlen würde,
 `OHNE_ANDROID=1` lässt den Android-Teil aus.
 
 Fehlt eines davon, bricht der Hook mit einer Anleitung ab, statt den Teil still

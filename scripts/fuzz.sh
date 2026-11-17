@@ -20,7 +20,9 @@ set -eu
 
 cd "$(dirname "$0")/.."
 
-DAUER=${1:-300}
+# Dauer je Ziel. Der Pre-Push-Haken setzt `VCI_FUZZ_SEKUNDEN` kurz (Vorgabe
+# dort 20 s); ohne Aufrufparameter und ohne Umgebungsvariable gilt der volle Lauf.
+DAUER=${1:-${VCI_FUZZ_SEKUNDEN:-300}}
 
 command -v cargo-fuzz > /dev/null ||
     { echo "FEHLER: cargo-fuzz fehlt — cargo install cargo-fuzz --locked" >&2; exit 1; }
