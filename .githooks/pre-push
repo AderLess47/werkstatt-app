@@ -251,7 +251,7 @@ gesamt_start=$(date +%s)
 # Trockenlauf davon abhängt).
 format_pruefen() {
     if ! rustfmt_bereit; then
-        echo "pre-push: Formatprüfung übersprungen — rustfmt fehlt (rustup component add rustfmt)." >&2
+        echo "pre-push: Formatprüfung übersprungen — rustfmt fehlt: rustup component add rustfmt." >&2
         return 0
     fi
 
