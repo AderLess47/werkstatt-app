@@ -118,7 +118,6 @@ if [ "$modus" = "push" ]; then
                 echo '*' >> "$dateien"
                 continue
                 ;;
-
         esac
         git diff --name-only "$rsha" "$lsha" >> "$dateien" 2>/dev/null ||
             echo '*' >> "$dateien"
