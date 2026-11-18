@@ -104,6 +104,15 @@ Genau eine Stelle: `usb_backend` in `src/usb_backend.h`. Ein neuer Transport
 `tp_set_backend()` gesetzt. API-Schicht, ISO-TP, Checker und alle 165 Tests bleiben
 unverändert — die Tests laufen dann gegen das echte Gerät statt gegen `usb_sim.c`.
 
+## Abhängigkeiten
+
+Der Port bindet nur ISO-C- und Win32-Kopfddateien ein — keine libusb, kein
+libudev, kein Vendoring. Die Liste steht in
+[`abhaengigkeiten.txt`](abhaengigkeiten.txt); `scripts/abhaengigkeiten-pruefen.sh`
+hält sie gegen den Quelltext und gegen den Include-Graph des Compilers
+(`cc -M`). Ein neues `#include <…>` bricht den Lauf, bis Herkunft und Lizenz
+dort stehen.
+
 ## Was dieser Port nicht ist
 
 Er ist **kein zertifiziertes** J2534-Gerät. Es gibt keinen öffentlichen
