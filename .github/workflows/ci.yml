@@ -151,12 +151,12 @@ jobs:
           packages: ""
 
       # `com.android.application` braucht die Plattform schon beim
-      # Konfigurieren (`compileSdk 34`). NDK und build-tools bleiben weg: dieser
-      # Job baut nichts, er fragt nur den Graphen ab.
+      # Konfigurieren (`compileSdk 37`). Das Image bringt sie nicht mit, und die
+      # Plattform heißt seit API 36 mit Unterfassung `android-37.0`.
       - name: Plattform installieren
         run: |
           yes | sdkmanager --licenses > /dev/null
-          yes | sdkmanager "platforms;android-34" > /dev/null
+          yes | sdkmanager "platforms;android-37.0" > /dev/null
 
       - name: Abhängigkeiten prüfen
         run: sh scripts/abhaengigkeiten-pruefen.sh
@@ -234,12 +234,17 @@ jobs:
           # Image mit; gebraucht wird sdkmanager für Lizenzen und NDK.
           packages: ""
 
-      - name: Lizenzen annehmen und NDK installieren
+      - name: Lizenzen annehmen, NDK und SDK-Pakete installieren
         # `yes |` beantwortet die Lizenzfrage; ohne das kann der Schritt auf
         # einem frischen Runner hängen statt zu scheitern.
+        #
+        # Plattform und Build-Tools kommen mit: AGP 9.3.1 verlangt
+        # `compileSdk 37` (Verzeichnis `android-37.0`) und Build-Tools 36.0.0.
+        # Was das Image mitbringt, ist nicht garantiert — und ein fehlendes
+        # Paket sähe im Log nach einem Fehler des Projekts aus.
         run: |
           yes | sdkmanager --licenses > /dev/null
-          yes | sdkmanager "ndk;26.1.10909125" > /dev/null
+          yes | sdkmanager "ndk;26.1.10909125" "platforms;android-37.0" "build-tools;36.0.0" > /dev/null
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -285,10 +290,10 @@ jobs:
       # sie den Kern zur Laufzeit. Der Build beweist Paketierung, Manifest und
       # Compose-Übersetzung — nicht, dass die App auf einem Gerät startet.
       #
-      # Die feste Dongle-Bibliothek (3.10.0, Begründung in
+      # Die feste Dongle-Bibliothek (3.12.0, Begründung in
       # android/app/build.gradle.kts) fällt genau hier auf, wenn jemand sie
-      # hebt, ohne AGP und Kotlin mitzuheben: `checkDebugAarMetadata` bricht
-      # dann mit „requires compile against version 35 or later“ ab.
+      # hebt, ohne AGP und `compileSdk` mitzuheben: `checkDebugAarMetadata`
+      # bricht dann mit „requires compile against version … or later“ ab.
       - name: App-APK bauen
         run: |
           mkdir -p android/app/src/main/jniLibs
