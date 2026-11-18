@@ -10,7 +10,7 @@
 # ungeprüft — in docs/ci.md stand das als offene Lücke. Ein Job, der sie nur
 # benennt, schließt sie nicht.
 #
-# Geprüft wird die **Herkunft**, nicht die Sicherheit:
+# Geprüft werden Herkunft, Lizenz und bekannte Sicherheitslücken:
 #
 #   • JVM: der *aufgelöste* Graph der beiden Android-Module (nicht die
 #     Erklärungen in den Build-Dateien — die sagen nichts über transitive
@@ -25,19 +25,22 @@
 #     des Projekts und außerhalb der Systemverzeichnisse kommt — damit fällt
 #     auch ein per `-I` hereingezogener Fremdpfad auf.
 #
-# Was der Lauf **nicht** prüft: Sicherheitslücken (CVEs). Für die JVM-Seite
-# bräuchte es eine eigene Advisory-Datenbank (NVD/OSV) samt Zugang und
-# Aktualisierung, für die C-Seite gibt es ohne Fremdbibliothek nichts zu
-# scannen. Die Lücke bleibt also bestehen und steht so in docs/ci.md; dieser
-# Lauf behauptet nicht, sie geschlossen zu haben.
+# Die Frage nach Lücken beantwortet seit dem 18.11.2026 der dritte Teil: die
+# aufgelösten Fassungen und die Plugin-Fassungen aus `android/build.gradle.kts`
+# gehen an die offene OSV-Datenbank (api.osv.dev), Treffer werden gegen
+# `android/osv-ausnahmen.txt` gehalten. Ohne Konto und ohne Schlüssel — der
+# Preis: es gilt nur, was dort gemeldet ist, und der Lauf braucht Netz. Die
+# C-Seite hat nichts zu befragen; zehn Kopfddateien aus ISO C und Win32 sind
+# keine Bibliothek mit Fassung.
 #
 # Voraussetzungen: `cc` für die C-Seite; für die JVM-Seite ein JDK
 # (`JAVA_HOME` oder `java` im PATH), ein Android SDK (`ANDROID_HOME`,
 # `ANDROID_SDK_ROOT` oder `sdk.dir` in `android/local.properties`) und Netz
 # beim ersten Lauf (Gradle-Distribution, Modul-Metadaten).
 #
-# Exit 0 nur, wenn beide Seiten sauber sind. Fehlt ein Werkzeug, endet der Lauf
-# mit 1 und sagt welches — „nicht gelaufen“ ist kein Grün.
+# Exit 0 nur, wenn alle drei Teile sauber sind. Fehlt ein Werkzeug (cc, JDK,
+# SDK, python3) oder das Netz, endet der Lauf mit 1 und sagt welches —
+# „nicht gelaufen“ ist kein Grün.
 
 set -u
 
@@ -198,6 +201,11 @@ GRADLE
     awk '$1 == "ABH:" { print $4 }' "$tmp/abh.txt" |
         sed 's/:[^:]*$//' | sort -u > "$tmp/jvm-gefunden.txt"
 
+    # Dieselben Zeilen mit Fassung, für die Advisory-Abfrage: OSV will
+    # `group:module` und `version` getrennt, nicht als dritten Doppelpunkt-Teil.
+    awk '$1 == "ABH:" { print $4 }' "$tmp/abh.txt" |
+        sed 's/:\([^:]*\)$/ \1/' | sort -u > "$tmp/fassungen.txt"
+
     sed 's/#.*//' "$liste" |
         awk 'NF >= 2 {
                  mod = $1
@@ -238,14 +246,174 @@ GRADLE
     fi
 }
 
+# --- Bekannte Sicherheitslücken: OSV ---------------------------------------
+# Der dritte Teil beantwortet die Frage, die bis zum 18.11.2026 offen blieb.
+# Gefragt wird nicht ein Scanner mit eigenem Datenbestand, sondern OSV — offen,
+# ohne Konto, mit Maven-Koordinaten und zu jedem Treffer die Fassung, in der er
+# behoben ist. Gefragt werden die Fassungen aus dem aufgelösten Graph *und* die
+# Plugins aus `android/build.gradle.kts`: das Kotlin-Gradle-Plugin ist genau der
+# Ort, an dem die erste gefundene Lücke saß.
+#
+# Ein Treffer ist rot, es sei denn er steht mit Grund in
+# `android/osv-ausnahmen.txt` — dieselbe Bauart wie `deny.toml`. Ein Lauf ohne
+# Netz ist kein grüner Lauf: OSV antwortet nicht, also endet er mit 1.
+#
+osv_pruefen() {
+    ausnahmen=android/osv-ausnahmen.txt
+
+    if [ ! -s "$tmp/fassungen.txt" ]; then
+        echo
+        echo "== Bekannte Sicherheitslücken (OSV)"
+        echo "übersprungen: kein aufgelöster Graph (siehe oben)"
+        return
+    fi
+
+    if [ ! -f "$ausnahmen" ]; then
+        rot "$ausnahmen fehlt"
+        return
+    fi
+
+    # Plugins löst Gradle über einen eigenen Klassenpfad auf; der taucht im
+    # Projektgraph nicht auf (gemessen am 18.11.2026: `buildscript.classpath`
+    # bleibt bei Plugins aus dem `plugins`-Block leer). Die Fassungen werden
+    # deshalb dort gelesen, wo sie entschieden werden, und über eine feste
+    # Zuordnung auf Maven-Koordinaten abgebildet. Ein unbekanntes Plugin bricht
+    # den Lauf, statt still aus der Abfrage zu fallen.
+    awk '/^plugins[[:space:]]*\{/,/^\}/' android/build.gradle.kts > "$tmp/plugins.txt"
+    {
+        sed -n 's/^[[:space:]]*id("\([^"]*\)")[[:space:]]*version[[:space:]]*"\([^"]*\)".*/\1 \2/p' "$tmp/plugins.txt"
+        sed -n 's/^[[:space:]]*kotlin("jvm")[[:space:]]*version[[:space:]]*"\([^"]*\)".*/org.jetbrains.kotlin.jvm \1/p' "$tmp/plugins.txt"
+    } > "$tmp/plugin-ids.txt"
+
+    while read -r pid pversion; do
+        case "$pid" in
+            com.android.application) koord=com.android.tools.build:gradle ;;
+            org.jetbrains.kotlin.android | org.jetbrains.kotlin.jvm)
+                koord=org.jetbrains.kotlin:kotlin-gradle-plugin ;;
+            org.jetbrains.kotlin.plugin.compose)
+                koord=org.jetbrains.kotlin:compose-compiler-gradle-plugin ;;
+            *)
+                rot "Plugin $pid ohne Zuordnung auf ein Maven-Modul — OSV-Abfrage unvollständig"
+                continue
+                ;;
+        esac
+        echo "$koord $pversion"
+    done < "$tmp/plugin-ids.txt" >> "$tmp/fassungen.txt"
+
+    if ! command -v python3 > /dev/null; then
+        rot "kein python3: OSV-Abfrage nicht möglich"
+        return
+    fi
+
+    echo
+    echo "== Bekannte Sicherheitslücken (OSV, Maven)"
+    if ! python3 - "$tmp/fassungen.txt" > "$tmp/osv.txt" 2> "$tmp/osv.err" <<'PY'
+import json
+import sys
+import urllib.request
+
+paare = []
+for zeile in open(sys.argv[1]):
+    felder = zeile.split()
+    if len(felder) >= 2:
+        paare.append((felder[0], felder[1]))
+paare = sorted(set(paare))
+
+
+def post(url, daten):
+    anfrage = urllib.request.Request(
+        url, data=json.dumps(daten).encode(),
+        headers={'Content-Type': 'application/json'})
+    return json.load(urllib.request.urlopen(anfrage, timeout=60))
+
+
+fragen = [{'package': {'name': n, 'ecosystem': 'Maven'}, 'version': v}
+          for n, v in paare]
+antworten = []
+for i in range(0, len(fragen), 100):
+    antworten.extend(
+        post('https://api.osv.dev/v1/querybatch', {'queries': fragen[i:i + 100]})['results'])
+if len(antworten) != len(fragen):
+    sys.exit('OSV: %d Antworten auf %d Fragen' % (len(antworten), len(fragen)))
+
+print('ABFRAGE %d' % len(paare))
+
+befunde = []
+for (name, version), antwort in zip(paare, antworten):
+    for eintrag in antwort.get('vulns') or []:
+        befunde.append((eintrag['id'], name, version))
+
+if not befunde:
+    sys.exit(0)
+
+einzelheiten = {}
+for kennung in sorted({b[0] for b in befunde}):
+    einzelheiten[kennung] = json.load(
+        urllib.request.urlopen('https://api.osv.dev/v1/vulns/' + kennung, timeout=60))
+
+for kennung, name, version in befunde:
+    daten = einzelheiten[kennung]
+    behoben = sorted({e['fixed']
+                      for a in daten.get('affected', [])
+                      if a.get('package', {}).get('name') == name
+                      for r in a.get('ranges') or []
+                      for e in r.get('events') or []
+                      if 'fixed' in e})
+    stufe = daten.get('database_specific', {}).get('severity') or '-'
+    titel = (daten.get('summary') or '').replace('|', '/').strip()
+    print('OSV %s %s:%s | %s | %s | behoben in %s'
+          % (kennung, name, version, stufe, titel, ', '.join(behoben) or 'keiner Fassung'))
+PY
+    then
+        echo "OSV-Abfrage gescheitert:"
+        tail -5 "$tmp/osv.err" | sed 's/^/  /'
+        rot "OSV nicht befragbar (Netz oder api.osv.dev)"
+        return
+    fi
+
+    anzahl=$(sed -n 's/^ABFRAGE \([0-9]*\)$/\1/p' "$tmp/osv.txt")
+    echo "$anzahl Fassungen bei api.osv.dev abgefragt"
+
+    treffer=$(awk '$1 == "OSV"' "$tmp/osv.txt")
+    if [ -z "$treffer" ]; then
+        echo "keine bekannte Lücke zu diesen Fassungen"
+    else
+        echo "$treffer" | sed 's/^OSV /  /'
+    fi
+
+    # Kommentare und Leerzeilen der Ausnahmeliste sind Erklärtext; verglichen
+    # wird nur die erste Spalte.
+    sed 's/#.*//' "$ausnahmen" | awk 'NF { print $1 }' | sort -u > "$tmp/osv-erlaubt.txt"
+
+    # Leere Datei, wenn nichts gefunden wurde: `comm` braucht beide Seiten.
+    awk '$1 == "OSV" { print $2 }' "$tmp/osv.txt" | sort -u > "$tmp/osv-ids.txt"
+    erlaubt=$(comm -12 "$tmp/osv-ids.txt" "$tmp/osv-erlaubt.txt")
+    offen=$(comm -23 "$tmp/osv-ids.txt" "$tmp/osv-erlaubt.txt")
+    if [ -n "$erlaubt" ]; then
+        echo "als Ausnahme eingetragen (Grund in $ausnahmen):"
+        echo "$erlaubt" | sed 's/^/  /'
+    fi
+    if [ -n "$offen" ]; then
+        rot "bekannte Sicherheitslücke in einem Fremdmodul: $(echo $offen)"
+    fi
+
+    nicht_mehr=$(comm -13 "$tmp/osv-ids.txt" "$tmp/osv-erlaubt.txt")
+    if [ -n "$nicht_mehr" ]; then
+        echo "Hinweis: Ausnahme ohne Treffer — aufräumen:"
+        echo "$nicht_mehr" | sed 's/^/  /'
+    fi
+}
+
 echo "Abhängigkeiten jenseits von Cargo"
 echo
 c_pruefen
 jvm_pruefen
+osv_pruefen
 
 echo
 if [ "$fehler" -ne 0 ]; then
     echo "Nicht grün: $fehler Befund(e)." >&2
     exit 1
 fi
-echo "Beide Seiten sauber: keine unbekannte Kopfddatei, kein unbekanntes Fremdmodul."
+echo "Alle Teile sauber: keine unbekannte Kopfddatei, kein unbekanntes Fremdmodul,"
+echo "keine offene Sicherheitslücke."
