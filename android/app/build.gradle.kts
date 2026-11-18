@@ -1,6 +1,10 @@
+import java.io.File
+
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+    // Kein `org.jetbrains.kotlin.android` mehr: seit AGP 9 übersetzt das
+    // Android-Plugin Kotlin selbst (built-in Kotlin). Der Compose-Compiler
+    // bleibt ein eigenes Plugin, weil er an die Kotlin-Fassung gebunden ist.
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
@@ -8,14 +12,42 @@ plugins {
 // liest sie aus den Assets. Eine zweite Abschrift in `android/app/src/main/
 // assets` wäre der Anfang von zwei Wahrheiten — was der Kern prüft, muss das
 // sein, was im Katalog steht. Deshalb kopiert der Bau sie zur Bauzeit.
-val katalogKopieren by tasks.registering(Copy::class) {
-    from(rootProject.file("../content/funktionen")) { include("*.yaml") }
-    into(layout.buildDirectory.dir("generated/katalog/funktionen"))
+//
+// Eigener Task statt `Copy`: AGP 9 nimmt in der SourceSet-API keine Provider
+// mehr an („You cannot add Provider instances to the Android SourceSet API“).
+// `addGeneratedSourceDirectory` verlangt ein `DirectoryProperty` als Ausgang —
+// das hat `Copy` nicht, also beschreibt dieser Task seinen Ausgang selbst.
+abstract class KatalogKopieren : DefaultTask() {
+    @get:InputDirectory
+    abstract val quelle: DirectoryProperty
+
+    @get:OutputDirectory
+    abstract val ziel: DirectoryProperty
+
+    @TaskAction
+    fun kopieren() {
+        val nach = File(ziel.get().asFile, "funktionen")
+        nach.deleteRecursively()
+        nach.mkdirs()
+        quelle.get().asFile
+            .listFiles { datei -> datei.isFile && datei.name.endsWith(".yaml") }
+            ?.forEach { datei -> datei.copyTo(File(nach, datei.name), overwrite = true) }
+    }
+}
+
+val katalogKopieren by tasks.registering(KatalogKopieren::class) {
+    quelle.set(rootProject.file("../content/funktionen"))
+    ziel.set(layout.buildDirectory.dir("generated/katalog"))
 }
 
 android {
     namespace = "de.werkstatt.vci"
-    compileSdk = 34
+    // 37 statt 34: Compose 1.12 (BOM 2026.09.00) verlangt es, und ohne diesen
+    // Sprung bleibt der ganze AndroidX-Stand auf September 2024 stehen.
+    // `targetSdk` bleibt bewusst auf 34 — das ist eine Verhaltenszusage ans
+    // System (Rechte, Hintergrundarbeit), keine Bauvoraussetzung, und gehört
+    // erst nach einem Gerätetest angehoben.
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "de.werkstatt.vci"
@@ -33,8 +65,6 @@ android {
     buildFeatures {
         compose = true
     }
-
-    sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/katalog"))
 
     packaging {
         // JNA bringt eigene native Bibliotheken mit; ohne diese Regel kollidieren
@@ -54,9 +84,13 @@ kotlin {
     }
 }
 
-// Ohne diese Abhängigkeit fehlen die YAML-Dateien beim ersten Lauf, weil
-// `mergeDebugAssets` sie sonst nicht kennt.
-tasks.named("preBuild") { dependsOn(katalogKopieren) }
+// Der Task hängt an den Assets der Variante, nicht an `preBuild`: damit kennt
+// `mergeDebugAssets` ihn selbst, und die Task-Abhängigkeit geht nicht verloren.
+androidComponents {
+    onVariants { variante ->
+        variante.sources.assets?.addGeneratedSourceDirectory(katalogKopieren, KatalogKopieren::ziel)
+    }
+}
 
 dependencies {
     implementation(project(":bindings")) {
@@ -73,19 +107,17 @@ dependencies {
     // Begrenzt wird der Einsatz in FtdiStnVerbindung: nur FTDI-VID und nur
     // Geräte, deren STI-Kennung STN-Firmware bestätigt.
     //
-    // **Feste Version, nicht „latest“:** ab 3.11.0 verlangt das aar
-    // `compileSdk 35`; dieses Projekt steht auf 34, und AGP 8.5.2 kann das
-    // nicht. Ein Versionssprung hier ist deshalb ein eigener Schritt: AGP
-    // heben, `compileSdk` hochzählen, Bau prüfen — nicht nur die Nummer
-    // tauschen. (Der frühere zweite Grund — kotlin-stdlib 2.2 gegen Kotlin
-    // 2.0.21 — ist mit dem Sprung auf 2.4.20 weggefallen.)
-    implementation("com.github.mik3y:usb-serial-for-android:3.10.0")
+    // **Feste Version, nicht „latest“:** 3.12.0 ist der Stand vom 18.11.2026.
+    // Die Sperre auf 3.10.0 fiel mit dem Sprung auf `compileSdk 37`: ab 3.11.0
+    // verlangt das aar `compileSdk 35`, und das kann AGP 9.3.1.
+    implementation("com.github.mik3y:usb-serial-for-android:3.12.0")
 
-    implementation(platform("androidx.compose:compose-bom:2024.09.03"))
+    // Compose 1.12.1, material3 1.4.0 (BOM-Zuordnung vom September 2026).
+    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.activity:activity-compose:1.9.2")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.5")
+    implementation("androidx.activity:activity-compose:1.13.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 

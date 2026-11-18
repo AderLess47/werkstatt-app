@@ -12,8 +12,10 @@
 # Warum es die Datei am 18.11.2026 leer gibt: die einzige gefundene Lücke
 # (CVE-2026-53914, Kotlin-Gradle-Plugin) ist behoben worden, indem Kotlin von
 # 2.0.21 auf 2.4.20 gestiegen ist. Die Datei steht bereit für den Fall, dass
-# ein gepinntes Modul nicht springen kann — `usb-serial-for-android` ist auf
-# 3.10.0 festgelegt, weil 3.11.0 `compileSdk 35` verlangt.
+# ein gepinntes Modul nicht springen kann. Der frühere Fall ist entfallen:
+# `usb-serial-for-android` war auf 3.10.0 festgelegt, weil 3.11.0
+# `compileSdk 35` verlangt — mit dem Sprung auf `compileSdk 37` steht die
+# Bibliothek jetzt auf 3.12.0 und braucht keine Ausnahme.
 #
 # Format:
 #
