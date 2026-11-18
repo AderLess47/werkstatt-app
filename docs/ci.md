@@ -201,6 +201,10 @@ Messung. Ebenso wenig sagt er etwas über Lücken in den Kotlin- und
 Java-Abhängigkeiten der App oder in der C-Seite (`j2534/`) — dafür gibt es keinen
 Job.
 
+Denselben Befehl fährt `scripts/ci-lokal.sh` als Job `deny`, und der
+Pre-Push-Hook wählt ihn mit aus — Einzelheiten unter „Lokaler Ersatz“ weiter
+unten.
+
 ## Fuzzing — lokal belegt, nicht in der CI
 
 Punkt 4 der Definition of Done ([implementierungsplan.md](implementierungsplan.md)
@@ -328,7 +332,7 @@ Danach ist der erste grüne Lauf die eigentliche Prüfung — er kam mit #322
 ## Lokaler Ersatz: `scripts/ci-lokal.sh`
 
 Für den Fall, dass auf dem Runner nichts durchgeht (oder ohne Netz), fährt ein
-Skript dieselben fünf Jobs mit denselben Befehlen auf dieser Maschine:
+Skript dieselben sechs Jobs mit denselben Befehlen auf dieser Maschine:
 
 ```
 sh scripts/ci-lokal.sh
@@ -360,13 +364,34 @@ vorigen Lauf gefüllt. Ein kalter Lauf braucht Minuten; die Zahl sagt deshalb
 nichts über die Laufzeit auf einem Runner, nur dass dieselben Prüfungen hier
 durchlaufen.
 
+### `deny` kam am 18.11.2026 dazu
+
+Der sechste Job kam mit der Aufnahme der Fuzz-Crate. Er fährt je Manifest
+denselben Aufruf wie die CI (`cargo-deny --log-level warn --manifest-path …
+--locked check licenses advisories`), also drei Läufe für `core`, `core-ffi` und
+`core/fuzz` — ein Manifest weniger wäre ein Stand, den das Log verschweigt.
+
+Gemessen am 18.11.2026 in dieser VM (cargo-deny 0.21.0, dieselbe Fassung wie im
+Aktions-Image), warm:
+
+| Job | Ergebnis | Dauer | Was im Log steht |
+| --- | --- | --- | --- |
+| `deny` | grün | 2–3 s | dreimal `advisories ok, licenses ok`, dazu `license-not-encountered` für die Lizenzen, die in einem Baum ohne passende Abhängigkeit nichts treffen |
+
+Der erste Lauf holt die RustSec-Datenbank in den Cache des Benutzers: ohne Netz
+und ohne Cache endet der Job rot, und das ist dann kein Lizenzbefund. Fehlt
+`cargo-deny` (es liegt nicht bei cargo bei), steht der Job als „nicht gelaufen“
+in der Übersicht und das Skript endet mit 1. Der Pre-Push-Hook wählt `deny` mit
+aus und lässt ihn aus, wenn das Werkzeug fehlt — benannt, nicht als grün.
+
 Was der Lauf **nicht** belegt, damit die Aussage klein bleibt: geprüft wird der
 Arbeitsbaum, kein frischer Klon; es laufen die Werkzeuge dieser Maschine, nicht
 die der Runner-Images; ohne Artefakt-Upload und ohne Cache. `android` (SDK,
 NDK) und `bindings` (Artefakt-Upload, Swift-Bindings brauchen macOS) fehlen
 ganz und stehen in der Übersicht nicht als grün. Fehlt das JDK, steht
 `jvm-tests` als „nicht gelaufen“ da und das Skript endet mit 1 — ein nicht
-gefahrener Job ist kein bestandener.
+gefahrener Job ist kein bestandener. Dasselbe gilt für `deny` ohne
+`cargo-deny`.
 
 Die Ausgaben liegen je Job in `dist/ci-lokal/<Zeitstempel>/` (ignoriert), die
 Übersicht daneben in `uebersicht.txt`. Der Korpus wird dort byteweise gegen die
