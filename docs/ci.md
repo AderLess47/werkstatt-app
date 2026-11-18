@@ -10,7 +10,7 @@ wiederholbar, ohne dafür einen leeren Commit zu brauchen.
 | `rust` | `cargo test` für `core` (224 Tests, dazu 4 Korpus-Tests aus `core/tests/corpus/isotp.txt`) und für `core-ffi` (22 Tests) |
 | `clippy` | `cargo clippy --all-targets -- -D warnings` für `core` und `core-ffi`; `--all-targets` schließt die Tests ein, und genau dort lagen die zwei Warnungen, die den Job sonst nie erreicht hätten |
 | `fmt` | `cargo fmt --check` für `core`, `core-ffi` und `core/fuzz` — eigener Job, weil ein Formatfehler nichts über das Verhalten sagt |
-| `deny` | `cargo deny` für `core` und `core-ffi`: Lizenzen und bekannte Sicherheitslücken (RustSec) — Regeln in `deny.toml`, ein Schritt je Manifest |
+| `deny` | `cargo deny` für `core`, `core-ffi` und `core/fuzz`: Lizenzen und bekannte Sicherheitslücken (RustSec) — Regeln in `deny.toml`, ein Schritt je Manifest |
 | `bindings` | erzeugt Kotlin- und Swift-Bindings neu, lädt sie als Artefakt hoch (`needs: rust`) |
 | `jvm-tests` | die 186 Tests der App ohne Gerät über `sh scripts/jvm-tests.sh`, gegen den Host-Build der Bibliothek |
 | `android` | nimmt die SDK-Lizenzen selbst an und installiert NDK 26.1; Bindings und Host-Bibliothek; NDK-Bibliothek für `arm64-v8a` und `x86_64`; `./android/gradlew -p android :bindings:test`; dann `:app:testDebugUnitTest :app:assembleDebug` und eine Prüfung, dass beide ABIs in der APK liegen |
@@ -109,23 +109,28 @@ Repository, jede per Blob-Hash bestätigt:
 
 ## Lizenzen und CVEs: `cargo deny`
 
-Der Job `deny` prüft beide Rust-Crates gegen `deny.toml`: ob jede Abhängigkeit
-unter einer erlaubten Lizenz steht, und ob eine Fassung im `Cargo.lock` eine
-bekannte Sicherheitslücke aus der RustSec-Datenbank ist. Eigener Job wie `fmt`,
-weil das nichts über das Verhalten des Kerns sagt.
+Der Job `deny` prüft alle drei Rust-Pakete gegen `deny.toml`: ob jede
+Abhängigkeit unter einer erlaubten Lizenz steht, und ob eine Fassung im
+`Cargo.lock` eine bekannte Sicherheitslücke aus der RustSec-Datenbank ist.
+Eigener Job wie `fmt`, weil das nichts über das Verhalten des Kerns sagt.
 
-Zwei Läufe, nicht einer. `core` und `core-ffi` hängen nicht an einer gemeinsamen
-Workspace-Wurzel; jedes hat sein eigenes `Cargo.lock`, und cargo-deny liest den
-Graph aus dem Lockfile, das zu seinem Manifest gehört. Ein einzelner Lauf über
-beide würde einen der Stände verschweigen — deshalb je ein Schritt mit
-`--manifest-path`, damit im Log steht, welcher Teil gemeint ist. Die Regeln
-stehen in `deny.toml` im Wurzelverzeichnis.
+Drei Läufe, nicht einer. `core`, `core-ffi` und `core/fuzz` hängen nicht an
+einer gemeinsamen Workspace-Wurzel; jedes hat sein eigenes `Cargo.lock`, und
+cargo-deny liest den Graph aus dem Lockfile, das zu seinem Manifest gehört. Ein
+einzelner Lauf über alle würde einen der Stände verschweigen — deshalb je ein
+Schritt mit `--manifest-path`, damit im Log steht, welcher Teil gemeint ist. Die
+Regeln stehen in `deny.toml` im Wurzelverzeichnis.
 
 Die erlaubten Lizenzen sind eine Aufzählung und kein Muster: was nicht drinsteht,
-bricht den Lauf. Im Baum von `core-ffi` sind das am 18.11.2026 (82 Pakete im
-Lockfile) nur MIT, Apache-2.0 (teils als `OR`), `Apache-2.0 WITH LLVM-exception`,
-MPL-2.0, Unicode-3.0 und Unlicense; `LGPL-2.1-or-later` steht bei `r-efi` nur als
-dritte Alternative eines `OR`, gewählt ist MIT. `core` hat keine Abhängigkeiten.
+bricht den Lauf. In den Bäumen von `core-ffi` (82 Pakete) und `core/fuzz` (12
+Pakete) sind das am 18.11.2026 nur MIT, Apache-2.0 (teils als `OR`),
+`Apache-2.0 WITH LLVM-exception`, MPL-2.0, Unicode-3.0, Unlicense und NCSA;
+`LGPL-2.1-or-later` steht bei `r-efi` nur als dritte Alternative eines `OR`,
+gewählt ist MIT. `core` hat keine Abhängigkeiten.
+
+`NCSA` kam erst mit dem dritten Manifest dazu: `libfuzzer-sys` steht unter „(MIT
+OR Apache-2.0) AND NCSA“, also unter der Lizenz der LLVM-Fuzzer selbst — die
+erste Lizenz, die allein die Fuzz-Ziele hereinbringen.
 
 ### Das eigene Crate ist „proprietary“ — mit Absicht
 
@@ -148,23 +153,47 @@ stellt selbst fest „No safe upgrade is available“; `uniffi` ist per ADR-001 
 das Advisory bleibt im Log sichtbar. Beim nächsten `uniffi`-Upgrade gehört er
 gelöscht — sonst wird aus einer befristeten Ausnahme ein Dauerzustand.
 
+### Das Lockfile muss im Repository liegen
+
+Der erste Lauf mit dem dritten Schritt (Lauf #333, Commit `d3922be`, 18.11.2026)
+war rot, und zwar nur im Schritt `Fuzz-Ziele`:
+
+```
+error: cannot create the lock file /github/workspace/core/fuzz/Cargo.lock
+       because --locked was passed to prevent this
+```
+
+`core/fuzz/Cargo.lock` lag nie im Repository — `core/` und `core-ffi/` haben
+ihres eingecheckt, die Fuzz-Crate nicht (`.gitignore` ignoriert dort nur Korpus
+und Abstürze). Lokal fiel das nicht auf, weil das Lockfile aus früheren
+Fuzz-Läufen im Arbeitsbaum lag. Ohne Lockfile kann `--locked` nicht greifen:
+cargo müsste die Abhängigkeiten erst auflösen, und genau das verbietet das Flag.
+Commit `be0a069` checkt es ein; damit prüfen lokal und Runner denselben Graph.
+
 **Stand am 18.11.2026**, lokal mit cargo-deny 0.21.0 gemessen:
 
 | Manifest | `check licenses advisories` | Treffer |
 | --- | --- | --- |
 | `core/Cargo.toml` | grün (Exit 0) | keine — das Crate hat keine Abhängigkeiten |
 | `core-ffi/Cargo.toml` | grün (Exit 0) | `RUSTSEC-2026-0374`, wie oben begründet |
+| `core/fuzz/Cargo.toml` | grün (Exit 0) | keine — `libfuzzer-sys` und seine Abhängigkeiten sind sauber |
 
-Im ersten Lauf mit diesem Job (Lauf #330, Commit `3ca875c`, 18.11.2026, 06:20 UTC)
-sind **alle acht Jobs grün**; der `deny`-Job war nach 16 s fertig, beide Schritte
-nach je 2 s. Das Image der Aktion bringt cargo-deny 0.21.0 mit, also dieselbe
-Fassung wie die lokale Messung, und das Log zeigt den Aufruf `cargo-deny
---log-level warn --manifest-path core/Cargo.toml --locked` mit dem Unterbefehl
-`check licenses advisories`. Dass die Regeln aus dem Wurzelverzeichnis gelesen
-werden, sieht man im Kern-Schritt an den Warnungen `license-not-encountered` mit
-Verweis auf `deny.toml:42`–`46`: bei einem Crate ohne Abhängigkeiten trifft keine
-der erlaubten Lizenzen auf etwas. Ein Fehler wäre das nicht, aber ein Hinweis
-darauf, dass die Liste mit dem Baum wachsen muss.
+Auf dem Runner geben zwei Läufe zusammen den Beleg:
+
+| Lauf | Commit | Ergebnis |
+| --- | --- | --- |
+| #330 | `3ca875c` | zwei Schritte, alle acht Jobs grün |
+| #335 | `be0a069` | drei Schritte, `deny` nach 23 s grün (Kern, FFI-Schicht, Fuzz-Ziele) |
+
+Das Image der Aktion bringt cargo-deny 0.21.0 mit, also dieselbe Fassung wie die
+lokale Messung, und das Log zeigt den Aufruf
+`cargo-deny --log-level warn --manifest-path core/Cargo.toml --locked` mit dem
+Unterbefehl `check licenses advisories`. Dass die Regeln aus dem Wurzelverzeichnis
+gelesen werden, sieht man im Kern-Schritt an den Warnungen
+`license-not-encountered` mit Verweis auf `deny.toml:48`–`54`: bei einem Crate
+ohne Abhängigkeiten trifft keine der erlaubten Lizenzen auf etwas. Ein Fehler
+wäre das nicht, aber ein Hinweis darauf, dass die Liste mit dem Baum wachsen
+muss.
 
 **Was der Job nicht prüft:** ob eine Lizenz für die Auslieferung *passt*. Das
 entscheidet die Allow-Liste, und die ist eine menschliche Entscheidung, keine
