@@ -1,0 +1,22 @@
+# Kopfddateien, die `j2534/` einbindet — und sonst keine.
+#
+# Diese Datei ist die Erlaubnisliste für `scripts/abhaengigkeiten-pruefen.sh`.
+# Der C-Kern ist bewusst abhängigkeitsfrei: keine libusb, kein libudev, kein
+# Vendoring. Was hier steht, ist ISO C plus die Win32-Treiber-API, die
+# `src/usb_winusb.c` unter `#ifdef _WIN32` braucht. Ein `#include <libusb.h>`
+# oder eine mitgelieferte Fremd-Kopfddatei bricht den Lauf, bis jemand sie hier
+# mit Herkunft einträgt — dann steht die Entscheidung im Repository und nicht
+# in einem Log.
+#
+# Format: <Kopfddatei>  <Herkunft>
+
+setupapi.h  Win32 (Geräteinstallation, nur unter Windows übersetzt)
+stdarg.h    ISO C (variable Argumentlisten)
+stddef.h    ISO C (size_t, NULL)
+stdint.h    ISO C (uint8_t und Verwandte)
+stdio.h     ISO C (Ausgabe, Dateien)
+stdlib.h    ISO C (malloc, strtoul)
+string.h    ISO C (memcpy, memcmp)
+time.h      ISO C (Zeitstempel im Rollout-Werkzeug)
+windows.h   Win32 (Basistypen, Handles, nur unter Windows übersetzt)
+winusb.h    Win32 (WinUSB-API, nur unter Windows übersetzt)
