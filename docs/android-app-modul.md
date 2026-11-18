@@ -76,7 +76,7 @@ Gradle-Cache gegen JDK 17 und startet JUnit auf der JVM; die native Bibliothek
 kommt aus dem Host-Build (siehe [Geprüft / nicht geprüft](#geprüft--nicht-geprüft)).
 
 Der erste Gradle-Lauf braucht **Netzzugang**: `:app` hängt an
-`com.github.mik3y:usb-serial-for-android:3.10.0`, das nur über JitPack verteilt
+`com.github.mik3y:usb-serial-for-android:3.12.0`, das nur über JitPack verteilt
 wird. Das Repository steht dafür in `android/settings.gradle.kts`; ohne JitPack
 scheitert die Abhängigkeitsauflösung, nicht der Code. Die Bibliothek (MIT) macht
 Baudrate, Leitungsparameter und die Statusbytes der FTDI-Wandler — eigener
@@ -468,6 +468,18 @@ for use in Kotlin“). Er bleibt stehen: die Sperre braucht `wait()` und
 `notifyAll()`, und die gibt es nur auf `java.lang.Object` — `kotlin.Any` kennt
 sie nicht. Ein Umbau auf `Condition` wäre eine Verhaltensänderung und gehört
 nicht in einen Versionssprung.
+
+Am selben Tag folgte der Sprung auf **AGP 9.3.1, Gradle 9.5.0, `compileSdk 37`
+und Compose 1.12.1** (BOM 2026.09.00). Er ist kein Nummernwechsel: AGP 9 bringt
+Kotlin selbst mit (built-in Kotlin), `compileSdk 37` heißt Plattform
+`android-37.0` und Build-Tools 36.0.0, und die Katalog-Assets lassen sich nicht
+mehr als Provider in die SourceSet-API hängen — dafür gibt es jetzt einen
+eigenen Task mit `addGeneratedSourceDirectory`. Einzelheiten und die
+Fassungstabelle: [ci.md](ci.md). Lokal belegt: `:app:assembleDebug` grün in 59 s,
+die APK meldet `compileSdkVersion='37'`, und die fünf YAML-Dateien liegen
+weiter unter `assets/funktionen/`. `targetSdk` bleibt bei 34 — das ist eine
+Verhaltenszusage ans System und gehört erst nach einem Gerätetest angehoben.
+Nicht geprüft: die Anzeige unter Compose 1.12 (kein Gerät, kein Emulator).
 
 Ebenfalls geprüft (früher, mit NDK): `:app:assembleDebug` (Kompilierung,
 Ressourcen, Manifest, Paketierung), APK-Inhalt (startbare Activity
