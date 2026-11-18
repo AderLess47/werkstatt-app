@@ -124,6 +124,43 @@ jobs:
           arguments: --locked
           command: check licenses advisories
 
+  deps:
+    # Eigener Job wie `deny`: eine fremde Lizenz, ein neues Fremdmodul oder eine
+    # Kopfddatei von außerhalb sagt nichts über das Verhalten des Kerns — und
+    # der Befund soll im Log stehen, ohne die Tests dafür erneut zu fahren.
+    #
+    # Geprüft wird der *aufgelöste* Graph, nicht die Erklärung in den
+    # Build-Dateien: nur so fallen transitive Module auf. Die Erlaubnislisten
+    # stehen in `android/abhaengigkeiten.txt` und `j2534/abhaengigkeiten.txt`,
+    # die Einzelheiten in `scripts/abhaengigkeiten-pruefen.sh`.
+    name: Abhängigkeiten jenseits von Cargo (Kotlin/Java, C)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # Dieselbe Vorsichtsmaßnahme wie im Android-Job: keine Lizenzrückfrage
+      # der Aktion, sondern ein eigener Schritt.
+      - uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: false
+          packages: ""
+
+      # `com.android.application` braucht die Plattform schon beim
+      # Konfigurieren (`compileSdk 34`). NDK und build-tools bleiben weg: dieser
+      # Job baut nichts, er fragt nur den Graphen ab.
+      - name: Plattform installieren
+        run: |
+          yes | sdkmanager --licenses > /dev/null
+          yes | sdkmanager "platforms;android-34" > /dev/null
+
+      - name: Abhängigkeiten prüfen
+        run: sh scripts/abhaengigkeiten-pruefen.sh
+
   bindings:
     name: Kotlin- und Swift-Bindings
     needs: rust
