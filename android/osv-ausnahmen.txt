@@ -1,0 +1,20 @@
+# Ausnahmen für die Advisory-Prüfung in scripts/abhaengigkeiten-pruefen.sh.
+#
+# Eine Zeile je Ausnahme: die OSV-/GHSA-Kennung, dahinter der Grund. Dieselbe
+# Bauart wie die Ausnahme in `deny.toml`: die Entscheidung ist menschlich, die
+# Prüfung mechanisch. Was hier nicht steht, macht den Lauf rot.
+#
+# Eine Ausnahme ist immer befristet. Sie gehört gelöscht, sobald der Sprung
+# möglich ist, auf den sie wartet — sonst wird aus einer Ausnahme ein
+# Dauerzustand. Steht eine Kennung hier, die nichts mehr trifft, sagt der Lauf
+# das als Hinweis; das ist kein Fehler, aber ein Zeichen zum Aufräumen.
+#
+# Warum es die Datei am 18.11.2026 leer gibt: die einzige gefundene Lücke
+# (CVE-2026-53914, Kotlin-Gradle-Plugin) ist behoben worden, indem Kotlin von
+# 2.0.21 auf 2.4.20 gestiegen ist. Die Datei steht bereit für den Fall, dass
+# ein gepinntes Modul nicht springen kann — `usb-serial-for-android` ist auf
+# 3.10.0 festgelegt, weil 3.11.0 `compileSdk 35` verlangt.
+#
+# Format:
+#
+# GHSA-xxxx-xxxx-xxxx  Begründung, warum die Lücke hier nicht behoben wird
