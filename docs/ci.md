@@ -11,7 +11,7 @@ wiederholbar, ohne dafür einen leeren Commit zu brauchen.
 | `clippy` | `cargo clippy --all-targets -- -D warnings` für `core` und `core-ffi`; `--all-targets` schließt die Tests ein, und genau dort lagen die zwei Warnungen, die den Job sonst nie erreicht hätten |
 | `fmt` | `cargo fmt --check` für `core`, `core-ffi` und `core/fuzz` — eigener Job, weil ein Formatfehler nichts über das Verhalten sagt |
 | `deny` | `cargo deny` für `core`, `core-ffi` und `core/fuzz`: Lizenzen und bekannte Sicherheitslücken (RustSec) — Regeln in `deny.toml`, ein Schritt je Manifest |
-| `deps` | der aufgelöste Gradle-Graph der beiden Android-Module und die Kopfddateien des C-Kerns: jedes Fremdmodul braucht eine Zeile mit Lizenz in `android/abhaengigkeiten.txt`, jede Kopfddatei eine Zeile in `j2534/abhaengigkeiten.txt` — Einzelheiten unten |
+| `deps` | der aufgelöste Gradle-Graph der beiden Android-Module, die Kopfddateien des C-Kerns und die bekannten Sicherheitslücken zu beiden: jedes Fremdmodul braucht eine Zeile mit Lizenz in `android/abhaengigkeiten.txt`, jede Kopfddatei eine Zeile in `j2534/abhaengigkeiten.txt`, offene Lücken eine Zeile in `android/osv-ausnahmen.txt` — Einzelheiten unten |
 | `bindings` | erzeugt Kotlin- und Swift-Bindings neu, lädt sie als Artefakt hoch (`needs: rust`) |
 | `jvm-tests` | die 186 Tests der App ohne Gerät über `sh scripts/jvm-tests.sh`, gegen den Host-Build der Bibliothek |
 | `android` | nimmt die SDK-Lizenzen selbst an und installiert NDK 26.1; Bindings und Host-Bibliothek; NDK-Bibliothek für `arm64-v8a` und `x86_64`; `./android/gradlew -p android :bindings:test`; dann `:app:testDebugUnitTest :app:assembleDebug` und eine Prüfung, dass beide ABIs in der APK liegen |
@@ -200,9 +200,10 @@ muss.
 entscheidet die Allow-Liste, und die ist eine menschliche Entscheidung, keine
 Messung. Ebenso wenig sagt er etwas über die Kotlin- und Java-Abhängigkeiten der
 App oder über die C-Seite (`j2534/`) — dafür ist bis zum 18.11.2026 kein Job
-gelaufen. Seitdem prüft `deps` deren Herkunft und Lizenzen (nächstes Kapitel);
-Sicherheitslücken bleiben auf beiden Seiten ungeprüft, und `deps` behauptet
-nicht, das zu ändern.
+gelaufen. Seitdem prüft `deps` deren Herkunft, Lizenzen und bekannte
+Sicherheitslücken (nächstes Kapitel). Die C-Seite hat nichts zu befragen — sie
+bindet keine Bibliothek ein, sondern zehn Kopfddateien; was dort nach einem
+Advisory aussähe, gibt es nicht.
 
 Denselben Befehl fährt `scripts/ci-lokal.sh` als Job `deny`, und der
 Pre-Push-Hook wählt ihn mit aus — Einzelheiten unter „Lokaler Ersatz“ weiter
@@ -213,8 +214,8 @@ unten.
 `deny` liest nur Cargo-Lockfiles. Alles, was die Android-Module aus Google,
 Maven Central und JitPack ziehen, und jede fremde Kopfddatei, die der C-Kern
 einbindet, blieb damit ungeprüft. Der Job `deps` fährt
-`scripts/abhaengigkeiten-pruefen.sh` und prüft beide Seiten — die Herkunft, nicht
-die Sicherheit.
+`scripts/abhaengigkeiten-pruefen.sh` und prüft beide Seiten: Herkunft, Lizenz und
+bekannte Sicherheitslücken.
 
 ### Kotlin/Java: der aufgelöste Graph, nicht die Erklärung
 
@@ -233,7 +234,7 @@ Angaben in der Liste sind deshalb aus den POMs der Module abgelesen (18.11.2026)
 nicht behauptet. Zwei POMs führen keine Lizenz (`listenablefuture`,
 `hamcrest-core`); bei ihnen steht in der Zeile, worauf die Angabe beruht.
 
-Gemessen am 18.11.2026 in dieser VM (OpenJDK 17.0.21, Gradle 8.9 aus dem
+Gemessen am 18.11.2026 in dieser VM (OpenJDK 17.0.21, Gradle 8.14.4 aus dem
 Wrapper, Android SDK mit Plattform 34) — 104 Fremdmodule:
 
 | Lizenz | Module |
@@ -257,12 +258,62 @@ und über `cc -M` der Include-Graph, den der Compiler tatsächlich auflöst — 
 Abhängigkeit muss in `j2534/` oder in einem Systempfad liegen. Am 18.11.2026:
 zehn Kopfddateien, alle in der Liste, Include-Graph nur `j2534/` und `/usr`.
 
+### Sicherheitslücken: OSV
+
+Die Frage, die bis zum 18.11.2026 offen blieb, beantwortet der dritte Teil des
+Skripts. Gefragt wird OSV (`api.osv.dev`): offen, ohne Konto, ohne Schlüssel, mit
+Maven-Koordinaten — und mit der Fassung, in der eine Lücke behoben ist. Gefragt
+werden die Fassungen aus dem aufgelösten Graphen **und** die Plugins aus
+`android/build.gradle.kts`, denn das Kotlin-Gradle-Plugin ist genau der Ort, an
+dem die erste gefundene Lücke saß. Plugins löst Gradle über einen eigenen
+Klassenpfad auf, der im Projektgraph nicht auftaucht (gemessen: der
+`buildscript.classpath` bleibt bei Plugins aus dem `plugins`-Block leer); die
+Fassungen werden deshalb dort gelesen, wo sie entschieden werden, und über eine
+feste Zuordnung auf Maven-Koordinaten abgebildet. Ein Plugin ohne Zuordnung
+macht den Lauf rot, statt still aus der Abfrage zu fallen.
+
+Ein Treffer ist rot, es sei denn er steht mit Begründung in
+`android/osv-ausnahmen.txt` — dieselbe Bauart wie die Ausnahme in `deny.toml`.
+Ein Lauf ohne Netz ist kein grüner Lauf: antwortet OSV nicht, endet er mit 1 und
+sagt das. Am 18.11.2026 sind so **108 Fassungen** (104 Fremdmodule, dazu AGP,
+Kotlin-Gradle-Plugin und Compose-Compiler-Plugin) abgefragt worden.
+
+**Der eine Treffer und was er gekostet hat.** `org.jetbrains.kotlin:
+kotlin-gradle-plugin:2.0.21` stand auf GHSA-r937-wjx7-w2jp (CVE-2026-53914,
+„Unsafe Deserialization in Kotlin Build Cache Enables Code Execution“,
+MODERATE): unsichere Deserialisierung der Metadaten im Build-Cache, behoben erst
+in 2.4.20-Beta1. Es gab also keinen Fix in der 2.0er-Reihe. Der Sprung auf
+**Kotlin 2.4.20** (stabil, vom 18.11.2026) zog drei Dinge nach sich, die unter
+„nur eine Versionsnummer“ nicht sichtbar sind:
+
+| Was | vorher | nachher | warum |
+| --- | --- | --- | --- |
+| Kotlin (AGP-Plugin, Compose-Plugin, `jvm`-Plugin) | 2.0.21 | 2.4.20 | die Lücke |
+| Gradle (Wrapper) | 8.9 | 8.14.4 | Kotlin 2.4 verlangt mindestens 8.14.4 |
+| `kotlinOptions { jvmTarget = "17" }` | im `android`-Block | `kotlin { compilerOptions { jvmTarget.set(JVM_17) } }` | Kotlin 2.4 hat das alte DSL entfernt, `jvmTarget` als String ist dort ein Fehler |
+| `kotlinc` in `scripts/jvm-tests.sh` | 2.0.21 | 2.4.20 | das Skript sagt selbst, die Fassungen gehören zu `build.gradle.kts` |
+
+Lokal belegt nach dem Sprung: `:bindings:test` grün (95 s, der erste Lauf holt
+die neuen Artefakte), `:app:assembleDebug` grün (57 s, `BUILD SUCCESSFUL`),
+danach alle sieben Jobs zusammen grün in 44 s. Der Wrapper-Jar selbst blieb der
+von 8.9: er lädt nur die Distribution, und das tat er mit 8.14.4 nachweislich.
+
+**Was die Prüfung nicht ist:** ein Beweis der Abwesenheit. OSV sammelt, was
+andere melden (GHSA und Verwandte); eine Lücke, die nur im NVD steht und keine
+GHSA hat, fehlt hier. Die AndroidX- und Compose-Module sind in OSV dünn
+abgedeckt — „kein Treffer“ heißt dort vor allem „kein gemeldeter Treffer“. Und
+geprüft wird der Graph, nicht das, was im APK landet: `libjnidispatch.so` aus
+JNA und die native Rust-Bibliothek haben keine Maven-Fassung und damit keinen
+Eintrag, den OSV befragen könnte.
+
 ### Was der Job nicht prüft
 
-- **Keine CVEs.** Für Kotlin/Java bräuchte es eine eigene Advisory-Datenbank
-  (NVD oder OSV) samt Zugang und Aktualisierung, für die C-Seite gibt es ohne
-  Fremdbibliothek nichts zu scannen. Die Lücke aus dem `deny`-Kapitel ist damit
-  halb geschlossen: Herkunft und Lizenz sind geprüft, Lücken nicht.
+- **Keine Lücke ohne Meldung.** Siehe oben: OSV ist eine Sammlung von Meldungen,
+  kein Beweis. Für die C-Seite gibt es nichts zu befragen, für native
+  Bestandteile (JNA, Rust) auch nicht — die deckt `deny` für Rust ab, für JNA
+  bleibt nur die Fassung in der Liste.
+- **Keine Eignung einer Fassung.** Ob 2.4.20 mit AGP 8.5.2 auf Dauer zusammen
+  arbeitet, sagt kein Advisory; das zeigt nur der Bau, und der ist oben datiert.
 - **Keine Eignung der Lizenz.** Ob Apache-2.0 für die Auslieferung passt,
   entscheidet die Liste, nicht das Werkzeug.
 - **Keine Fassungen in der Liste.** Aufgenommen ist das Modul, nicht seine
@@ -460,14 +511,15 @@ aus und lässt ihn aus, wenn das Werkzeug fehlt — benannt, nicht als grün.
 Der siebte Job schließt die Lücke, die im `deny`-Kapitel benannt war: er fährt
 dasselbe Skript wie die CI (`sh scripts/abhaengigkeiten-pruefen.sh`) und hält
 die Erlaubnislisten `android/abhaengigkeiten.txt` und `j2534/abhaengigkeiten.txt`
-gegen den aufgelösten Gradle-Graphen bzw. den Include-Graph des C-Kerns.
+gegen den aufgelösten Gradle-Graphen bzw. den Include-Graph des C-Kerns, dazu die
+Fassungen gegen OSV.
 
-Gemessen am 18.11.2026 in dieser VM (OpenJDK 17.0.21, Gradle 8.9 aus dem
+Gemessen am 18.11.2026 in dieser VM (OpenJDK 17.0.21, Gradle 8.14.4 aus dem
 Wrapper, Android SDK mit Plattform 34), warm — der Gradle-Daemon lief schon:
 
 | Job | Ergebnis | Dauer | Was im Log steht |
 | --- | --- | --- | --- |
-| `deps` | grün | 1 s | zehn Kopfddateien, alle in `j2534/abhaengigkeiten.txt`, Include-Graph nur `j2534/` und `/usr`; 104 Fremdmodule im Gradle-Graph, alle in `android/abhaengigkeiten.txt`, dazu die Lizenzübersicht (94 Apache-2.0, 6 EPL-2.0, je eins MIT, EPL-1.0, BSD-3-Clause, Apache-2.0 OR LGPL-2.1-or-later) |
+| `deps` | grün | 2 s | zehn Kopfddateien, alle in `j2534/abhaengigkeiten.txt`, Include-Graph nur `j2534/` und `/usr`; 104 Fremdmodule im Gradle-Graph, alle in `android/abhaengigkeiten.txt`, dazu die Lizenzübersicht (94 Apache-2.0, 6 EPL-2.0, je eins MIT, EPL-1.0, BSD-3-Clause, Apache-2.0 OR LGPL-2.1-or-later) und `108 Fassungen bei api.osv.dev abgefragt` mit dem Ergebnis „keine bekannte Lücke“ |
 
 Kalt ist der Job teuer: der erste Lauf holt Gradle-Distribution und
 Modul-Metadaten und braucht Netz. Gemessen wurde in dieser VM ein kalter
@@ -475,18 +527,31 @@ Gradle-Lauf von 61 s (`:bindings:dependencies`, inklusive Download der
 Distribution) — warm steht der Daemon und es sind Sekunden. Fehlt das JDK oder
 das Android SDK, steht `deps` als „nicht gelaufen“ in der Übersicht und das
 Skript endet mit 1. Der Pre-Push-Hook lässt ihn in diesem Fall aus und benennt
-den Grund.
+den Grund. Dasselbe gilt seit dem 18.11.2026 für `python3` und das Netz: ohne
+die beiden gibt es keine Advisory-Antwort, und eine fehlende Antwort ist kein
+Grün.
 
 Dass der Job anschlägt, ist am 18.11.2026 geprüft worden: ein
-`#include <libusb.h>` in `j2534/src/core.c` und ein aus
-`android/abhaengigkeiten.txt` gelöschtes Modul (`junit:junit`) machen ihn rot,
-jeweils mit Nennung des Fundes; nach dem Zurücksetzen ist er wieder grün.
+`#include <libusb.h>` in `j2534/src/core.c`, ein aus
+`android/abhaengigkeiten.txt` gelöschtes Modul (`junit:junit`) und — für die
+Advisory-Prüfung — eine Fassung mit bekannter Lücke in der Abfrageliste
+(`kotlin-gradle-plugin:2.0.21`) machen ihn rot, jeweils mit Nennung des Fundes;
+nach dem Zurücksetzen ist er wieder grün. Dieselbe Lücke mit Eintrag in
+`android/osv-ausnahmen.txt` läuft durch und sagt „als Ausnahme eingetragen“; ein
+nicht erreichbarer OSV-Host endet rot mit `OSV nicht befragbar`, nicht als
+übersprungen.
 
 Alle sieben Jobs zusammen sind am 18.11.2026 einmal komplett grün gelaufen:
 106 s mit warmem `target/`, warmem Gradle-Daemon und einem JDK, das in dieser VM
 sonst nicht liegt (`c` 0 s, `rust` 40 s, `clippy` 25 s, `fmt` 1 s, `deny` 2 s,
 `deps` 1 s, `jvm-tests` 37 s). Ohne JDK steht `jvm-tests` weiter als „nicht
 gelaufen“ da — der Lauf von `deps` ändert daran nichts.
+
+Nach dem Kotlin-Sprung (siehe `deps`-Kapitel) ist derselbe Lauf am 18.11.2026
+erneut gefahren: alle sieben Jobs grün in **44 s** (`c` 0 s, `rust` 1 s, `clippy`
+1 s, `fmt` 0 s, `deny` 2 s, `deps` 2 s, `jvm-tests` 38 s, mit `OK (186 tests)`).
+Die kürzere Zeit ist kein Fortschritt: `target/` war warm, und der `rust`-Job
+hatte nichts zu übersetzen.
 
 Was der Lauf **nicht** belegt, damit die Aussage klein bleibt: geprüft wird der
 Arbeitsbaum, kein frischer Klon; es laufen die Werkzeuge dieser Maschine, nicht
@@ -495,7 +560,7 @@ NDK) und `bindings` (Artefakt-Upload, Swift-Bindings brauchen macOS) fehlen
 ganz und stehen in der Übersicht nicht als grün. Fehlt das JDK, steht
 `jvm-tests` als „nicht gelaufen“ da und das Skript endet mit 1 — ein nicht
 gefahrener Job ist kein bestandener. Dasselbe gilt für `deny` ohne
-`cargo-deny` und für `deps` ohne JDK oder Android SDK.
+`cargo-deny` und für `deps` ohne JDK, Android SDK, `python3` oder Netz.
 
 Die Ausgaben liegen je Job in `dist/ci-lokal/<Zeitstempel>/` (ignoriert), die
 Übersicht daneben in `uebersicht.txt`. Der Korpus wird dort byteweise gegen die
