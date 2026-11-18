@@ -11,6 +11,7 @@ wiederholbar, ohne dafür einen leeren Commit zu brauchen.
 | `clippy` | `cargo clippy --all-targets -- -D warnings` für `core` und `core-ffi`; `--all-targets` schließt die Tests ein, und genau dort lagen die zwei Warnungen, die den Job sonst nie erreicht hätten |
 | `fmt` | `cargo fmt --check` für `core`, `core-ffi` und `core/fuzz` — eigener Job, weil ein Formatfehler nichts über das Verhalten sagt |
 | `deny` | `cargo deny` für `core`, `core-ffi` und `core/fuzz`: Lizenzen und bekannte Sicherheitslücken (RustSec) — Regeln in `deny.toml`, ein Schritt je Manifest |
+| `deps` | der aufgelöste Gradle-Graph der beiden Android-Module und die Kopfddateien des C-Kerns: jedes Fremdmodul braucht eine Zeile mit Lizenz in `android/abhaengigkeiten.txt`, jede Kopfddatei eine Zeile in `j2534/abhaengigkeiten.txt` — Einzelheiten unten |
 | `bindings` | erzeugt Kotlin- und Swift-Bindings neu, lädt sie als Artefakt hoch (`needs: rust`) |
 | `jvm-tests` | die 186 Tests der App ohne Gerät über `sh scripts/jvm-tests.sh`, gegen den Host-Build der Bibliothek |
 | `android` | nimmt die SDK-Lizenzen selbst an und installiert NDK 26.1; Bindings und Host-Bibliothek; NDK-Bibliothek für `arm64-v8a` und `x86_64`; `./android/gradlew -p android :bindings:test`; dann `:app:testDebugUnitTest :app:assembleDebug` und eine Prüfung, dass beide ABIs in der APK liegen |
@@ -197,13 +198,83 @@ muss.
 
 **Was der Job nicht prüft:** ob eine Lizenz für die Auslieferung *passt*. Das
 entscheidet die Allow-Liste, und die ist eine menschliche Entscheidung, keine
-Messung. Ebenso wenig sagt er etwas über Lücken in den Kotlin- und
-Java-Abhängigkeiten der App oder in der C-Seite (`j2534/`) — dafür gibt es keinen
-Job.
+Messung. Ebenso wenig sagt er etwas über die Kotlin- und Java-Abhängigkeiten der
+App oder über die C-Seite (`j2534/`) — dafür ist bis zum 18.11.2026 kein Job
+gelaufen. Seitdem prüft `deps` deren Herkunft und Lizenzen (nächstes Kapitel);
+Sicherheitslücken bleiben auf beiden Seiten ungeprüft, und `deps` behauptet
+nicht, das zu ändern.
 
 Denselben Befehl fährt `scripts/ci-lokal.sh` als Job `deny`, und der
 Pre-Push-Hook wählt ihn mit aus — Einzelheiten unter „Lokaler Ersatz“ weiter
 unten.
+
+## Abhängigkeiten jenseits von Cargo: `deps`
+
+`deny` liest nur Cargo-Lockfiles. Alles, was die Android-Module aus Google,
+Maven Central und JitPack ziehen, und jede fremde Kopfddatei, die der C-Kern
+einbindet, blieb damit ungeprüft. Der Job `deps` fährt
+`scripts/abhaengigkeiten-pruefen.sh` und prüft beide Seiten — die Herkunft, nicht
+die Sicherheit.
+
+### Kotlin/Java: der aufgelöste Graph, nicht die Erklärung
+
+Die Erklärungen in `android/app/build.gradle.kts` sagen nichts über transitive
+Module. Geprüft wird deshalb der Graph, den Gradle daraus auflöst — ein
+Init-Skript hängt dafür eine Aufgabe an `:bindings` und `:app` (die Build-Dateien
+bleiben unverändert) und gibt je Konfiguration `<group>:<module>:<version>` aus:
+`:bindings runtimeClasspath`, `:bindings testRuntimeClasspath`,
+`:app releaseRuntimeClasspath` und `:app debugUnitTestRuntimeClasspath`.
+
+Jedes Modul muss in `android/abhaengigkeiten.txt` stehen, mit Lizenz; fehlt eins,
+endet der Job rot und nennt es. Das ist dieselbe Bauart wie `deny.toml`: die
+Entscheidung ist menschlich, die Prüfung mechanisch. Werkzeuge, die die Lizenz
+selbst ermitteln, gibt es für Gradle nicht — Gradle kennt kein Lizenzmodell. Die
+Angaben in der Liste sind deshalb aus den POMs der Module abgelesen (18.11.2026),
+nicht behauptet. Zwei POMs führen keine Lizenz (`listenablefuture`,
+`hamcrest-core`); bei ihnen steht in der Zeile, worauf die Angabe beruht.
+
+Gemessen am 18.11.2026 in dieser VM (OpenJDK 17.0.21, Gradle 8.9 aus dem
+Wrapper, Android SDK mit Plattform 34) — 104 Fremdmodule:
+
+| Lizenz | Module |
+| --- | --- |
+| Apache-2.0 | 94 |
+| EPL-2.0 | 6 (JUnit 5 im Testgraph) |
+| MIT | 1 (`usb-serial-for-android`) |
+| EPL-1.0 | 1 (`junit:junit` 4.13.2) |
+| BSD-3-Clause | 1 (`hamcrest-core`) |
+| Apache-2.0 OR LGPL-2.1-or-later | 1 (`jna`) |
+
+### C-Seite: keine Fremdbibliothek, und das bleibt so
+
+`j2534/` bindet zehn Kopfddateien ein: sieben aus ISO C (`stddef.h`, `stdint.h`,
+`stdio.h`, `stdlib.h`, `stdarg.h`, `string.h`, `time.h`) und drei aus Win32
+(`windows.h`, `winusb.h`, `setupapi.h`, alle nur unter `#ifdef _WIN32`
+übersetzt). Keine libusb, kein libudev, kein Vendoring — das ist eine Zusage des
+Projekts, und `j2534/abhaengigkeiten.txt` hält sie fest. Geprüft wird zweimal:
+die Liste der eckigen Includes (was der Quelltext nennt, auch hinter `#ifdef`)
+und über `cc -M` der Include-Graph, den der Compiler tatsächlich auflöst — jede
+Abhängigkeit muss in `j2534/` oder in einem Systempfad liegen. Am 18.11.2026:
+zehn Kopfddateien, alle in der Liste, Include-Graph nur `j2534/` und `/usr`.
+
+### Was der Job nicht prüft
+
+- **Keine CVEs.** Für Kotlin/Java bräuchte es eine eigene Advisory-Datenbank
+  (NVD oder OSV) samt Zugang und Aktualisierung, für die C-Seite gibt es ohne
+  Fremdbibliothek nichts zu scannen. Die Lücke aus dem `deny`-Kapitel ist damit
+  halb geschlossen: Herkunft und Lizenz sind geprüft, Lücken nicht.
+- **Keine Eignung der Lizenz.** Ob Apache-2.0 für die Auslieferung passt,
+  entscheidet die Liste, nicht das Werkzeug.
+- **Keine Fassungen in der Liste.** Aufgenommen ist das Modul, nicht seine
+  Version; die aufgelösten Fassungen stehen im Log des Laufs. Die Fassungen sind
+  in den Build-Dateien fest verdrahtet (kein `+`, kein `latest`), damit ein
+  Versionssprung innerhalb einer erlaubten Lizenz nicht als Zeilenumbau in der
+  Liste endet. Ein Sprung bleibt dadurch aber auch unbemerkt — der Preis dafür,
+  dass die Liste bei jedem Update nicht neu geschrieben werden muss.
+
+Ein neues Modul aufnehmen heißt: Zeile in die Liste, Lizenz beim Modul
+nachschlagen (POM), eintragen, Lauf wiederholen. Fehlt der Eintrag, ist der Job
+rot — nicht still.
 
 ## Fuzzing — lokal belegt, nicht in der CI
 
@@ -332,7 +403,7 @@ Danach ist der erste grüne Lauf die eigentliche Prüfung — er kam mit #322
 ## Lokaler Ersatz: `scripts/ci-lokal.sh`
 
 Für den Fall, dass auf dem Runner nichts durchgeht (oder ohne Netz), fährt ein
-Skript dieselben sechs Jobs mit denselben Befehlen auf dieser Maschine:
+Skript dieselben sieben Jobs mit denselben Befehlen auf dieser Maschine:
 
 ```
 sh scripts/ci-lokal.sh
@@ -384,6 +455,39 @@ und ohne Cache endet der Job rot, und das ist dann kein Lizenzbefund. Fehlt
 in der Übersicht und das Skript endet mit 1. Der Pre-Push-Hook wählt `deny` mit
 aus und lässt ihn aus, wenn das Werkzeug fehlt — benannt, nicht als grün.
 
+### `deps` kam am 18.11.2026 dazu
+
+Der siebte Job schließt die Lücke, die im `deny`-Kapitel benannt war: er fährt
+dasselbe Skript wie die CI (`sh scripts/abhaengigkeiten-pruefen.sh`) und hält
+die Erlaubnislisten `android/abhaengigkeiten.txt` und `j2534/abhaengigkeiten.txt`
+gegen den aufgelösten Gradle-Graphen bzw. den Include-Graph des C-Kerns.
+
+Gemessen am 18.11.2026 in dieser VM (OpenJDK 17.0.21, Gradle 8.9 aus dem
+Wrapper, Android SDK mit Plattform 34), warm — der Gradle-Daemon lief schon:
+
+| Job | Ergebnis | Dauer | Was im Log steht |
+| --- | --- | --- | --- |
+| `deps` | grün | 1 s | zehn Kopfddateien, alle in `j2534/abhaengigkeiten.txt`, Include-Graph nur `j2534/` und `/usr`; 104 Fremdmodule im Gradle-Graph, alle in `android/abhaengigkeiten.txt`, dazu die Lizenzübersicht (94 Apache-2.0, 6 EPL-2.0, je eins MIT, EPL-1.0, BSD-3-Clause, Apache-2.0 OR LGPL-2.1-or-later) |
+
+Kalt ist der Job teuer: der erste Lauf holt Gradle-Distribution und
+Modul-Metadaten und braucht Netz. Gemessen wurde in dieser VM ein kalter
+Gradle-Lauf von 61 s (`:bindings:dependencies`, inklusive Download der
+Distribution) — warm steht der Daemon und es sind Sekunden. Fehlt das JDK oder
+das Android SDK, steht `deps` als „nicht gelaufen“ in der Übersicht und das
+Skript endet mit 1. Der Pre-Push-Hook lässt ihn in diesem Fall aus und benennt
+den Grund.
+
+Dass der Job anschlägt, ist am 18.11.2026 geprüft worden: ein
+`#include <libusb.h>` in `j2534/src/core.c` und ein aus
+`android/abhaengigkeiten.txt` gelöschtes Modul (`junit:junit`) machen ihn rot,
+jeweils mit Nennung des Fundes; nach dem Zurücksetzen ist er wieder grün.
+
+Alle sieben Jobs zusammen sind am 18.11.2026 einmal komplett grün gelaufen:
+106 s mit warmem `target/`, warmem Gradle-Daemon und einem JDK, das in dieser VM
+sonst nicht liegt (`c` 0 s, `rust` 40 s, `clippy` 25 s, `fmt` 1 s, `deny` 2 s,
+`deps` 1 s, `jvm-tests` 37 s). Ohne JDK steht `jvm-tests` weiter als „nicht
+gelaufen“ da — der Lauf von `deps` ändert daran nichts.
+
 Was der Lauf **nicht** belegt, damit die Aussage klein bleibt: geprüft wird der
 Arbeitsbaum, kein frischer Klon; es laufen die Werkzeuge dieser Maschine, nicht
 die der Runner-Images; ohne Artefakt-Upload und ohne Cache. `android` (SDK,
@@ -391,7 +495,7 @@ NDK) und `bindings` (Artefakt-Upload, Swift-Bindings brauchen macOS) fehlen
 ganz und stehen in der Übersicht nicht als grün. Fehlt das JDK, steht
 `jvm-tests` als „nicht gelaufen“ da und das Skript endet mit 1 — ein nicht
 gefahrener Job ist kein bestandener. Dasselbe gilt für `deny` ohne
-`cargo-deny`.
+`cargo-deny` und für `deps` ohne JDK oder Android SDK.
 
 Die Ausgaben liegen je Job in `dist/ci-lokal/<Zeitstempel>/` (ignoriert), die
 Übersicht daneben in `uebersicht.txt`. Der Korpus wird dort byteweise gegen die
