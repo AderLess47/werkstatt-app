@@ -435,7 +435,7 @@ Geprüft: `:bindings:test` (drei Linktests gegen die echte Rust-Bibliothek).
 
 Alle **186 sind in dieser Umgebung gelaufen** — `sh scripts/jvm-tests.sh` endet
 mit `OK (186 tests)`. Die letzten fünf Klassen sind Linktests gegen die echte
-Rust-Bibliothek: sie prüfen die erzeugten Bindings, nicht nur Kotlin-Code. Übersetzt wird mit `kotlinc 2.0.21` gegen JDK 17,
+Rust-Bibliothek: sie prüfen die erzeugten Bindings, nicht nur Kotlin-Code. Übersetzt wird mit `kotlinc 2.4.20` gegen JDK 17,
 gestartet über `org.junit.runner.JUnitCore`.
 
 Dafür brauchte es zwei Handgriffe, die das Skript festhält:
@@ -456,6 +456,18 @@ Ein Gradle-Lauf ist inzwischen **gelaufen** — JDK 17, Gradle 8.9, SDK 34, NDK
 endet mit `BUILD SUCCESSFUL`, und `:app:testDebugUnitTest` sieht dieselben 186
 Tests grün wie `scripts/jvm-tests.sh`. Geprüft ist damit auch die
 Gradle-Verdrahtung.
+
+Am 18.11.2026 ist der Gradle-Stand auf **Gradle 8.14.4 und Kotlin 2.4.20**
+gestiegen: Kotlin 2.0.21 hatte eine gemeldete Lücke im Build-Cache
+(CVE-2026-53914), behoben erst ab 2.4.20. Die Zeile darüber bleibt als datierter
+Stand stehen; nach dem Sprung sind `:bindings:test` (95 s) und
+`:app:assembleDebug` (57 s) erneut grün gelaufen, ebenso `sh scripts/jvm-tests.sh`
+mit `OK (186 tests)`. Mit dem neuen Kotlin kam ein Warnhinweis auf `Object()` in
+`BleCanTransport.kt` und `BleSerielleStrecke.kt` („This class is not recommended
+for use in Kotlin“). Er bleibt stehen: die Sperre braucht `wait()` und
+`notifyAll()`, und die gibt es nur auf `java.lang.Object` — `kotlin.Any` kennt
+sie nicht. Ein Umbau auf `Condition` wäre eine Verhaltensänderung und gehört
+nicht in einen Versionssprung.
 
 Ebenfalls geprüft (früher, mit NDK): `:app:assembleDebug` (Kompilierung,
 Ressourcen, Manifest, Paketierung), APK-Inhalt (startbare Activity
