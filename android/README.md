@@ -6,7 +6,7 @@ UniFFI-Bindings und ruft tatsächlich in die Rust-Bibliothek. Ohne ihn wäre
 
 ```
 settings.gradle.kts
-build.gradle.kts           Kotlin 2.4.20
+build.gradle.kts           Kotlin 2.4.21
 bindings/                  JVM-Modul, bindet ../../core-ffi/bindings/kotlin ein
   src/test/kotlin/IsoTpLinkTest.kt
 ```
@@ -35,8 +35,8 @@ Module; ein neues Modul bricht den Lauf, bis die Lizenz eingetragen ist.
 Seit dem 18.11.2026 fragt dasselbe Skript zusätzlich die offene OSV-Datenbank
 nach bekannten Sicherheitslücken zu diesen Fassungen und zu den Plugin-Fassungen
 aus `build.gradle.kts`. Die erste gefundene Lücke (GHSA-r937-wjx7-w2jp am
-Kotlin-Gradle-Plugin 2.0.21) ist der Grund, warum hier Kotlin 2.4.20 steht.
-Gradle 9.5.0, AGP 9.3.1 und `compileSdk 37` kamen mit dem Sprung auf Compose
+Kotlin-Gradle-Plugin 2.0.21) ist der Grund, warum hier Kotlin 2.4.21 steht.
+Gradle 9.6.1, AGP 9.4.1 und `compileSdk 37` kamen mit dem Sprung auf Compose
 1.12 (BOM 2026.09.00): Compose verlangt API 37, und das kann erst AGP 9. Was
 dieser Sprung gekostet hat und was dabei ungeprüft bleibt, steht in
 [docs/ci.md](../docs/ci.md). Was nicht behoben werden kann, steht mit Begründung

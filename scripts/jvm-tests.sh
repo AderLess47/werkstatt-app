@@ -10,8 +10,8 @@
 #   3. die native Bibliothek — und zwar eine für **diesen** Rechner.
 #
 # Punkt 3 ist die Falle: die Bibliothek in `android/app/src/main/jniLibs` ist für
-# Bionic gebaut (Android). Sie nennt `libdl.so`/`libc.so` und verlangt Symbole der
-# Version `LIBC` — auf glibc heißt die Version `GLIBC_2.2.5`, und `libdl` ist
+# Bionic gebaut (Android). Sie nennt `libdl.so` /`libc.so` und verlangt Symbole der
+# Version `LIbC` — auf glibc heißt die Version `GLIBC_2.2.5`, und `libdl` ist
 # heute ein leerer Platzhalter. `dlopen` scheitert dort also zwangsläufig; das ist
 # kein Fehler der Tests. Gebraucht wird der Host-Build:
 #
@@ -19,7 +19,7 @@
 #     # → core-ffi/target/release/libvci_ffi.so  (glibc, ladbar)
 #
 # Übersetzt wird nur, was ohne Android auskommt: die Bildschirme (Compose:
-# MainActivity, UsbAbschnitt, SfdAbschnitt, SicherheitAbschnitt, ObdLinkAbschnitt,
+# MainActivity, UsbAbschnitt, SfdAbscnitt, SicherheitAbschnitt, ObdLinkAbschnitt,
 # FunktionenAbschnitt, AuditAbschnitt) und
 # `UsbCanTransport`/`UsbDongleVerbindung`/`UsbSerialStrecke`/`FtdiStnVerbindung`
 # brauchen `android.*` bzw. `usb-serial-for-android`. Keine Testklasse fasst sie
@@ -69,7 +69,7 @@ fi
 
 # --- Abhängigkeiten --------------------------------------------------------
 # Erst im Gradle-Cache nachsehen, sonst von Maven holen. Die Versionen sind
-# dieselben wie in `android/build.gradle.kts` (Kotlin 2.4.20), `android/app/
+# dieselben wie in `android/build.gradle.kts` (Kotlin 2.4.21), `android/app/
 # build.gradle.kts` (JUnit 4.13.2, JNA 5.14.0) und der Kotlin-Standardbibliothek;
 # bei einem Wechsel dort gehört die Tabelle hier mitgezogen.
 need() { # group:artifact:version
@@ -100,10 +100,10 @@ need() { # group:artifact:version
     printf '%s' "$ziel"
 }
 
-KOTLINC=$(need org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.20)
-STDLIB=$(need org.jetbrains.kotlin:kotlin-stdlib:2.4.20)
-SCRIPT_RT=$(need org.jetbrains.kotlin:kotlin-script-runtime:2.4.20)
-DAEMON=$(need org.jetbrains.kotlin:kotlin-daemon-embeddable:2.4.20)
+KOTLINC=$(need org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.21)
+STDLIB=$(need org.jetbrains.kotlin:kotlin-stdlib:2.4.21)
+SCRIPT_RT=$(need org.jetbrains.kotlin:kotlin-script-runtime:2.4.21)
+DAEMON=$(need org.jetbrains.kotlin:kotlin-daemon-embeddable:2.4.21)
 TROVE=$(need org.jetbrains.intellij.deps:trove4j:1.0.20200330)
 ANNOT=$(need org.jetbrains:annotations:13.0)
 COROUTINES=$(need org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.6.4)
@@ -138,7 +138,7 @@ TESTS=$(ls android/app/src/test/kotlin/de/werkstatt/vci/*.kt \
 
 # --- Starten ---------------------------------------------------------------
 CLASSES=$(cd "$OUT_DIR" && find de/werkstatt/vci -name '*Test.class' |
-    grep -v '\$' | sed 's|\.class$||; s|/|.|g' | sort)
+    grep -v '\$' | sed 's|\.class||; s|/|.|g' | sort)
 
 echo "Bibliothek: $LIB"
 echo "Tests:      $(printf '%s\n' $CLASSES | wc -l) Klassen"
