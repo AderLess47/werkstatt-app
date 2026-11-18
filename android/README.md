@@ -6,7 +6,7 @@ UniFFI-Bindings und ruft tatsächlich in die Rust-Bibliothek. Ohne ihn wäre
 
 ```
 settings.gradle.kts
-build.gradle.kts           Kotlin 2.0.21
+build.gradle.kts           Kotlin 2.4.20
 bindings/                  JVM-Modul, bindet ../../core-ffi/bindings/kotlin ein
   src/test/kotlin/IsoTpLinkTest.kt
 ```
@@ -31,7 +31,14 @@ stecken (gemessen am 18.11.2026: 104) und unter welcher Lizenz, steht in
 [`abhaengigkeiten.txt`](abhaengigkeiten.txt).
 `scripts/abhaengigkeiten-pruefen.sh` hält den Graphen dagegen — auch transitive
 Module; ein neues Modul bricht den Lauf, bis die Lizenz eingetragen ist.
-Einzelheiten: [docs/ci.md](../docs/ci.md).
+
+Seit dem 18.11.2026 fragt dasselbe Skript zusätzlich die offene OSV-Datenbank
+nach bekannten Sicherheitslücken zu diesen Fassungen und zu den Plugin-Fassungen
+aus `build.gradle.kts`. Die erste gefundene Lücke (GHSA-r937-wjx7-w2jp am
+Kotlin-Gradle-Plugin 2.0.21) ist der Grund, warum hier Kotlin 2.4.20 und Gradle
+8.14.4 stehen. Was nicht behoben werden kann, steht mit Begründung in
+[`osv-ausnahmen.txt`](osv-ausnahmen.txt). Einzelheiten:
+[docs/ci.md](../docs/ci.md).
 
 ## Lokal ausführen
 
