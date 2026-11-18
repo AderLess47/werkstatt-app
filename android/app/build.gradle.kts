@@ -30,10 +30,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
     }
@@ -46,6 +42,15 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+}
+
+// Ziel-JVM als `compilerOptions` statt `kotlinOptions`: Kotlin 2.4 hat das alte
+// DSL entfernt, und `jvmTarget` als String ist dort ein Fehler. Voll qualifiziert,
+// damit die Build-Datei ohne zusätzlichen Import lesbar bleibt.
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
@@ -69,11 +74,11 @@ dependencies {
     // Geräte, deren STI-Kennung STN-Firmware bestätigt.
     //
     // **Feste Version, nicht „latest“:** ab 3.11.0 verlangt das aar
-    // `compileSdk 35` (dieses Projekt: 34, AGP 8.5.2 kann nicht mehr), und es
-    // zieht kotlin-stdlib 2.2 mit, das zu Kotlin 2.0.21 nicht passt — der
-    // Übersetzer bricht mit „metadata is 2.2.0, expected 2.0.0“ ab. Ein
-    // Versionssprung hier ist deshalb ein eigener Schritt: AGP und Kotlin
-    // zusammen heben, nicht nur `compileSdk` hochzählen.
+    // `compileSdk 35`; dieses Projekt steht auf 34, und AGP 8.5.2 kann das
+    // nicht. Ein Versionssprung hier ist deshalb ein eigener Schritt: AGP
+    // heben, `compileSdk` hochzählen, Bau prüfen — nicht nur die Nummer
+    // tauschen. (Der frühere zweite Grund — kotlin-stdlib 2.2 gegen Kotlin
+    // 2.0.21 — ist mit dem Sprung auf 2.4.20 weggefallen.)
     implementation("com.github.mik3y:usb-serial-for-android:3.10.0")
 
     implementation(platform("androidx.compose:compose-bom:2024.09.03"))
