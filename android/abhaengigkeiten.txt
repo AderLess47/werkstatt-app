@@ -9,7 +9,7 @@
 #
 # Aufgenommen sind die Module aus `:bindings runtimeClasspath`,
 # `:bindings testRuntimeClasspath`, `:app releaseRuntimeClasspath` und
-# `:app debugUnitTestRuntimeClasspath`; gemessen am 18.11.2026, 104 Module.
+# `:app debugUnitTestRuntimeClasspath`; gemessen am 18.11.2026, 117 Module (nach dem Sprung auf AGP 9.3.1 und Compose 1.12).
 # Die Lizenzen stammen aus den POMs der Module (abgelesen, nicht behauptet).
 # Zwei POMs führen keine Lizenz; bei ihnen steht in der Zeile, worauf die
 # Angabe dann beruht.
@@ -41,14 +41,14 @@ androidx.compose.foundation:foundation-layout Apache-2.0
 androidx.compose.foundation:foundation-layout-android Apache-2.0
 androidx.compose.material3:material3 Apache-2.0
 androidx.compose.material3:material3-android Apache-2.0
-androidx.compose.material:material Apache-2.0
-androidx.compose.material:material-android Apache-2.0
-androidx.compose.material:material-icons-core Apache-2.0
-androidx.compose.material:material-icons-core-android Apache-2.0
 androidx.compose.material:material-ripple Apache-2.0
 androidx.compose.material:material-ripple-android Apache-2.0
 androidx.compose.runtime:runtime Apache-2.0
 androidx.compose.runtime:runtime-android Apache-2.0
+androidx.compose.runtime:runtime-annotation Apache-2.0
+androidx.compose.runtime:runtime-annotation-android Apache-2.0
+androidx.compose.runtime:runtime-retain Apache-2.0
+androidx.compose.runtime:runtime-retain-android Apache-2.0
 androidx.compose.runtime:runtime-saveable Apache-2.0
 androidx.compose.runtime:runtime-saveable-android Apache-2.0
 androidx.compose.ui:ui Apache-2.0
@@ -73,6 +73,7 @@ androidx.compose:compose-bom Apache-2.0
 androidx.concurrent:concurrent-futures Apache-2.0
 androidx.core:core Apache-2.0
 androidx.core:core-ktx Apache-2.0
+androidx.core:core-viewtree Apache-2.0
 androidx.customview:customview-poolingcontainer Apache-2.0
 androidx.emoji2:emoji2 Apache-2.0
 androidx.graphics:graphics-path Apache-2.0
@@ -94,28 +95,40 @@ androidx.lifecycle:lifecycle-viewmodel-compose Apache-2.0
 androidx.lifecycle:lifecycle-viewmodel-compose-android Apache-2.0
 androidx.lifecycle:lifecycle-viewmodel-ktx Apache-2.0
 androidx.lifecycle:lifecycle-viewmodel-savedstate Apache-2.0
+androidx.lifecycle:lifecycle-viewmodel-savedstate-android Apache-2.0
+androidx.navigationevent:navigationevent Apache-2.0
+androidx.navigationevent:navigationevent-android Apache-2.0
+androidx.navigationevent:navigationevent-compose Apache-2.0
+androidx.navigationevent:navigationevent-compose-android Apache-2.0
 androidx.profileinstaller:profileinstaller Apache-2.0
 androidx.savedstate:savedstate Apache-2.0
+androidx.savedstate:savedstate-android Apache-2.0
+androidx.savedstate:savedstate-compose Apache-2.0
+androidx.savedstate:savedstate-compose-android Apache-2.0
 androidx.savedstate:savedstate-ktx Apache-2.0
 androidx.startup:startup-runtime Apache-2.0
 androidx.tracing:tracing Apache-2.0
 androidx.versionedparcelable:versionedparcelable Apache-2.0
+androidx.window:window Apache-2.0
+androidx.window:window-core Apache-2.0
+androidx.window:window-core-android Apache-2.0
 com.github.mik3y:usb-serial-for-android MIT
 com.google.guava:listenablefuture Apache-2.0 # POM ohne Lizenzangabe — leerer Stub von Guava (Apache-2.0)
 junit:junit EPL-1.0
 net.java.dev.jna:jna Apache-2.0 OR LGPL-2.1-or-later
 org.hamcrest:hamcrest-core BSD-3-Clause # POM ohne Lizenzangabe — LICENSE.txt im Jar: BSD-3-Clause
 org.jetbrains.kotlin:kotlin-stdlib Apache-2.0
-org.jetbrains.kotlin:kotlin-stdlib-common Apache-2.0
-org.jetbrains.kotlin:kotlin-stdlib-jdk7 Apache-2.0
-org.jetbrains.kotlin:kotlin-stdlib-jdk8 Apache-2.0
 org.jetbrains.kotlin:kotlin-test Apache-2.0
 org.jetbrains.kotlin:kotlin-test-junit5 Apache-2.0
 org.jetbrains.kotlinx:kotlinx-coroutines-android Apache-2.0
 org.jetbrains.kotlinx:kotlinx-coroutines-bom Apache-2.0
 org.jetbrains.kotlinx:kotlinx-coroutines-core Apache-2.0
 org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm Apache-2.0
+org.jetbrains.kotlinx:kotlinx-serialization-bom Apache-2.0
+org.jetbrains.kotlinx:kotlinx-serialization-core Apache-2.0
+org.jetbrains.kotlinx:kotlinx-serialization-core-jvm Apache-2.0
 org.jetbrains:annotations Apache-2.0
+org.jspecify:jspecify Apache-2.0
 org.junit.jupiter:junit-jupiter-api EPL-2.0
 org.junit.jupiter:junit-jupiter-engine EPL-2.0
 org.junit.platform:junit-platform-commons EPL-2.0
