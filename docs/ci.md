@@ -10,6 +10,7 @@ wiederholbar, ohne dafür einen leeren Commit zu brauchen.
 | `rust` | `cargo test` für `core` (224 Tests, dazu 4 Korpus-Tests aus `core/tests/corpus/isotp.txt`) und für `core-ffi` (22 Tests) |
 | `clippy` | `cargo clippy --all-targets -- -D warnings` für `core` und `core-ffi`; `--all-targets` schließt die Tests ein, und genau dort lagen die zwei Warnungen, die den Job sonst nie erreicht hätten |
 | `fmt` | `cargo fmt --check` für `core`, `core-ffi` und `core/fuzz` — eigener Job, weil ein Formatfehler nichts über das Verhalten sagt |
+| `deny` | `cargo deny` für `core` und `core-ffi`: Lizenzen und bekannte Sicherheitslücken (RustSec) — Regeln in `deny.toml`, ein Schritt je Manifest |
 | `bindings` | erzeugt Kotlin- und Swift-Bindings neu, lädt sie als Artefakt hoch (`needs: rust`) |
 | `jvm-tests` | die 186 Tests der App ohne Gerät über `sh scripts/jvm-tests.sh`, gegen den Host-Build der Bibliothek |
 | `android` | nimmt die SDK-Lizenzen selbst an und installiert NDK 26.1; Bindings und Host-Bibliothek; NDK-Bibliothek für `arm64-v8a` und `x86_64`; `./android/gradlew -p android :bindings:test`; dann `:app:testDebugUnitTest :app:assembleDebug` und eine Prüfung, dass beide ABIs in der APK liegen |
@@ -105,6 +106,71 @@ Repository, jede per Blob-Hash bestätigt:
 
 `cargo fmt --check` ist danach für alle drei Crates lokal grün (Exit 0), und
 `sh scripts/kern-tests.sh` läuft durch (224 Rust-Tests).
+
+## Lizenzen und CVEs: `cargo deny`
+
+Der Job `deny` prüft beide Rust-Crates gegen `deny.toml`: ob jede Abhängigkeit
+unter einer erlaubten Lizenz steht, und ob eine Fassung im `Cargo.lock` eine
+bekannte Sicherheitslücke aus der RustSec-Datenbank ist. Eigener Job wie `fmt`,
+weil das nichts über das Verhalten des Kerns sagt.
+
+Zwei Läufe, nicht einer. `core` und `core-ffi` hängen nicht an einer gemeinsamen
+Workspace-Wurzel; jedes hat sein eigenes `Cargo.lock`, und cargo-deny liest den
+Graph aus dem Lockfile, das zu seinem Manifest gehört. Ein einzelner Lauf über
+beide würde einen der Stände verschweigen — deshalb je ein Schritt mit
+`--manifest-path`, damit im Log steht, welcher Teil gemeint ist. Die Regeln
+stehen in `deny.toml` im Wurzelverzeichnis.
+
+Die erlaubten Lizenzen sind eine Aufzählung und kein Muster: was nicht drinsteht,
+bricht den Lauf. Im Baum von `core-ffi` sind das am 18.11.2026 (82 Pakete im
+Lockfile) nur MIT, Apache-2.0 (teils als `OR`), `Apache-2.0 WITH LLVM-exception`,
+MPL-2.0, Unicode-3.0 und Unlicense; `LGPL-2.1-or-later` steht bei `r-efi` nur als
+dritte Alternative eines `OR`, gewählt ist MIT. `core` hat keine Abhängigkeiten.
+
+### Das eigene Crate ist „proprietary“ — mit Absicht
+
+`core` und `core-ffi` tragen `license = "proprietary"`. Das ist kein gültiger
+SPDX-Ausdruck, und es gibt keinen: der Quelltext steht unter AGPL-3.0 (siehe
+`LICENSE`), nicht unter einer Krate-Lizenz. cargo-deny wertet das als
+„unlicensed“ und bricht — zu Recht, denn es kann die Frage nicht beantworten.
+Beide Manifeste tragen deshalb `publish = false` (sie gehen nicht an crates.io),
+und `[licenses.private] ignore = true` nimmt genau solche Crates aus. Fremde
+Abhängigkeiten berührt das nicht; sie werden weiter gegen die Allow-Liste geprüft.
+
+### Die eine Ausnahme in `[advisories]`
+
+`basic-toml 0.1.10` ist seit dem 3.3.2025 ohne Betreuung — RUSTSEC-2026-0374,
+„unmaintained“. Es kommt über `uniffi_bindgen → askama → askama_derive` herein,
+also über das Werkzeug, das die Kotlin- und Swift-Bindings erzeugt, nicht über
+Code, der im Betrieb fremde Daten auswertet. Das Advisory meldet keine Lücke und
+stellt selbst fest „No safe upgrade is available“; `uniffi` ist per ADR-001 §5 auf
+`=0.32.2` gepinnt. Der Eintrag steht deshalb mit Begründung in `deny.toml`, und
+das Advisory bleibt im Log sichtbar. Beim nächsten `uniffi`-Upgrade gehört er
+gelöscht — sonst wird aus einer befristeten Ausnahme ein Dauerzustand.
+
+**Stand am 18.11.2026**, lokal mit cargo-deny 0.21.0 gemessen:
+
+| Manifest | `check licenses advisories` | Treffer |
+| --- | --- | --- |
+| `core/Cargo.toml` | grün (Exit 0) | keine — das Crate hat keine Abhängigkeiten |
+| `core-ffi/Cargo.toml` | grün (Exit 0) | `RUSTSEC-2026-0374`, wie oben begründet |
+
+Im ersten Lauf mit diesem Job (Lauf #330, Commit `3ca875c`, 18.11.2026, 06:20 UTC)
+sind **alle acht Jobs grün**; der `deny`-Job war nach 16 s fertig, beide Schritte
+nach je 2 s. Das Image der Aktion bringt cargo-deny 0.21.0 mit, also dieselbe
+Fassung wie die lokale Messung, und das Log zeigt den Aufruf `cargo-deny
+--log-level warn --manifest-path core/Cargo.toml --locked` mit dem Unterbefehl
+`check licenses advisories`. Dass die Regeln aus dem Wurzelverzeichnis gelesen
+werden, sieht man im Kern-Schritt an den Warnungen `license-not-encountered` mit
+Verweis auf `deny.toml:42`–`46`: bei einem Crate ohne Abhängigkeiten trifft keine
+der erlaubten Lizenzen auf etwas. Ein Fehler wäre das nicht, aber ein Hinweis
+darauf, dass die Liste mit dem Baum wachsen muss.
+
+**Was der Job nicht prüft:** ob eine Lizenz für die Auslieferung *passt*. Das
+entscheidet die Allow-Liste, und die ist eine menschliche Entscheidung, keine
+Messung. Ebenso wenig sagt er etwas über Lücken in den Kotlin- und
+Java-Abhängigkeiten der App oder in der C-Seite (`j2534/`) — dafür gibt es keinen
+Job.
 
 ## Fuzzing — lokal belegt, nicht in der CI
 
