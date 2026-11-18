@@ -5,7 +5,7 @@
 # Zwei Läufe stehen zur Verfügung, beide aus dem Repository, nicht aus der CI:
 #
 #   scripts/ci-lokal.sh     die Jobs aus .github/workflows/ci.yml
-#                           (`c`, `rust`, `clippy`, `fmt`, `deny`, `jvm-tests`)
+#                           (`c`, `rust`, `clippy`, `fmt`, `deny`, `deps`, `jvm-tests`)
 #   scripts/fuzz.sh         Rauchlauf der Fuzz-Ziele (ISO-TP, UDS)
 #
 # Warum der CI-Lauf und nicht mehr die einzelnen Skripte: der Workflow startet in
@@ -18,8 +18,10 @@
 #
 # Welche Jobs laufen, entscheiden die Dateien, die tatsächlich gepusht werden:
 # eine Änderung an `j2534/` startet keine JVM-Tests, eine an `android/` keine
-# Cargo-Prüfungen. Reine Doku (`docs/`, `*.md`, `artifacts/`, `model/`) lässt
-# alle sechs laufen — siehe unten bei der Einordnung. Unbekannte Pfade ebenfalls:
+# Cargo-Prüfungen. `deps` (Kotlin-/Java-Abhängigkeiten und C-Seite) gehört zu
+# beiden und läuft bei Änderungen an `android/`, `j2534/` und seiner eigenen
+# Erlaubnisliste. Reine Doku (`docs/`, `*.md`, `artifacts/`, `model/`) lässt
+# alle sieben laufen — siehe unten bei der Einordnung. Unbekannte Pfade ebenfalls:
 # im Zweifel wird geprüft, nicht geraten.
 #
 # Der Fuzz-Rauchlauf hängt enger: er läuft nur bei `core/src/isotp.rs`,
@@ -159,6 +161,7 @@ else
 fi
 
 kern=0
+deps=0
 jvm=0
 fuzz=0
 alle=0
@@ -168,20 +171,25 @@ while read -r f; do
         '*')
             alle=1
             kern=1
+            deps=1
             jvm=1
             fuzz=1
             ;;
-        # Doku fährt alle sechs mit. Ein Doku-Push wäre sonst der einzige Fall,
+        # Doku fährt alle sieben mit. Ein Doku-Push wäre sonst der einzige Fall,
         # in dem der Hook gar nichts über den Push sagt — und der Lauf dauert
         # warm rund 40 s, die Hälfte davon die JVM-Tests. `alle=1` genügt, die
         # Job-Auswahl weiter unten liest es aus.
         docs/* | *.md | artifacts/* | model/*) alle=1 ;;
         core/src/isotp.rs | core/src/uds.rs) kern=1; fuzz=1 ;;
         core/fuzz/*) fuzz=1 ;;
-        core/* | core-ffi/* | j2534/*) kern=1 ;;
-        android/*) jvm=1 ;;
+        core/* | core-ffi/*) kern=1 ;;
+        # Der C-Kern und die App sind die beiden Seiten von `deps`; wer an einer
+        # von beiden schraubt, will den Abhängigkeitsbefund sehen.
+        j2534/*) kern=1; deps=1 ;;
+        android/*) jvm=1; deps=1 ;;
         scripts/kern-tests.sh | scripts/ci-lokal.sh) kern=1 ;;
         scripts/jvm-tests.sh) jvm=1 ;;
+        scripts/abhaengigkeiten-pruefen.sh) deps=1 ;;
         *)
             alle=1
             kern=1
@@ -193,15 +201,19 @@ done < "$dateien"
 anzahl=$(sort -u "$dateien" | wc -l | tr -d ' ')
 
 # Welche Jobs des CI-Laufs dieser Push braucht. `c`, `rust`, `clippy`, `fmt`
-# und `deny` gehören zum Rust- und C-Kern; `jvm-tests` zur App. Bei unbekannter
-# Dateiliste laufen alle sechs — genau wie in der CI, wo kein Job vom anderen
-# abhängt.
+# und `deny` gehören zum Rust- und C-Kern; `deps` zu beiden Seiten der
+# Abhängigkeitsprüfung, `jvm-tests` zur App. Bei unbekannter Dateiliste laufen
+# alle sieben — genau wie in der CI, wo kein Job vom anderen abhängt. Die
+# Reihenfolge ist die des Workflows.
 ci_jobs=""
 if [ "$alle" -eq 1 ]; then
-    ci_jobs="c rust clippy fmt deny jvm-tests"
+    ci_jobs="c rust clippy fmt deny deps jvm-tests"
 else
     if [ "$kern" -eq 1 ]; then
         ci_jobs="c rust clippy fmt deny"
+    fi
+    if [ "$deps" -eq 1 ]; then
+        ci_jobs="$ci_jobs deps"
     fi
     if [ "$jvm" -eq 1 ]; then
         ci_jobs="$ci_jobs jvm-tests"
@@ -240,6 +252,28 @@ if [ -n "$ci_jobs" ] && ! command -v cargo-deny > /dev/null; then
     deny_ausgelassen="cargo-deny fehlt: cargo install cargo-deny --locked"
 fi
 
+# `deps` löst den Gradle-Graphen auf und braucht dafür JDK und Android SDK.
+# Fehlt eines, wird der Job ausgelassen und benannt — ein fehlendes Werkzeug
+# sagt nichts über Lizenzen oder Fremdmodule.
+deps_ausgelassen=""
+if [ -n "$ci_jobs" ]; then
+    if [ -z "${JAVA_HOME:-}" ] && ! command -v java > /dev/null; then
+        deps_ausgelassen="kein JDK: JAVA_HOME leer, java nicht im PATH"
+    elif [ -z "${ANDROID_HOME:-}${ANDROID_SDK_ROOT:-}" ] &&
+        ! grep -qs '^sdk\.dir=' android/local.properties; then
+        deps_ausgelassen="kein Android SDK: ANDROID_HOME/ANDROID_SDK_ROOT leer, local.properties ohne sdk.dir"
+    fi
+    if [ -n "$deps_ausgelassen" ]; then
+        rest=""
+        for job in $ci_jobs; do
+            if [ "$job" != "deps" ]; then
+                rest="$rest $job"
+            fi
+        done
+        ci_jobs=${rest# }
+    fi
+fi
+
 if [ "$modus" = "probe" ]; then
     if [ -n "$basis" ]; then
         echo "Geänderte Dateien:" >&2
@@ -260,6 +294,9 @@ if [ "$modus" = "probe" ]; then
     if [ -n "$deny_ausgelassen" ]; then
         echo "  deny                   (würde ausgelassen — $deny_ausgelassen)" >&2
     fi
+    if [ -n "$deps_ausgelassen" ]; then
+        echo "  deps                   (würde ausgelassen — $deps_ausgelassen)" >&2
+    fi
     if [ "$fuzz" -eq 1 ]; then
         if fuzz_bereit; then
             echo "  scripts/fuzz.sh        (Rauchlauf ISO-TP und UDS, ${VCI_FUZZ_SEKUNDEN:-20} s je Ziel)" >&2
@@ -271,7 +308,7 @@ if [ "$modus" = "probe" ]; then
 fi
 
 # Nur ein leerer Diff landet hier: jede geänderte Datei wählt mindestens einen
-# Job, Doku alle sechs.
+# Job, Doku alle sieben.
 if [ -z "$ci_jobs" ] && [ "$fuzz" -eq 0 ]; then
     echo "pre-push: nichts zu übertragen ($anzahl Dateien) — keine Tests nötig." >&2
     exit 0
@@ -313,6 +350,9 @@ if [ -n "$fmt_ausgelassen" ]; then
 fi
 if [ -n "$deny_ausgelassen" ]; then
     echo "pre-push: Lizenz- und Advisory-Prüfung übersprungen — $deny_ausgelassen." >&2
+fi
+if [ -n "$deps_ausgelassen" ]; then
+    echo "pre-push: Prüfung der Kotlin-/Java- und C-Abhängigkeiten übersprungen — $deps_ausgelassen." >&2
 fi
 if [ -n "$ci_jobs" ]; then
     pruefe "lokaler CI-Lauf ($ci_jobs)" scripts/ci-lokal.sh $ci_jobs
