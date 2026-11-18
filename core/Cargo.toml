@@ -5,6 +5,10 @@ edition = "2021"
 rust-version = "1.75"
 description = "App-Kern der Werkstatt-App: Transport, ISO-TP, später UDS und Funktionen"
 license = "proprietary"
+# Nicht veröffentlicht: der Code ist Teil der App (AGPL-3.0, siehe LICENSE).
+# `publish = false` ist zugleich die Marke, an der cargo-deny das eigene Crate
+# von der Lizenzprüfung ausnimmt ([licenses.private] in deny.toml).
+publish = false
 
 [lib]
 name = "vci_core"

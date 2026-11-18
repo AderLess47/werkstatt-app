@@ -1,0 +1,57 @@
+# cargo-deny: Lizenzen und bekannte Sicherheitslücken der Rust-Abhängigkeiten.
+#
+# Geprüft wird zweimal, nicht einmal: `core` und `core-ffi` haben je ein eigenes
+# `Cargo.lock`, es gibt keine Workspace-Wurzel. cargo-deny liest den Graph aus
+# dem Lockfile, das zu seinem Manifest gehört — ein gemeinsamer Lauf würde einen
+# der beiden Stände verschweigen. Die CI fährt deshalb beide Manifeste.
+
+[advisories]
+# Eine bekannte Lücke wird behoben, nicht stillgelegt. Muss doch eine Frist
+# abgewartet werden, kommt sie hier mit Grund hinein — dann steht die Ausnahme
+# im Diff und nicht nur im Kopf dessen, der sie beschlossen hat.
+ignore = [
+    # Gemessen am 18.11.2026 mit cargo-deny 0.21.0: der einzige Treffer im
+    # ganzen Baum, und er ist kein Fehler im Code, sondern eine Nachricht über
+    # die Herkunft eines Werkzeugs. `basic-toml` ist seit dem 3.3.2025 ohne
+    # Betreuung — das Advisory meldet „unmaintained“ und keine Lücke, und es
+    # stellt selbst fest: „No safe upgrade is available“.
+    #
+    # Der Pfad führt allein über `uniffi_bindgen`, also über das Programm, das
+    # die Kotlin- und Swift-Bindings erzeugt, nicht über Code, der im Betrieb
+    # fremde Daten auswertet. `uniffi` ist per ADR-001 §5 auf `=0.32.2`
+    # gepinnt; beim nächsten Upgrade an einer Sprint-Grenze fällt der Eintrag
+    # weg. Bis dahin steht er hier — sonst wäre der Job vom ersten Lauf an rot,
+    # und ein dauerhaft roter Job prüft nichts.
+    { id = "RUSTSEC-2026-0374", reason = "basic-toml (über uniffi_bindgen/askama) ist unmaintained, keine bekannte Lücke, kein sicheres Upgrade verfügbar" },
+]
+
+[licenses]
+# Aufzählung statt Muster: was hier nicht steht, bricht den Lauf. Ein neues
+# Krate mit neuer Lizenz ist damit eine Entscheidung und kein Zufall.
+#
+# Der Baum von `core-ffi` (82 Pakete, Stand 18.11.2026) enthält nur diese
+# Lizenzen: MIT und Apache-2.0 (teils als `OR`), MPL-2.0 (dateibezogen),
+# Unicode-3.0, Unlicense und die LLVM-Ausnahme zu Apache-2.0. `core` selbst hat
+# keine Abhängigkeiten. Zusammen mit der AGPL-3.0 des Projekts (siehe `LICENSE`)
+# ist das unproblematisch: nichts davon verlangt, den Quelltext dieser App
+# offenzulegen, und nichts ist copyleft auf Binariebene.
+#
+# `LGPL-2.1-or-later` steht bei `r-efi` nur als dritte Alternative in einem
+# `OR`; gewählt ist MIT, deshalb fehlt die Lizenz hier.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+]
+confidence-threshold = 0.9
+
+[licenses.private]
+# `core` und `core-ffi` sind `publish = false` und tragen `license =
+# "proprietary"`. Das ist kein gültiger SPDX-Ausdruck, und es gibt keinen: der
+# Code steht unter AGPL-3.0, nicht unter einer Krate-Lizenz. Ohne diesen
+# Schalter meldet cargo-deny das eigene Crate als „unlicensed“ und der Job wäre
+# beim ersten Lauf rot.
+ignore = true
