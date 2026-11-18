@@ -92,12 +92,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Ein Schritt je Manifest, nicht ein Lauf über beide: `core` und
-      # `core-ffi` hängen nicht an einer gemeinsamen Workspace-Wurzel, jedes hat
-      # sein eigenes `Cargo.lock`, und cargo-deny prüft den Graph, der zu seinem
-      # Manifest gehört. So steht im Log, welcher Teil betroffen ist. Die Regeln
-      # stehen in `deny.toml` im Wurzelverzeichnis; die Aktion bringt cargo-deny
-      # selbst mit, hier wird also nichts nachinstalliert.
+      # Ein Schritt je Manifest, nicht ein Lauf über alle: `core`, `core-ffi`
+      # und `core/fuzz` hängen nicht an einer gemeinsamen Workspace-Wurzel, jedes
+      # hat sein eigenes `Cargo.lock`, und cargo-deny prüft den Graph, der zu
+      # seinem Manifest gehört. So steht im Log, welcher Teil betroffen ist. Die
+      # Regeln stehen in `deny.toml` im Wurzelverzeichnis; die Aktion bringt
+      # cargo-deny selbst mit, hier wird also nichts nachinstalliert.
       - name: Kern
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
@@ -111,6 +111,16 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
           manifest-path: core-ffi/Cargo.toml
+          arguments: --locked
+          command: check licenses advisories
+
+      # Die Fuzz-Ziele sind ein eigenes Paket mit eigenem Lockfile und eigener
+      # Abhängigkeit (`libfuzzer-sys`); ohne diesen Schritt bliebe genau die
+      # Kette ungeprüft, die fremde Bytes am längsten bearbeitet.
+      - name: Fuzz-Ziele
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: core/fuzz/Cargo.toml
           arguments: --locked
           command: check licenses advisories
 
