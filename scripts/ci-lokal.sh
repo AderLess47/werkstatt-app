@@ -1,8 +1,8 @@
 #!/bin/sh
-# Lokaler Ersatz für die CI — dieselben fünf Jobs, die auf einem Runner laufen
-# könnten: `c`, `rust`, `clippy`, `fmt`, `jvm-tests`.
+# Lokaler Ersatz für die CI — dieselben sechs Jobs, die auf einem Runner laufen
+# könnten: `c`, `rust`, `clippy`, `fmt`, `deny`, `jvm-tests`.
 #
-#     sh scripts/ci-lokal.sh                  # alle fünf
+#     sh scripts/ci-lokal.sh                  # alle sechs
 #     sh scripts/ci-lokal.sh fmt clippy       # nur diese beiden
 #
 # Warum es das gibt: in diesem Repository startet seit 147 Läufen kein Runner
@@ -12,7 +12,7 @@
 #
 # Die Job-Namen lassen sich einzeln nennen; der Pre-Push-Hook nutzt das, damit
 # ein Push nur die Prüfungen startet, die zu den geänderten Dateien passen.
-# Ohne Argumente laufen alle fünf.
+# Ohne Argumente laufen alle sechs.
 #
 # Nicht enthalten sind `android` (braucht Android SDK und NDK, hier nicht
 # vorhanden) und `bindings` (erzeugt Kotlin- und Swift-Bindings als Artefakt;
@@ -24,8 +24,8 @@
 # Unterschied zur CI, damit die Aussage nicht zu groß wird:
 #
 #   • kein frischer Checkout — geprüft wird der Arbeitsbaum, nicht ein Klon
-#   • keine `ubuntu-latest`-Umgebung: Compiler-, JDK- und Gradle-Version sind
-#     die dieser Maschine, nicht die der Runner-Images
+#   • keine `ubuntu-latest`-Umgebung: Compiler-, JDK-, Gradle- und
+#     cargo-deny-Version sind die dieser Maschine, nicht die der Runner-Images
 #   • kein Artefakt-Upload, kein Cache
 #   • der Korpus wird byteweise verglichen statt über `git diff`: der
 #     Arbeitsbaum kann vom Index abweichen, und ein Vergleich gegen den Index
@@ -44,13 +44,15 @@
 # der Übersicht und das Skript endet mit 1.
 #
 # Voraussetzungen: `cargo` mit `rustfmt` und `clippy`, `make`, ein C-Compiler,
-# ein JDK (`JAVA_HOME` oder `java` im PATH) für die JVM-Tests.
+# ein JDK (`JAVA_HOME` oder `java` im PATH) für die JVM-Tests, `cargo-deny` für
+# den `deny`-Job. cargo-deny liegt nicht bei cargo bei; fehlt es, steht der Job
+# als „nicht gelaufen“ in der Übersicht und das Skript endet mit 1.
 
 set -u
 
 cd "$(dirname "$0")/.."
 
-alle_jobs="c rust clippy fmt jvm-tests"
+alle_jobs="c rust clippy fmt deny jvm-tests"
 
 if [ "$#" -eq 0 ]; then
     auswahl=$alle_jobs
@@ -58,7 +60,7 @@ else
     auswahl=$*
     for job in $auswahl; do
         case "$job" in
-            c | rust | clippy | fmt | jvm-tests) ;;
+            c | rust | clippy | fmt | deny | jvm-tests) ;;
             *)
                 echo "FEHLER: unbekannter Job „$job“ — erlaubt: $alle_jobs" >&2
                 exit 2
@@ -192,6 +194,34 @@ job_fmt() {
     cargo fmt --manifest-path core/fuzz/Cargo.toml --check || return 1
 }
 
+# --- Job `deny` ------------------------------------------------------------
+# Drei Läufe für drei Manifeste, wie in `ci.yml`: `core`, `core-ffi` und
+# `core/fuzz` hängen nicht an einer gemeinsamen Workspace-Wurzel, und cargo-deny
+# liest den Graph aus dem Lockfile, das zu seinem Manifest gehört. Ein einzelner
+# Lauf über alle würde einen der Stände verschweigen, und im Log stünde nicht,
+# welcher Teil gemeint war.
+#
+# `--locked` wie in der CI: ohne das Flag löst cargo die Abhängigkeiten bei
+# Bedarf neu auf, und dann prüft der lokale Lauf einen anderen Graph als der
+# Runner. Genau daran ist Lauf #333 gescheitert — `core/fuzz/Cargo.lock` lag
+# nicht im Repository, und `--locked` verbietet das Auflösen (siehe docs/ci.md).
+#
+# Die Fassung ist die dieser Maschine, nicht die des Aktions-Images (0.21.0);
+# deshalb steht sie im Log. Der erste Lauf holt die RustSec-Datenbank in den
+# Cache des Benutzers: ohne Netz und ohne Cache endet er rot, und das ist dann
+# kein Lizenzbefund.
+job_deny() {
+    fassung=$(cargo-deny --version 2>/dev/null | sed 's/^[^ ]* //')
+    echo "== cargo-deny ${fassung:-unbekannt} (Aktions-Image der CI: 0.21.0)"
+
+    for paket in core core-ffi core/fuzz; do
+        echo
+        echo "== $paket/Cargo.toml"
+        cargo-deny --log-level warn --manifest-path "$paket/Cargo.toml" --locked \
+            check licenses advisories || return 1
+    done
+}
+
 # --- Job `jvm-tests` -------------------------------------------------------
 job_jvm() {
     if [ -z "${JAVA_HOME:-}" ] && ! command -v java > /dev/null; then
@@ -232,6 +262,16 @@ if gewaehlt clippy; then
 fi
 if gewaehlt fmt; then
     fahre fmt job_fmt
+fi
+
+# `deny` braucht ein eigenes Werkzeug. Fehlt es, ist der Job nicht gefahren —
+# und das ist etwas anderes als grün, also steht es so in der Übersicht.
+if gewaehlt deny; then
+    if command -v cargo-deny > /dev/null; then
+        fahre deny job_deny
+    else
+        ueberspringe deny "cargo-deny fehlt: cargo install cargo-deny --locked"
+    fi
 fi
 
 # Der JVM-Job braucht ein JDK. Fehlt es, ist das kein grüner Lauf: die 174 Tests
