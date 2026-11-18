@@ -1,0 +1,125 @@
+# Fremdmodule der Kotlin-/Java-Seite — mit Lizenz.
+#
+# Diese Datei ist die Erlaubnisliste für `scripts/abhaengigkeiten-pruefen.sh`.
+# Der Job löst den Gradle-Graphen der beiden Android-Module auf und hält die
+# gefundenen Module dagegen: fehlt eins hier, endet er rot — auch ein
+# transitives Modul. Eine neue Abhängigkeit kommt damit nicht unbemerkt herein,
+# und wer eine hebt, trägt ihre Lizenz ein. Dieselbe Bauart wie `deny.toml`:
+# die Entscheidung ist menschlich, die Prüfung mechanisch.
+#
+# Aufgenommen sind die Module aus `:bindings runtimeClasspath`,
+# `:bindings testRuntimeClasspath`, `:app releaseRuntimeClasspath` und
+# `:app debugUnitTestRuntimeClasspath`; gemessen am 18.11.2026, 104 Module.
+# Die Lizenzen stammen aus den POMs der Module (abgelesen, nicht behauptet).
+# Zwei POMs führen keine Lizenz; bei ihnen steht in der Zeile, worauf die
+# Angabe dann beruht.
+#
+# Format: <group>:<module>  <Lizenz>  [# Anmerkung]
+#
+# Die Fassung steht bewusst nicht hier: die Liste sagt, *was* fremd ist, nicht
+# in welcher Version — die aufgelösten Fassungen stehen im Log des Laufs.
+
+androidx.activity:activity Apache-2.0
+androidx.activity:activity-compose Apache-2.0
+androidx.activity:activity-ktx Apache-2.0
+androidx.annotation:annotation Apache-2.0
+androidx.annotation:annotation-experimental Apache-2.0
+androidx.annotation:annotation-jvm Apache-2.0
+androidx.arch.core:core-common Apache-2.0
+androidx.arch.core:core-runtime Apache-2.0
+androidx.autofill:autofill Apache-2.0
+androidx.collection:collection Apache-2.0
+androidx.collection:collection-jvm Apache-2.0
+androidx.collection:collection-ktx Apache-2.0
+androidx.compose.animation:animation Apache-2.0
+androidx.compose.animation:animation-android Apache-2.0
+androidx.compose.animation:animation-core Apache-2.0
+androidx.compose.animation:animation-core-android Apache-2.0
+androidx.compose.foundation:foundation Apache-2.0
+androidx.compose.foundation:foundation-android Apache-2.0
+androidx.compose.foundation:foundation-layout Apache-2.0
+androidx.compose.foundation:foundation-layout-android Apache-2.0
+androidx.compose.material3:material3 Apache-2.0
+androidx.compose.material3:material3-android Apache-2.0
+androidx.compose.material:material Apache-2.0
+androidx.compose.material:material-android Apache-2.0
+androidx.compose.material:material-icons-core Apache-2.0
+androidx.compose.material:material-icons-core-android Apache-2.0
+androidx.compose.material:material-ripple Apache-2.0
+androidx.compose.material:material-ripple-android Apache-2.0
+androidx.compose.runtime:runtime Apache-2.0
+androidx.compose.runtime:runtime-android Apache-2.0
+androidx.compose.runtime:runtime-saveable Apache-2.0
+androidx.compose.runtime:runtime-saveable-android Apache-2.0
+androidx.compose.ui:ui Apache-2.0
+androidx.compose.ui:ui-android Apache-2.0
+androidx.compose.ui:ui-geometry Apache-2.0
+androidx.compose.ui:ui-geometry-android Apache-2.0
+androidx.compose.ui:ui-graphics Apache-2.0
+androidx.compose.ui:ui-graphics-android Apache-2.0
+androidx.compose.ui:ui-text Apache-2.0
+androidx.compose.ui:ui-text-android Apache-2.0
+androidx.compose.ui:ui-tooling Apache-2.0
+androidx.compose.ui:ui-tooling-android Apache-2.0
+androidx.compose.ui:ui-tooling-data Apache-2.0
+androidx.compose.ui:ui-tooling-data-android Apache-2.0
+androidx.compose.ui:ui-tooling-preview Apache-2.0
+androidx.compose.ui:ui-tooling-preview-android Apache-2.0
+androidx.compose.ui:ui-unit Apache-2.0
+androidx.compose.ui:ui-unit-android Apache-2.0
+androidx.compose.ui:ui-util Apache-2.0
+androidx.compose.ui:ui-util-android Apache-2.0
+androidx.compose:compose-bom Apache-2.0
+androidx.concurrent:concurrent-futures Apache-2.0
+androidx.core:core Apache-2.0
+androidx.core:core-ktx Apache-2.0
+androidx.customview:customview-poolingcontainer Apache-2.0
+androidx.emoji2:emoji2 Apache-2.0
+androidx.graphics:graphics-path Apache-2.0
+androidx.interpolator:interpolator Apache-2.0
+androidx.lifecycle:lifecycle-common Apache-2.0
+androidx.lifecycle:lifecycle-common-java8 Apache-2.0
+androidx.lifecycle:lifecycle-common-jvm Apache-2.0
+androidx.lifecycle:lifecycle-livedata-core Apache-2.0
+androidx.lifecycle:lifecycle-process Apache-2.0
+androidx.lifecycle:lifecycle-runtime Apache-2.0
+androidx.lifecycle:lifecycle-runtime-android Apache-2.0
+androidx.lifecycle:lifecycle-runtime-compose Apache-2.0
+androidx.lifecycle:lifecycle-runtime-compose-android Apache-2.0
+androidx.lifecycle:lifecycle-runtime-ktx Apache-2.0
+androidx.lifecycle:lifecycle-runtime-ktx-android Apache-2.0
+androidx.lifecycle:lifecycle-viewmodel Apache-2.0
+androidx.lifecycle:lifecycle-viewmodel-android Apache-2.0
+androidx.lifecycle:lifecycle-viewmodel-compose Apache-2.0
+androidx.lifecycle:lifecycle-viewmodel-compose-android Apache-2.0
+androidx.lifecycle:lifecycle-viewmodel-ktx Apache-2.0
+androidx.lifecycle:lifecycle-viewmodel-savedstate Apache-2.0
+androidx.profileinstaller:profileinstaller Apache-2.0
+androidx.savedstate:savedstate Apache-2.0
+androidx.savedstate:savedstate-ktx Apache-2.0
+androidx.startup:startup-runtime Apache-2.0
+androidx.tracing:tracing Apache-2.0
+androidx.versionedparcelable:versionedparcelable Apache-2.0
+com.github.mik3y:usb-serial-for-android MIT
+com.google.guava:listenablefuture Apache-2.0 # POM ohne Lizenzangabe — leerer Stub von Guava (Apache-2.0)
+junit:junit EPL-1.0
+net.java.dev.jna:jna Apache-2.0 OR LGPL-2.1-or-later
+org.hamcrest:hamcrest-core BSD-3-Clause # POM ohne Lizenzangabe — LICENSE.txt im Jar: BSD-3-Clause
+org.jetbrains.kotlin:kotlin-stdlib Apache-2.0
+org.jetbrains.kotlin:kotlin-stdlib-common Apache-2.0
+org.jetbrains.kotlin:kotlin-stdlib-jdk7 Apache-2.0
+org.jetbrains.kotlin:kotlin-stdlib-jdk8 Apache-2.0
+org.jetbrains.kotlin:kotlin-test Apache-2.0
+org.jetbrains.kotlin:kotlin-test-junit5 Apache-2.0
+org.jetbrains.kotlinx:kotlinx-coroutines-android Apache-2.0
+org.jetbrains.kotlinx:kotlinx-coroutines-bom Apache-2.0
+org.jetbrains.kotlinx:kotlinx-coroutines-core Apache-2.0
+org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm Apache-2.0
+org.jetbrains:annotations Apache-2.0
+org.junit.jupiter:junit-jupiter-api EPL-2.0
+org.junit.jupiter:junit-jupiter-engine EPL-2.0
+org.junit.platform:junit-platform-commons EPL-2.0
+org.junit.platform:junit-platform-engine EPL-2.0
+org.junit.platform:junit-platform-launcher EPL-2.0
+org.junit:junit-bom EPL-2.0
+org.opentest4j:opentest4j Apache-2.0
