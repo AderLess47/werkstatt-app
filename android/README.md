@@ -27,7 +27,7 @@ Aufruf durch die Sprachgrenze — dieselbe Grenze, die auf dem Gerät gilt.
 ## Fremdmodule
 
 Welche Module aus Google, Maven Central und JitPack im aufgelösten Gradle-Graph
-stecken (gemessen am 18.11.2026: 104) und unter welcher Lizenz, steht in
+stecken (gemessen am 18.11.2026: 117) und unter welcher Lizenz, steht in
 [`abhaengigkeiten.txt`](abhaengigkeiten.txt).
 `scripts/abhaengigkeiten-pruefen.sh` hält den Graphen dagegen — auch transitive
 Module; ein neues Modul bricht den Lauf, bis die Lizenz eingetragen ist.
@@ -35,10 +35,12 @@ Module; ein neues Modul bricht den Lauf, bis die Lizenz eingetragen ist.
 Seit dem 18.11.2026 fragt dasselbe Skript zusätzlich die offene OSV-Datenbank
 nach bekannten Sicherheitslücken zu diesen Fassungen und zu den Plugin-Fassungen
 aus `build.gradle.kts`. Die erste gefundene Lücke (GHSA-r937-wjx7-w2jp am
-Kotlin-Gradle-Plugin 2.0.21) ist der Grund, warum hier Kotlin 2.4.20 und Gradle
-8.14.4 stehen. Was nicht behoben werden kann, steht mit Begründung in
-[`osv-ausnahmen.txt`](osv-ausnahmen.txt). Einzelheiten:
-[docs/ci.md](../docs/ci.md).
+Kotlin-Gradle-Plugin 2.0.21) ist der Grund, warum hier Kotlin 2.4.20 steht.
+Gradle 9.5.0, AGP 9.3.1 und `compileSdk 37` kamen mit dem Sprung auf Compose
+1.12 (BOM 2026.09.00): Compose verlangt API 37, und das kann erst AGP 9. Was
+dieser Sprung gekostet hat und was dabei ungeprüft bleibt, steht in
+[docs/ci.md](../docs/ci.md). Was nicht behoben werden kann, steht mit Begründung
+in [`osv-ausnahmen.txt`](osv-ausnahmen.txt).
 
 ## Lokal ausführen
 
