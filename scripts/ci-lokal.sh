@@ -306,11 +306,22 @@ if [ -z "${ANDROID_HOME:-}${ANDROID_SDK_ROOT:-}" ] &&
     sdk_grund="kein Android SDK (ANDROID_HOME/ANDROID_SDK_ROOT leer, local.properties ohne sdk.dir)"
 fi
 
+# Seit dem 18.11.2026 fragt `deps` zusätzlich OSV. Dafür braucht es `python3`;
+# ohne das Werkzeug ist die Advisory-Antwort nicht geholt worden, und das gehört
+# in die Übersicht statt in einen roten Befund. Das Netz lässt sich hier nicht
+# prüfen, ohne selbst zu warten — fehlt es, wird der Job rot und nennt OSV.
+py_grund=""
+if ! command -v python3 > /dev/null; then
+    py_grund="kein python3 (OSV-Abfrage nicht möglich)"
+fi
+
 if gewaehlt deps; then
     if [ -n "$jdk_grund" ]; then
         ueberspringe deps "$jdk_grund"
     elif [ -n "$sdk_grund" ]; then
         ueberspringe deps "$sdk_grund"
+    elif [ -n "$py_grund" ]; then
+        ueberspringe deps "$py_grund"
     else
         fahre deps job_deps
     fi
