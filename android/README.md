@@ -24,6 +24,15 @@ Aufruf durch die Sprachgrenze — dieselbe Grenze, die auf dem Gerät gilt.
 4. Die Logik läuft wirklich in Rust: Single Frame mit Padding, Multi-Frame in
    FF + CF mit fortlaufender Sequenz, Zeitüberschreitung als `VciException`.
 
+## Fremdmodule
+
+Welche Module aus Google, Maven Central und JitPack im aufgelösten Gradle-Graph
+stecken (gemessen am 18.11.2026: 104) und unter welcher Lizenz, steht in
+[`abhaengigkeiten.txt`](abhaengigkeiten.txt).
+`scripts/abhaengigkeiten-pruefen.sh` hält den Graphen dagegen — auch transitive
+Module; ein neues Modul bricht den Lauf, bis die Lizenz eingetragen ist.
+Einzelheiten: [docs/ci.md](../docs/ci.md).
+
 ## Lokal ausführen
 
 ```bash
