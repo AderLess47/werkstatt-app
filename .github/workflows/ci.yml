@@ -82,6 +82,38 @@ jobs:
       - name: Fuzz-Ziele
         run: cargo fmt --manifest-path core/fuzz/Cargo.toml --check
 
+  deny:
+    # Eigener Job wie `fmt`: eine unerwartete Lizenz oder eine bekannte Lücke im
+    # Abhängigkeitsbaum sagt nichts über das Verhalten des Kerns, und der Lauf
+    # soll zeigen, ob nur das Abhängigkeitsbild abweicht — ohne dafür die Tests
+    # erneut zu fahren.
+    name: cargo deny (Lizenzen, CVEs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Ein Schritt je Manifest, nicht ein Lauf über beide: `core` und
+      # `core-ffi` hängen nicht an einer gemeinsamen Workspace-Wurzel, jedes hat
+      # sein eigenes `Cargo.lock`, und cargo-deny prüft den Graph, der zu seinem
+      # Manifest gehört. So steht im Log, welcher Teil betroffen ist. Die Regeln
+      # stehen in `deny.toml` im Wurzelverzeichnis; die Aktion bringt cargo-deny
+      # selbst mit, hier wird also nichts nachinstalliert.
+      - name: Kern
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: core/Cargo.toml
+          # Vorgabe der Aktion ist `--all-features`; mit `--locked` gilt genau
+          # die eingecheckte `Cargo.lock`, also der Stand, der ausgeliefert wird.
+          arguments: --locked
+          command: check licenses advisories
+
+      - name: FFI-Schicht
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: core-ffi/Cargo.toml
+          arguments: --locked
+          command: check licenses advisories
+
   bindings:
     name: Kotlin- und Swift-Bindings
     needs: rust
