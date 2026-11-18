@@ -5,7 +5,7 @@
 # Zwei Läufe stehen zur Verfügung, beide aus dem Repository, nicht aus der CI:
 #
 #   scripts/ci-lokal.sh     die Jobs aus .github/workflows/ci.yml
-#                           (`c`, `rust`, `clippy`, `fmt`, `jvm-tests`)
+#                           (`c`, `rust`, `clippy`, `fmt`, `deny`, `jvm-tests`)
 #   scripts/fuzz.sh         Rauchlauf der Fuzz-Ziele (ISO-TP, UDS)
 #
 # Warum der CI-Lauf und nicht mehr die einzelnen Skripte: der Workflow startet in
@@ -19,7 +19,7 @@
 # Welche Jobs laufen, entscheiden die Dateien, die tatsächlich gepusht werden:
 # eine Änderung an `j2534/` startet keine JVM-Tests, eine an `android/` keine
 # Cargo-Prüfungen. Reine Doku (`docs/`, `*.md`, `artifacts/`, `model/`) lässt
-# alle fünf laufen — siehe unten bei der Einordnung. Unbekannte Pfade ebenfalls:
+# alle sechs laufen — siehe unten bei der Einordnung. Unbekannte Pfade ebenfalls:
 # im Zweifel wird geprüft, nicht geraten.
 #
 # Der Fuzz-Rauchlauf hängt enger: er läuft nur bei `core/src/isotp.rs`,
@@ -118,6 +118,7 @@ if [ "$modus" = "push" ]; then
                 echo '*' >> "$dateien"
                 continue
                 ;;
+
         esac
         git diff --name-only "$rsha" "$lsha" >> "$dateien" 2>/dev/null ||
             echo '*' >> "$dateien"
@@ -171,7 +172,7 @@ while read -r f; do
             jvm=1
             fuzz=1
             ;;
-        # Doku fährt alle fünf mit. Ein Doku-Push wäre sonst der einzige Fall,
+        # Doku fährt alle sechs mit. Ein Doku-Push wäre sonst der einzige Fall,
         # in dem der Hook gar nichts über den Push sagt — und der Lauf dauert
         # warm rund 40 s, die Hälfte davon die JVM-Tests. `alle=1` genügt, die
         # Job-Auswahl weiter unten liest es aus.
@@ -192,15 +193,16 @@ done < "$dateien"
 
 anzahl=$(sort -u "$dateien" | wc -l | tr -d ' ')
 
-# Welche Jobs des CI-Laufs dieser Push braucht. `c`, `rust`, `clippy` und `fmt`
-# gehören zum Rust- und C-Kern; `jvm-tests` zur App. Bei unbekannter Dateiliste
-# laufen alle fünf — genau wie in der CI, wo kein Job vom anderen abhängt.
+# Welche Jobs des CI-Laufs dieser Push braucht. `c`, `rust`, `clippy`, `fmt`
+# und `deny` gehören zum Rust- und C-Kern; `jvm-tests` zur App. Bei unbekannter
+# Dateiliste laufen alle sechs — genau wie in der CI, wo kein Job vom anderen
+# abhängt.
 ci_jobs=""
 if [ "$alle" -eq 1 ]; then
-    ci_jobs="c rust clippy fmt jvm-tests"
+    ci_jobs="c rust clippy fmt deny jvm-tests"
 else
     if [ "$kern" -eq 1 ]; then
-        ci_jobs="c rust clippy fmt"
+        ci_jobs="c rust clippy fmt deny"
     fi
     if [ "$jvm" -eq 1 ]; then
         ci_jobs="$ci_jobs jvm-tests"
@@ -224,6 +226,21 @@ if [ -n "$ci_jobs" ]; then
     fi
 fi
 
+# `deny` braucht cargo-deny, das nicht zur normalen Werkzeugkette gehört. Fehlt
+# es, wird der Job ausgelassen und benannt — ein fehlendes Werkzeug sagt nichts
+# über die Lizenzen.
+deny_ausgelassen=""
+if [ -n "$ci_jobs" ] && ! command -v cargo-deny > /dev/null; then
+    rest=""
+    for job in $ci_jobs; do
+        if [ "$job" != "deny" ]; then
+            rest="$rest $job"
+        fi
+    done
+    ci_jobs=${rest# }
+    deny_ausgelassen="cargo-deny fehlt: cargo install cargo-deny --locked"
+fi
+
 if [ "$modus" = "probe" ]; then
     if [ -n "$basis" ]; then
         echo "Geänderte Dateien:" >&2
@@ -241,6 +258,9 @@ if [ "$modus" = "probe" ]; then
     if [ -n "$fmt_ausgelassen" ]; then
         echo "  fmt                    (würde ausgelassen — $fmt_ausgelassen)" >&2
     fi
+    if [ -n "$deny_ausgelassen" ]; then
+        echo "  deny                   (würde ausgelassen — $deny_ausgelassen)" >&2
+    fi
     if [ "$fuzz" -eq 1 ]; then
         if fuzz_bereit; then
             echo "  scripts/fuzz.sh        (Rauchlauf ISO-TP und UDS, ${VCI_FUZZ_SEKUNDEN:-20} s je Ziel)" >&2
@@ -252,7 +272,7 @@ if [ "$modus" = "probe" ]; then
 fi
 
 # Nur ein leerer Diff landet hier: jede geänderte Datei wählt mindestens einen
-# Job, Doku alle fünf.
+# Job, Doku alle sechs.
 if [ -z "$ci_jobs" ] && [ "$fuzz" -eq 0 ]; then
     echo "pre-push: nichts zu übertragen ($anzahl Dateien) — keine Tests nötig." >&2
     exit 0
@@ -291,6 +311,9 @@ pruefe() { # <Titel> <Skript> [Argumente …]
 # Bedingung das Skript, statt die Prüfung zu überspringen.
 if [ -n "$fmt_ausgelassen" ]; then
     echo "pre-push: Formatprüfung übersprungen — $fmt_ausgelassen." >&2
+fi
+if [ -n "$deny_ausgelassen" ]; then
+    echo "pre-push: Lizenz- und Advisory-Prüfung übersprungen — $deny_ausgelassen." >&2
 fi
 if [ -n "$ci_jobs" ]; then
     pruefe "lokaler CI-Lauf ($ci_jobs)" scripts/ci-lokal.sh $ci_jobs
