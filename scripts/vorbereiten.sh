@@ -4,8 +4,8 @@
 #
 #   JDK 17 · cargo im PATH · rustfmt (Formatprüfung des Hakens)
 #   Host-Bibliothek des Kerns (für die JVM-Tests)
-#   Android SDK (Platform 34, Build-Tools 34.0.0) · NDK 26.1.10909125
-#   Gradle 8.9 · die Android-Bibliothek in jniLibs (für den APK-Build)
+#   Android SDK (Platform 37.0, Build-Tools 36.0.0) · NDK 26.1.10909125
+#   Gradle aus dem Wrapper (9.5.0) · die Android-Bibliothek in jniLibs (für den APK-Build)
 #
 #     sh scripts/vorbereiten.sh                  # alles
 #     sh scripts/vorbereiten.sh --probe          # nur zeigen, was fehlt
@@ -27,8 +27,9 @@
 #   JDK_ARCHIV       Ablage des JDK-Archivs (Vorgabe: /tmp/temurin-jdk.tar.gz)
 #   JAVA_MAJOR       geforderte Hauptversion (Vorgabe: 17)
 #   SDK_DIR          Android SDK (Vorgabe: ~/android-sdk)
-#   ANDROID_PLATTFORM  Platform-API (Vorgabe: 34)
-#   BUILD_TOOLS      Build-Tools (Vorgabe: 34.0.0)
+#   ANDROID_PLATTFORM  Platform-API (Vorgabe: 37.0 — seit API 36 mit Unterfassung,
+#                      das Verzeichnis heißt `platforms/android-37.0`)
+#   BUILD_TOOLS      Build-Tools (Vorgabe: 36.0.0 — AGP 9 verlangt mindestens diese)
 #   NDK_VERSION      NDK (Vorgabe: 26.1.10909125)
 #   GRADLE_VERSION   Gradle (Vorgabe: aus android/gradle/wrapper/gradle-wrapper.properties)
 #   GRADLE_DIR       Ziel von Gradle (Vorgabe: ~/.local/gradle-$GRADLE_VERSION)
@@ -42,8 +43,8 @@ JDK_DIR=${JDK_DIR:-/tmp/jdk}
 JDK_ARCHIV=${JDK_ARCHIV:-/tmp/temurin-jdk.tar.gz}
 JAVA_MAJOR=${JAVA_MAJOR:-17}
 SDK_DIR=${SDK_DIR:-$HOME/android-sdk}
-ANDROID_PLATTFORM=${ANDROID_PLATTFORM:-34}
-BUILD_TOOLS=${BUILD_TOOLS:-34.0.0}
+ANDROID_PLATTFORM=${ANDROID_PLATTFORM:-37.0}
+BUILD_TOOLS=${BUILD_TOOLS:-36.0.0}
 NDK_VERSION=${NDK_VERSION:-26.1.10909125}
 WRAPPER_PROPS=android/gradle/wrapper/gradle-wrapper.properties
 # GRADLE_VERSION und GRADLE_DIR werden weiter unten bestimmt — die Version
