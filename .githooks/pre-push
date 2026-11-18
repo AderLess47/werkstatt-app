@@ -252,9 +252,10 @@ if [ -n "$ci_jobs" ] && ! command -v cargo-deny > /dev/null; then
     deny_ausgelassen="cargo-deny fehlt: cargo install cargo-deny --locked"
 fi
 
-# `deps` löst den Gradle-Graphen auf und braucht dafür JDK und Android SDK.
-# Fehlt eines, wird der Job ausgelassen und benannt — ein fehlendes Werkzeug
-# sagt nichts über Lizenzen oder Fremdmodule.
+# `deps` löst den Gradle-Graphen auf und braucht dafür JDK und Android SDK; seit
+# dem 18.11.2026 fragt es zusätzlich OSV und braucht dafür `python3`. Fehlt
+# eines, wird der Job ausgelassen und benannt — ein fehlendes Werkzeug sagt
+# nichts über Lizenzen, Fremdmodule oder Lücken.
 deps_ausgelassen=""
 if [ -n "$ci_jobs" ]; then
     if [ -z "${JAVA_HOME:-}" ] && ! command -v java > /dev/null; then
@@ -262,6 +263,8 @@ if [ -n "$ci_jobs" ]; then
     elif [ -z "${ANDROID_HOME:-}${ANDROID_SDK_ROOT:-}" ] &&
         ! grep -qs '^sdk\.dir=' android/local.properties; then
         deps_ausgelassen="kein Android SDK: ANDROID_HOME/ANDROID_SDK_ROOT leer, local.properties ohne sdk.dir"
+    elif ! command -v python3 > /dev/null; then
+        deps_ausgelassen="kein python3: OSV-Abfrage nicht möglich"
     fi
     if [ -n "$deps_ausgelassen" ]; then
         rest=""
