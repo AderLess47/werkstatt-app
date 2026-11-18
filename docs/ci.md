@@ -300,11 +300,42 @@ von 8.9: er lädt nur die Distribution, und das tat er mit 8.14.4 nachweislich.
 
 **Was die Prüfung nicht ist:** ein Beweis der Abwesenheit. OSV sammelt, was
 andere melden (GHSA und Verwandte); eine Lücke, die nur im NVD steht und keine
-GHSA hat, fehlt hier. Die AndroidX- und Compose-Module sind in OSV dünn
-abgedeckt — „kein Treffer“ heißt dort vor allem „kein gemeldeter Treffer“. Und
-geprüft wird der Graph, nicht das, was im APK landet: `libjnidispatch.so` aus
-JNA und die native Rust-Bibliothek haben keine Maven-Fassung und damit keinen
-Eintrag, den OSV befragen könnte.
+GHSA hat, fehlt hier. Und geprüft wird der Graph, nicht das, was im APK landet:
+`libjnidispatch.so` aus JNA und die native Rust-Bibliothek haben keine
+Maven-Fassung und damit keinen Eintrag, den OSV befragen könnte.
+
+#### AndroidX und Compose: gemessen, nicht vermutet
+
+Genau der Fall, in dem „kein OSV-Treffer“ zu wenig wäre: die 84
+AndroidX-/Compose-Fassungen im Graph sind in OSV kaum abgedeckt. Deshalb am
+18.11.2026 zusätzlich das NVD befragt (offene API, ohne Schlüssel):
+
+| Suche im NVD | Treffer | Ergebnis |
+| --- | --- | --- |
+| `androidx` | 0 | keine CVE nennt „androidx“ |
+| `androidx.core` | 0 | keine |
+| `material3` | 0 | keine |
+| `compose ui` | 5 | fremde Projekte (Livewire, Docker-UI, Ditto, Nuxt UI) |
+| `jetpack` | 44 | WordPress-Plugin und NVIDIA JetPack |
+
+Der einzige Faden, der Compose überhaupt mit einem CVE verbindet, ist
+**CVE-2024-7254** (Denial of Service in protobuf): im Google-Issuetracker
+(401068466) melden Scanner ihn gegen `androidx.compose.ui:ui:1.7.x`, und
+Google antwortet dort, die Ursache sei protobuf 3.22.3 und seit dem Sprung auf
+4.28.2 (Compose 1.8+) behoben. Für dieses Projekt heißt das: **nichts zu heben**
+— im aufgelösten Graphen kommt `com.google.protobuf` null Mal vor, und die POMs
+von `androidx.compose.ui:ui-android:1.7.3`, `androidx.core:core:1.13.1` und
+`androidx.compose.material3:material3:1.3.0` nennen es nicht. Wo kein Protobuf
+im APK ist, ist auch die Lücke nicht darin. Ein Sprung auf Compose 1.8+ ginge
+ohnehin nur mit `compileSdk 35` und damit einem AGP-Wechsel.
+
+**Die Grenze bleibt:** Google veröffentlicht Sicherheitskorrekturen in den
+Release Notes auch ohne CVE — „kein CVE“ heißt „keine gemeldete Lücke“, nicht
+„keine Fehlerkorrektur“. Die Fassungen hier sind vom September 2024 (Compose
+1.7.3, core 1.13.1), der Stand Ende 2026 ist Compose 1.12.1, core 1.19.1. Dass
+unsere Fassungen zwei Jahre hinter dem Stand liegen, ist ein offener Punkt am
+Abhängigkeitsstand, kein Befund dieser Prüfung — und er hängt am selben
+`compileSdk 34`, das auch `usb-serial-for-android` festhält.
 
 ### Was der Job nicht prüft
 
@@ -527,9 +558,11 @@ Gradle-Lauf von 61 s (`:bindings:dependencies`, inklusive Download der
 Distribution) — warm steht der Daemon und es sind Sekunden. Fehlt das JDK oder
 das Android SDK, steht `deps` als „nicht gelaufen“ in der Übersicht und das
 Skript endet mit 1. Der Pre-Push-Hook lässt ihn in diesem Fall aus und benennt
-den Grund. Dasselbe gilt seit dem 18.11.2026 für `python3` und das Netz: ohne
-die beiden gibt es keine Advisory-Antwort, und eine fehlende Antwort ist kein
-Grün.
+den Grund. Seit dem 18.11.2026 gilt dasselbe für `python3`: fehlt es, steht
+`deps` als „nicht gelaufen“ in der Übersicht, und der Hook lässt ihn mit dem
+Grund aus. Das **Netz** ist der andere Fall — es wird nicht vorab geprüft.
+Fehlt es, läuft der Job und wird rot mit `OSV nicht befragbar`; das ist ein
+Befund am Werkzeug, kein übersprungener Lauf.
 
 Dass der Job anschlägt, ist am 18.11.2026 geprüft worden: ein
 `#include <libusb.h>` in `j2534/src/core.c`, ein aus
