@@ -1,8 +1,8 @@
 #!/bin/sh
-# Lokaler Ersatz für die CI — dieselben sechs Jobs, die auf einem Runner laufen
-# könnten: `c`, `rust`, `clippy`, `fmt`, `deny`, `jvm-tests`.
+# Lokaler Ersatz für die CI — dieselben sieben Jobs, die auf einem Runner
+# laufen könnten: `c`, `rust`, `clippy`, `fmt`, `deny`, `deps`, `jvm-tests`.
 #
-#     sh scripts/ci-lokal.sh                  # alle sechs
+#     sh scripts/ci-lokal.sh                  # alle sieben
 #     sh scripts/ci-lokal.sh fmt clippy       # nur diese beiden
 #
 # Warum es das gibt: in diesem Repository startet seit 147 Läufen kein Runner
@@ -12,14 +12,15 @@
 #
 # Die Job-Namen lassen sich einzeln nennen; der Pre-Push-Hook nutzt das, damit
 # ein Push nur die Prüfungen startet, die zu den geänderten Dateien passen.
-# Ohne Argumente laufen alle sechs.
+# Ohne Argumente laufen alle sieben.
 #
-# Nicht enthalten sind `android` (braucht Android SDK und NDK, hier nicht
-# vorhanden) und `bindings` (erzeugt Kotlin- und Swift-Bindings als Artefakt;
-# das Erzeugen der Kotlin-Bindings steckt ohnehin im `jvm-tests`-Job, und
-# Swift-Bindings brauchen einen macOS-Runner). Beide fehlen bewusst und werden
-# in der Übersicht nicht als grün geführt — ein übersprungener Job ist kein
-# bestandener.
+# Nicht enthalten sind `android` (baut die NDK-Bibliotheken für beide ABIs und
+# die APK — dafür braucht es NDK, `cargo-ndk` und Minuten; `deps` fragt nur den
+# Gradle-Graphen ab und braucht deshalb bloß JDK und SDK) und `bindings` (erzeugt
+# Kotlin- und Swift-Bindings als Artefakt; das Erzeugen der Kotlin-Bindings
+# steckt ohnehin im `jvm-tests`-Job, und Swift-Bindings brauchen einen
+# macOS-Runner). Beide fehlen bewusst und werden in der Übersicht nicht als grün
+# geführt — ein übersprungener Job ist kein bestandener.
 #
 # Unterschied zur CI, damit die Aussage nicht zu groß wird:
 #
@@ -47,12 +48,17 @@
 # ein JDK (`JAVA_HOME` oder `java` im PATH) für die JVM-Tests, `cargo-deny` für
 # den `deny`-Job. cargo-deny liegt nicht bei cargo bei; fehlt es, steht der Job
 # als „nicht gelaufen“ in der Übersicht und das Skript endet mit 1.
+#
+# `deps` braucht zusätzlich ein Android SDK (`ANDROID_HOME`,
+# `ANDROID_SDK_ROOT` oder `sdk.dir` in `android/local.properties`): der Job löst
+# den Gradle-Graphen der App auf, und `com.android.application` findet das SDK
+# schon beim Konfigurieren. Gebaut wird dort nichts — kein NDK, kein Gradle-Build.
 
 set -u
 
 cd "$(dirname "$0")/.."
 
-alle_jobs="c rust clippy fmt deny jvm-tests"
+alle_jobs="c rust clippy fmt deny deps jvm-tests"
 
 if [ "$#" -eq 0 ]; then
     auswahl=$alle_jobs
@@ -60,7 +66,7 @@ else
     auswahl=$*
     for job in $auswahl; do
         case "$job" in
-            c | rust | clippy | fmt | deny | jvm-tests) ;;
+            c | rust | clippy | fmt | deny | deps | jvm-tests) ;;
             *)
                 echo "FEHLER: unbekannter Job „$job“ — erlaubt: $alle_jobs" >&2
                 exit 2
@@ -222,6 +228,16 @@ job_deny() {
     done
 }
 
+# --- Job `deps` ------------------------------------------------------------
+# Kotlin-/Java-Abhängigkeiten und die C-Seite — genau das, was `deny` nicht
+# sieht. Die Einzelheiten (Erlaubnislisten, Gradle-Init-Skript, Prüfung des
+# Include-Graphen) stehen im Skript; hier steht nur der Aufruf, damit die
+# Ausgabe im Log dieses Laufs landet. Der erste Lauf holt Gradle-Distribution
+# und Modul-Metadaten aus dem Netz; warm sind es wenige Sekunden.
+job_deps() {
+    sh scripts/abhaengigkeiten-pruefen.sh || return 1
+}
+
 # --- Job `jvm-tests` -------------------------------------------------------
 job_jvm() {
     if [ -z "${JAVA_HOME:-}" ] && ! command -v java > /dev/null; then
@@ -248,7 +264,7 @@ job_jvm() {
 # --- Ablauf ----------------------------------------------------------------
 echo "Lokaler CI-Ersatz — Jobs: $auswahl"
 echo "Ausgaben: $protokoll"
-echo "Nicht enthalten: android (SDK/NDK fehlt), bindings (Artefakt-Upload)"
+echo "Nicht enthalten: android (NDK-Bau und APK), bindings (Artefakt-Upload)"
 echo
 
 if gewaehlt c; then
@@ -274,13 +290,35 @@ if gewaehlt deny; then
     fi
 fi
 
-# Der JVM-Job braucht ein JDK. Fehlt es, ist das kein grüner Lauf: die 174 Tests
-# sind dann nicht gefahren worden, und die Übersicht soll das sagen.
+# JDK und Android SDK entscheiden, ob `deps` und `jvm-tests` überhaupt starten
+# können. Fehlt eines, ist das kein grüner Lauf: die Prüfung ist dann nicht
+# gefahren worden, und die Übersicht soll das sagen statt zu schweigen.
+jdk_grund=""
+if [ -z "${JAVA_HOME:-}" ] && ! command -v java > /dev/null; then
+    jdk_grund="kein JDK (JAVA_HOME leer, java nicht im PATH)"
+elif [ -n "${JAVA_HOME:-}" ] && [ ! -x "$JAVA_HOME/bin/java" ]; then
+    jdk_grund="JAVA_HOME zeigt auf kein JDK: $JAVA_HOME/bin/java fehlt"
+fi
+
+sdk_grund=""
+if [ -z "${ANDROID_HOME:-}${ANDROID_SDK_ROOT:-}" ] &&
+    ! grep -qs '^sdk\.dir=' android/local.properties; then
+    sdk_grund="kein Android SDK (ANDROID_HOME/ANDROID_SDK_ROOT leer, local.properties ohne sdk.dir)"
+fi
+
+if gewaehlt deps; then
+    if [ -n "$jdk_grund" ]; then
+        ueberspringe deps "$jdk_grund"
+    elif [ -n "$sdk_grund" ]; then
+        ueberspringe deps "$sdk_grund"
+    else
+        fahre deps job_deps
+    fi
+fi
+
 if gewaehlt jvm-tests; then
-    if [ -z "${JAVA_HOME:-}" ] && ! command -v java > /dev/null; then
-        ueberspringe jvm-tests "kein JDK (JAVA_HOME leer, java nicht im PATH)"
-    elif [ -n "${JAVA_HOME:-}" ] && [ ! -x "$JAVA_HOME/bin/java" ]; then
-        ueberspringe jvm-tests "JAVA_HOME zeigt auf kein JDK: $JAVA_HOME/bin/java fehlt"
+    if [ -n "$jdk_grund" ]; then
+        ueberspringe jvm-tests "$jdk_grund"
     else
         fahre jvm-tests job_jvm
     fi
