@@ -14,7 +14,7 @@ wiederholbar, ohne dafür einen leeren Commit zu brauchen.
 | `deps` | der aufgelöste Gradle-Graph der beiden Android-Module, die Kopfddateien des C-Kerns und die bekannten Sicherheitslücken zu beiden: jedes Fremdmodul braucht eine Zeile mit Lizenz in `android/abhaengigkeiten.txt`, jede Kopfddatei eine Zeile in `j2534/abhaengigkeiten.txt`, offene Lücken eine Zeile in `android/osv-ausnahmen.txt` — Einzelheiten unten |
 | `bindings` | erzeugt Kotlin- und Swift-Bindings neu, lädt sie als Artefakt hoch (`needs: rust`) |
 | `jvm-tests` | die 186 Tests der App ohne Gerät über `sh scripts/jvm-tests.sh`, gegen den Host-Build der Bibliothek |
-| `android` | nimmt die SDK-Lizenzen selbst an und installiert NDK 26.1; Bindings und Host-Bibliothek; NDK-Bibliothek für `arm64-v8a` und `x86_64`; `./android/gradlew -p android :bindings:test`; dann `:app:testDebugUnitTest :app:assembleDebug` und eine Prüfung, dass beide ABIs in der APK liegen |
+| `android` | nimmt die SDK-Lizenzen selbst an und installiert NDK 26.1, Plattform 37.0 und Build-Tools 36.0.0; Bindings und Host-Bibliothek; NDK-Bibliothek für `arm64-v8a` und `x86_64`; `./android/gradlew -p android :bindings:test`; dann `:app:testDebugUnitTest :app:assembleDebug` und eine Prüfung, dass beide ABIs in der APK liegen |
 
 Der Android-Job baut über den Wrapper, nicht über ein vom Runner gestelltes
 Gradle: die Version steht allein in
@@ -246,6 +246,14 @@ Wrapper, Android SDK mit Plattform 34) — 104 Fremdmodule:
 | BSD-3-Clause | 1 (`hamcrest-core`) |
 | Apache-2.0 OR LGPL-2.1-or-later | 1 (`jna`) |
 
+Nach dem Sprung auf AGP 9.3.1, Gradle 9.5.0 und `compileSdk 37` (dieselbe
+Messung, 18.11.2026) sind es **117 Module**: 13 neue AndroidX-Module
+(`navigationevent`, `savedstate-compose`, `window`, `runtime-retain`,
+`core-viewtree`) und `kotlinx-serialization-core` kamen dazu, entfallen sind
+`compose.material`, `material-icons-core` und die alten
+`kotlin-stdlib-jdk7/jdk8`-Brücken. Die neuen Zeilen sind aus den POMs abgelesen,
+nicht aus dem Gedächtnis: alle Apache-2.0.
+
 ### C-Seite: keine Fremdbibliothek, und das bleibt so
 
 `j2534/` bindet zehn Kopfddateien ein: sieben aus ISO C (`stddef.h`, `stdint.h`,
@@ -277,6 +285,11 @@ Ein Treffer ist rot, es sei denn er steht mit Begründung in
 Ein Lauf ohne Netz ist kein grüner Lauf: antwortet OSV nicht, endet er mit 1 und
 sagt das. Am 18.11.2026 sind so **108 Fassungen** (104 Fremdmodule, dazu AGP,
 Kotlin-Gradle-Plugin und Compose-Compiler-Plugin) abgefragt worden.
+
+Nach dem Sprung auf den Stand von Ende 2026 fragt derselbe Lauf **121
+Fassungen** ab (117 Module, dazu AGP 9.3.1, Kotlin-Gradle-Plugin 2.4.20 und das
+Compose-Compiler-Plugin 2.4.20) — Ergebnis: keine bekannte Lücke. Die
+`osv-ausnahmen.txt` bleibt leer.
 
 **Der eine Treffer und was er gekostet hat.** `org.jetbrains.kotlin:
 kotlin-gradle-plugin:2.0.21` stand auf GHSA-r937-wjx7-w2jp (CVE-2026-53914,
@@ -331,11 +344,54 @@ ohnehin nur mit `compileSdk 35` und damit einem AGP-Wechsel.
 
 **Die Grenze bleibt:** Google veröffentlicht Sicherheitskorrekturen in den
 Release Notes auch ohne CVE — „kein CVE“ heißt „keine gemeldete Lücke“, nicht
-„keine Fehlerkorrektur“. Die Fassungen hier sind vom September 2024 (Compose
-1.7.3, core 1.13.1), der Stand Ende 2026 ist Compose 1.12.1, core 1.19.1. Dass
-unsere Fassungen zwei Jahre hinter dem Stand liegen, ist ein offener Punkt am
-Abhängigkeitsstand, kein Befund dieser Prüfung — und er hängt am selben
-`compileSdk 34`, das auch `usb-serial-for-android` festhält.
+„keine Fehlerkorrektur“. Die Fassungen hier waren am 18.11.2026 die vom
+September 2024 (Compose 1.7.3, core 1.13.1), der Stand Ende 2026 ist Compose
+1.12.1, core 1.19.1. Dieser Abstand ist derselbe Tag geschlossen worden:
+
+#### Der Sprung auf den Stand von Ende 2026
+
+Er war kein Nummernwechsel in der Abhängigkeitsliste — Compose 1.12 verlangt
+API 37, und das kann erst AGP 9.1 oder neuer. Was daran hing:
+
+| Was | vorher | nachher | warum |
+| --- | --- | --- | --- |
+| Compose BOM | 2024.09.03 (Compose 1.7.3, material3 1.3.0) | 2026.09.00 (Compose 1.12.1, material3 1.4.0) | der Zweck des Sprungs |
+| `activity-compose` | 1.9.2 | 1.13.0 | Stand Ende 2026 |
+| `lifecycle-viewmodel-compose` | 2.8.5 | 2.11.0 | ebenso |
+| `compileSdk` | 34 | 37 | Compose 1.12 setzt API 37 voraus; die Plattform heißt seit API 36 mit Unterfassung `android-37.0` |
+| AGP | 8.5.2 | 9.3.1 | API 37 können erst AGP 9.1+; 9.3.1 ist die letzte Linie, die Kotlin 2.4.20 offiziell unterstützt (9.4/9.5 liegen darüber) |
+| Gradle (Wrapper) | 8.14.4 | 9.5.0 | AGP 9.3 verlangt mindestens 9.5.0 |
+| Build-Tools | 34.0.0 | 36.0.0 | Minimum von AGP 9 |
+| `usb-serial-for-android` | 3.10.0 | 3.12.0 | die Sperre („3.11.0 verlangt `compileSdk 35`“) fiel mit dem Sprung |
+| Kotlin-Plugin `android` | 2.4.20 | entfällt | AGP 9 übersetzt Kotlin selbst (built-in Kotlin); die KGP-Fassung kommt über das Compose-Plugin 2.4.20 (AGP bringt 2.2.10 mit, Gradle hebt auf 2.4.20) |
+| `targetSdk` | 34 | **34** | bleibt bewusst: eine Verhaltenszusage ans System (Rechte, Hintergrundarbeit), kein Bauzwang — gehört erst nach einem Gerätetest angehoben |
+
+Zwei Dinge daran waren Arbeit statt Tippen:
+
+1. **Die Katalog-Assets.** `sourceSets["main"].assets.srcDir(layout.buildDirectory.dir(…))`
+   lehnt AGP 9 ab („You cannot add Provider instances to the Android SourceSet
+   API“). Der Kopier-Task beschreibt seinen Ausgang jetzt selbst als
+   `DirectoryProperty`, und `androidComponents.onVariants { …
+   sources.assets?.addGeneratedSourceDirectory(…) }` hängt ihn an die Variante —
+   damit trägt die API die Task-Abhängigkeit, die vorher an `preBuild` hing.
+2. **Die SDK-Pakete.** AGP 9 braucht die Plattform `android-37.0` schon beim
+   Konfigurieren. `scripts/vorbereiten.sh` und der `android`-Job installieren sie
+   (und Build-Tools 36.0.0) jetzt mit; ohne sie scheitert nicht der Code,
+   sondern die Konfiguration.
+
+Lokal belegt am 18.11.2026 (JDK 17, warm): `:app:assembleDebug` grün in 59 s,
+die APK meldet `compileSdkVersion='37'` und `targetSdkVersion:'34'`, die fünf
+YAML-Dateien liegen unter `assets/funktionen/`, `deps` ist mit 117 Modulen und
+121 abgefragten Fassungen grün. Neu ist eine Abschreibungs-Warnung:
+`LocalClipboardManager` (in `SfdAbschnitt.kt`) gilt seit Compose 1.12 als
+veraltet zugunsten von `LocalClipboard`, das suspendierende Funktionen kennt.
+Sie bleibt stehen — der Umbau ändert das Verhalten der Zwischenablage und
+gehört nicht in einen Versionssprung.
+
+**Nicht geprüft:** die Anzeige unter Compose 1.12 und `material3` 1.4.0. In
+dieser VM gibt es kein Gerät und keinen Emulator (`/dev/kvm` nicht zugänglich);
+belegt ist die Übersetzung, die Paketierung und der Asset-Pfad, nicht das
+Bild.
 
 ### Was der Job nicht prüft
 
@@ -343,7 +399,7 @@ Abhängigkeitsstand, kein Befund dieser Prüfung — und er hängt am selben
   kein Beweis. Für die C-Seite gibt es nichts zu befragen, für native
   Bestandteile (JNA, Rust) auch nicht — die deckt `deny` für Rust ab, für JNA
   bleibt nur die Fassung in der Liste.
-- **Keine Eignung einer Fassung.** Ob 2.4.20 mit AGP 8.5.2 auf Dauer zusammen
+- **Keine Eignung einer Fassung.** Ob 2.4.20 mit AGP 9.3.1 auf Dauer zusammen
   arbeitet, sagt kein Advisory; das zeigt nur der Bau, und der ist oben datiert.
 - **Keine Eignung der Lizenz.** Ob Apache-2.0 für die Auslieferung passt,
   entscheidet die Liste, nicht das Werkzeug.
@@ -551,6 +607,13 @@ Wrapper, Android SDK mit Plattform 34), warm — der Gradle-Daemon lief schon:
 | Job | Ergebnis | Dauer | Was im Log steht |
 | --- | --- | --- | --- |
 | `deps` | grün | 2 s | zehn Kopfddateien, alle in `j2534/abhaengigkeiten.txt`, Include-Graph nur `j2534/` und `/usr`; 104 Fremdmodule im Gradle-Graph, alle in `android/abhaengigkeiten.txt`, dazu die Lizenzübersicht (94 Apache-2.0, 6 EPL-2.0, je eins MIT, EPL-1.0, BSD-3-Clause, Apache-2.0 OR LGPL-2.1-or-later) und `108 Fassungen bei api.osv.dev abgefragt` mit dem Ergebnis „keine bekannte Lücke“ |
+
+Nach dem Sprung auf AGP 9.3.1, Gradle 9.5.0 und Plattform 37.0 (18.11.2026,
+warm) steht derselbe Lauf auf **117 Fremdmodulen** und **121 abgefragten
+Fassungen** — weiter grün, Lizenzübersicht 107 Apache-2.0, 6 EPL-2.0, je eins
+MIT, EPL-1.0, BSD-3-Clause, Apache-2.0 OR LGPL-2.1-or-later. Der erste Lauf
+nach dem Sprung holt zusätzlich die Gradle-9.5.0-Distribution und die neuen
+Artefakte; getrennt gemessen wurde das nicht.
 
 Kalt ist der Job teuer: der erste Lauf holt Gradle-Distribution und
 Modul-Metadaten und braucht Netz. Gemessen wurde in dieser VM ein kalter
