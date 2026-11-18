@@ -1,9 +1,10 @@
 # cargo-deny: Lizenzen und bekannte Sicherheitslücken der Rust-Abhängigkeiten.
 #
-# Geprüft wird zweimal, nicht einmal: `core` und `core-ffi` haben je ein eigenes
-# `Cargo.lock`, es gibt keine Workspace-Wurzel. cargo-deny liest den Graph aus
-# dem Lockfile, das zu seinem Manifest gehört — ein gemeinsamer Lauf würde einen
-# der beiden Stände verschweigen. Die CI fährt deshalb beide Manifeste.
+# Geprüft wird dreimal, nicht einmal: `core`, `core-ffi` und `core/fuzz` haben je
+# ein eigenes `Cargo.lock`, eine gemeinsame Workspace-Wurzel gibt es nicht.
+# cargo-deny liest den Graph aus dem Lockfile, das zu seinem Manifest gehört —
+# ein gemeinsamer Lauf würde einen der Stände verschweigen. Die CI fährt deshalb
+# alle drei Manifeste.
 
 [advisories]
 # Eine bekannte Lücke wird behoben, nicht stillgelegt. Muss doch eine Frist
@@ -29,12 +30,17 @@ ignore = [
 # Aufzählung statt Muster: was hier nicht steht, bricht den Lauf. Ein neues
 # Krate mit neuer Lizenz ist damit eine Entscheidung und kein Zufall.
 #
-# Der Baum von `core-ffi` (82 Pakete, Stand 18.11.2026) enthält nur diese
-# Lizenzen: MIT und Apache-2.0 (teils als `OR`), MPL-2.0 (dateibezogen),
-# Unicode-3.0, Unlicense und die LLVM-Ausnahme zu Apache-2.0. `core` selbst hat
-# keine Abhängigkeiten. Zusammen mit der AGPL-3.0 des Projekts (siehe `LICENSE`)
-# ist das unproblematisch: nichts davon verlangt, den Quelltext dieser App
-# offenzulegen, und nichts ist copyleft auf Binariebene.
+# Der Baum von `core-ffi` (82 Pakete) und der von `core/fuzz` (12 Pakete) —
+# Stand 18.11.2026 — enthalten zusammen nur diese Lizenzen: MIT und Apache-2.0
+# (teils als `OR`), MPL-2.0 (dateibezogen), Unicode-3.0, Unlicense, die
+# LLVM-Ausnahme zu Apache-2.0 und NCSA. `core` selbst hat keine Abhängigkeiten.
+# Zusammen mit der AGPL-3.0 des Projekts (siehe `LICENSE`) ist das
+# unproblematisch: nichts davon verlangt, den Quelltext dieser App offenzulegen,
+# und nichts ist copyleft auf Binariebene.
+#
+# `NCSA` kommt allein über `libfuzzer-sys` herein („(MIT OR Apache-2.0) AND
+# NCSA“), also über den Fuzzer selbst; die Lizenz ist permissiv (MIT-Familie mit
+# BSD-Klauseln).
 #
 # `LGPL-2.1-or-later` steht bei `r-efi` nur als dritte Alternative in einem
 # `OR`; gewählt ist MIT, deshalb fehlt die Lizenz hier.
@@ -43,6 +49,7 @@ allow = [
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
     "MPL-2.0",
+    "NCSA",
     "Unicode-3.0",
     "Unlicense",
 ]
