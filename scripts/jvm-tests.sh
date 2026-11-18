@@ -69,7 +69,7 @@ fi
 
 # --- Abhängigkeiten --------------------------------------------------------
 # Erst im Gradle-Cache nachsehen, sonst von Maven holen. Die Versionen sind
-# dieselben wie in `android/build.gradle.kts` (Kotlin 2.0.21), `android/app/
+# dieselben wie in `android/build.gradle.kts` (Kotlin 2.4.20), `android/app/
 # build.gradle.kts` (JUnit 4.13.2, JNA 5.14.0) und der Kotlin-Standardbibliothek;
 # bei einem Wechsel dort gehört die Tabelle hier mitgezogen.
 need() { # group:artifact:version
@@ -100,10 +100,10 @@ need() { # group:artifact:version
     printf '%s' "$ziel"
 }
 
-KOTLINC=$(need org.jetbrains.kotlin:kotlin-compiler-embeddable:2.0.21)
-STDLIB=$(need org.jetbrains.kotlin:kotlin-stdlib:2.0.21)
-SCRIPT_RT=$(need org.jetbrains.kotlin:kotlin-script-runtime:2.0.21)
-DAEMON=$(need org.jetbrains.kotlin:kotlin-daemon-embeddable:2.0.21)
+KOTLINC=$(need org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.20)
+STDLIB=$(need org.jetbrains.kotlin:kotlin-stdlib:2.4.20)
+SCRIPT_RT=$(need org.jetbrains.kotlin:kotlin-script-runtime:2.4.20)
+DAEMON=$(need org.jetbrains.kotlin:kotlin-daemon-embeddable:2.4.20)
 TROVE=$(need org.jetbrains.intellij.deps:trove4j:1.0.20200330)
 ANNOT=$(need org.jetbrains:annotations:13.0)
 COROUTINES=$(need org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.6.4)
